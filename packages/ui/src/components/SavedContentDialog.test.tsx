@@ -9,7 +9,7 @@ import { SavedContentDialog } from "./SavedContentDialog.js";
 
 const url = "https://example.invalid/article";
 const item = { globalId: "saved:fixture", sourceUrl: url, content: {}, userState: { tags: [], highlights: [] } } as unknown as FeedItem;
-const snapshot: LibraryCoreHydratedAnnotations = { state: "ready", highlights: [], originals: {
+const snapshot: LibraryCoreHydratedAnnotations = { state: "ready", editState: "ready", highlights: [], originals: {
   queryId: "item_annotations_v1", schemaVersion: 1, globalId: item.globalId,
   source: { generationId: "a".repeat(64) as never, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
 } };

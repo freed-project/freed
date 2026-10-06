@@ -135,7 +135,7 @@ describe("same-URL saved note editing", () => {
   it("uses canonical preservation without capture or URL fetching", async () => {
     vi.clearAllMocks();
     const { updateSavedContentInDesktop } = await import("./save-url.js");
-    const annotationSnapshot = { state: "ready" as const, highlights: [], originals: {
+    const annotationSnapshot = { state: "ready" as const, editState: "ready" as const, highlights: [], originals: {
       queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: stubItem.globalId,
       source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
     } };

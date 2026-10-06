@@ -13309,6 +13309,7 @@ pub fn run() {
                 );
                 let _ = open_or_focus_recovery_window(&app_handle)?;
             } else {
+                library_core_desktop_runtime::start_annotation_continuation(&app_handle);
                 let _ = start_main_window_quietly(&app_handle)?;
                 let dev_sync_result_data_dir = data_dir.clone();
                 app.listen("dev-sync-trigger-native-result", move |event| {

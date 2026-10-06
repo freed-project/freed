@@ -176,7 +176,7 @@ impl LibraryCoreDesktopBinding {
         let mut normalized_connection = binding
             .normalized_database
             .open(normalized_sqlite_open_flags(true))?;
-        configure_normalized_sqlite_connection(&normalized_connection)
+        crate::normalized_local_annotations::open_owned(&mut normalized_connection)
             .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         binding
             .content_vault
@@ -225,6 +225,29 @@ impl LibraryCoreDesktopBinding {
         Ok((connection, selection.library_id))
     }
 
+    /// Device-local annotation maintenance uses the existing reset/selection
+    /// ownership domain and drops its connection after each bounded slice.
+    pub fn reconcile_annotation_slice_v1(
+        &self,
+        pass: Option<crate::NormalizedAnnotationReconciliationPassV1>,
+    ) -> Result<
+        (
+            Option<crate::NormalizedAnnotationReconciliationPassV1>,
+            bool,
+        ),
+        LibraryCoreStorageError,
+    > {
+        let _reset = self.reset_gate.lock().map_err(|_| {
+            LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
+        })?;
+        let mut connection = self.connect_selected_normalized()?;
+        connection.busy_timeout(std::time::Duration::from_millis(25))?;
+        let before = connection.total_changes();
+        let next = crate::reconcile_normalized_annotation_slice_v1(&mut connection, pass)
+            .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
+        Ok((next, connection.total_changes() != before))
+    }
+
     pub fn publish_content_range_from_reader_v1<R: Read>(
         &self,
         publication_id: &str,
@@ -251,24 +274,49 @@ impl LibraryCoreDesktopBinding {
     }
 
     /// Registered query with private local-vault access and final selected-source fencing.
-    pub fn query_with_content_control_v1(&self, request: serde_json::Value, control: std::sync::Arc<crate::NormalizedQueryControl>) -> Result<serde_json::Value, String> {
-        let connection = self.connect_selected_normalized().map_err(|error| error.to_string())?;
-        let result = crate::normalized_query_control::query_with_content_control(connection, request, std::sync::Arc::clone(&control), &|key, length| self.content_vault.read_annotation_object(key, length))?;
+    pub fn query_with_content_control_v1(
+        &self,
+        request: serde_json::Value,
+        control: std::sync::Arc<crate::NormalizedQueryControl>,
+    ) -> Result<serde_json::Value, String> {
+        let connection = self
+            .connect_selected_normalized()
+            .map_err(|error| error.to_string())?;
+        let result = crate::normalized_query_control::query_with_content_control(
+            connection,
+            request,
+            std::sync::Arc::clone(&control),
+            &|key, length| self.content_vault.read_annotation_object(key, length),
+        )?;
         if result.get("queryId").and_then(|v| v.as_str()) == Some("item_annotation_text_range_v1") {
-            let source: crate::normalized_query::NormalizedFeedPageSourceV1 = serde_json::from_value(result["source"].clone()).map_err(|error| error.to_string())?;
-            let connection = self.connect_selected_normalized().map_err(|error| error.to_string())?;
-            crate::annotation_text::check_source(&connection, &source).map_err(|error| error.to_string())?;
+            let source: crate::normalized_query::NormalizedFeedPageSourceV1 =
+                serde_json::from_value(result["source"].clone())
+                    .map_err(|error| error.to_string())?;
+            let connection = self
+                .connect_selected_normalized()
+                .map_err(|error| error.to_string())?;
+            crate::annotation_text::check_source(&connection, &source)
+                .map_err(|error| error.to_string())?;
             control.check().map_err(str::to_owned)?;
             if result["state"] == "ready" {
                 if let Some(digest) = result["text"]["blobDigest"].as_str() {
-                    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_err(|error| error.to_string())?.as_millis();
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_err(|error| error.to_string())?
+                        .as_millis();
                     let now = i64::try_from(now).map_err(|error| error.to_string())?;
                     // Same device-local coalescing as the existing cached range path.
                     // This is a separate connection after the query-only snapshot ended.
-                    crate::library_core_content_vault::mark_content_accessed(&connection, digest, now).map_err(|error| error.to_string())?;
+                    crate::library_core_content_vault::mark_content_accessed(
+                        &connection,
+                        digest,
+                        now,
+                    )
+                    .map_err(|error| error.to_string())?;
                 }
             }
-            crate::annotation_text::check_source(&connection, &source).map_err(|error| error.to_string())?;
+            crate::annotation_text::check_source(&connection, &source)
+                .map_err(|error| error.to_string())?;
             control.check().map_err(str::to_owned)?;
         }
         Ok(result)
@@ -1269,6 +1317,31 @@ mod tests {
                 primary_actor_id: "primary-actor".to_owned(),
             })
             .expect("publish test authority selector");
+    }
+
+    #[test]
+    fn annotation_owner_slice_reopens_selected_binding_and_rejects_identity_drift() {
+        let fixture = tempfile::tempdir().unwrap();
+        let app_root = fixture.path().join("app-data");
+        fs::create_dir(&app_root).unwrap();
+        fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
+        let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
+        install_test_selected_authority(&binding, &"b".repeat(64), &"a".repeat(64));
+        reset_connection_setup_counts();
+        let (pass, changed) = binding.reconcile_annotation_slice_v1(None).unwrap();
+        assert!(pass.is_none());
+        assert!(!changed);
+        assert_eq!(connection_setup_counts(), (1, 1));
+        let connection = binding.connect_selected_normalized().unwrap();
+        connection
+            .execute(
+                "UPDATE library_materialization_generation SET generation_id=?1;",
+                ["9".repeat(64)],
+            )
+            .unwrap();
+        let before = connection.total_changes();
+        assert!(binding.reconcile_annotation_slice_v1(None).is_err());
+        assert_eq!(connection.total_changes(), before);
     }
 
     #[test]

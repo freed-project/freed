@@ -1,3 +1,5 @@
+import { subscribePwaLibraryCoreLocalChanges } from "./library-core-sqlite-runtime";
+import { assertLibraryCoreAnnotationEditEligible } from "@freed/shared/library-core";
 import { canonicalizeFeedItemHighlightsV1, canonicalizeFeedItemTagsV1, retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
 import { assembleHydratedAnnotationReplacement, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
 import {
@@ -314,7 +316,29 @@ export function subscribePwaLibraryCoreState(
   return () => listeners.delete(listener);
 }
 
+let localChangeSubscription: (() => void) | null = null;
+let localRefreshRunning=false, localRefreshDirty=false;
+function observeLocalMaintenance(): void {
+  if (localChangeSubscription) return;
+  localChangeSubscription=subscribePwaLibraryCoreLocalChanges(() => {
+    localRefreshDirty=true;
+    if (localRefreshRunning) return;
+    localRefreshRunning=true;
+    void (async () => {
+      while (localRefreshDirty) {
+        localRefreshDirty=false;
+        const state=await readSelectedState();
+        if (!state) continue;
+        const change=await drainPwaLibraryCoreLocalChanges(state.searchCorpusVersion);
+        if (change) publishState(state,change);
+      }
+    })().catch(() => { console.error("Local annotation refresh failed; editing will be checked again before submission"); })
+      .finally(() => { localRefreshRunning=false; });
+  });
+}
+
 export async function initializePwaLibraryCoreState(): Promise<LibraryCoreRuntimeStateV1> {
+  observeLocalMaintenance();
   const selectedState = await readSelectedState();
   const state = selectedState ?? createEmptyLibraryCoreRuntimeStateV1();
   lastLocalChangeSequence =
@@ -559,6 +583,7 @@ export async function enqueuePwaLibraryCoreFeedItemCaptures(
 /** Note-only editing preserves the complete canonical quote set. */
 export async function enqueuePwaLibraryCoreSavedItemNote(globalId: string, note: string, originalSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations): Promise<void> {
   const snapshot = retainRenderedAnnotationSnapshot(originalSnapshot, globalId);
+  await assertLibraryCoreAnnotationEditEligible(queryPwaNormalizedLibrary, snapshot);
   const originals = snapshot.originals;
   const now = Date.now();
   const payload = replaceHydratedSavedNote(snapshot, note, now);
@@ -618,6 +643,7 @@ export async function enqueuePwaLibraryCoreFeedItemAnnotationSets(
     for (const assignment of rows.slice(start, start + PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT)) {
       const originals = await queryPwaNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
       const snapshot = assignment.annotationSnapshot;
+      await assertLibraryCoreAnnotationEditEligible(queryPwaNormalizedLibrary, snapshot);
       if (!sameAnnotationSource(snapshot.originals.source, originals.source) ||
           (expectedSource && !sameAnnotationSource(expectedSource, snapshot.originals.source))) throw new Error("Annotation source changed; reopen the item");
       expectedSource ??= snapshot.originals.source;

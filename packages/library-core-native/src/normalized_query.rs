@@ -659,6 +659,7 @@ pub enum NormalizedQueryRequestV1 {
     FriendsDirectoryPage(NormalizedFriendsDirectoryPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemAnnotations(NormalizedItemDetailRequestV1),
+    AnnotationEditState(NormalizedItemDetailRequestV1),
     RssItemSummary(NormalizedFacetSummaryRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
@@ -1645,6 +1646,7 @@ pub enum NormalizedQueryResponseV1 {
     FriendsDirectoryPage(NormalizedFriendsDirectoryPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemAnnotations(NormalizedItemAnnotationsResponseV1),
+    AnnotationEditState(NormalizedAnnotationEditStateResponseV1),
     RssItemSummary(NormalizedRssItemSummaryResponseV1),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
@@ -2804,7 +2806,7 @@ fn query_recovery_archive_page(
         return Err(invalid("recovery archive page request is invalid"));
     }
     let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5) {
         return Err(invalid(
             "recovery archives are unavailable in this storage version",
         ));
@@ -2917,7 +2919,7 @@ fn query_recovery_intent_page(
         return Err(invalid("recovery intent page request is invalid"));
     }
     let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5) {
         return Err(invalid(
             "recovery archives are unavailable in this storage version",
         ));
@@ -3003,7 +3005,10 @@ fn query_recovery_intent_page(
     Ok(response)
 }
 
-pub(crate) fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqliteError> {
+pub(crate) fn query_source(
+    connection: &Connection,
+) -> Result<(String, i64), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let source: (String, i64, i64) = connection.query_row(
         "SELECT generation.generation_id, meta.source_revision, changes.revision
          FROM library_materialization_generation AS generation
@@ -3020,14 +3025,20 @@ pub(crate) fn query_source(connection: &Connection) -> Result<(String, i64), Nor
 }
 
 /// Closed optional IPC field: omission is allowed; explicit null and malformed tuples are not.
-pub fn deserialize_local_admission_source<'de, D>(deserializer: D) -> Result<Option<NormalizedFeedPageSourceV1>, D::Error>
-where D: serde::Deserializer<'de> {
+pub fn deserialize_local_admission_source<'de, D>(
+    deserializer: D,
+) -> Result<Option<NormalizedFeedPageSourceV1>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
     let source = NormalizedFeedPageSourceV1::deserialize(deserializer)?;
     if !valid_lower_hex_64(&source.generation_id)
         || !valid_safe_integer(source.projection_revision)
         || !valid_safe_integer(source.transition_sequence)
     {
-        return Err(serde::de::Error::custom("local admission source is invalid"));
+        return Err(serde::de::Error::custom(
+            "local admission source is invalid",
+        ));
     }
     Ok(Some(source))
 }
@@ -7777,6 +7788,57 @@ fn query_rss_item_summary(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAnnotationEditStateResponseV1 {
+    pub global_id: String,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub local_sequence: i64,
+    pub pending: bool,
+}
+
+fn query_annotation_edit_state(
+    connection: &mut Connection,
+    request: NormalizedItemDetailRequestV1,
+) -> Result<NormalizedAnnotationEditStateResponseV1, NormalizedSqliteError> {
+    const QUERY: &str = "item_annotation_edit_state_v1";
+    if request.schema_version != 1 || request.global_id.is_empty() || request.global_id.len() > 2048
+    {
+        return Err(invalid("annotation edit state identity is invalid"));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    crate::normalized_local_annotations::require_ready(&transaction)?;
+    let (generation_id, revision) = query_source(&transaction)?;
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == QUERY)
+        .ok_or(invalid("annotation edit state program is missing"))?;
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct State {
+        local_sequence: i64,
+        pending: bool,
+    }
+    let state: State = transaction.query_row(program.sql, [&request.global_id], |row| {
+        decode_generated_query_row(row, QUERY)
+    })?;
+    transaction.commit()?;
+    Ok(NormalizedAnnotationEditStateResponseV1 {
+        global_id: request.global_id,
+        query_id: QUERY.to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: revision,
+            transition_sequence: revision,
+        },
+        local_sequence: state.local_sequence,
+        pending: state.pending,
+    })
+}
+
 fn query_item_annotations(
     connection: &mut Connection,
     request: NormalizedItemDetailRequestV1,
@@ -8118,8 +8180,13 @@ pub fn query_normalized_v1(
     connection: &mut Connection,
     request: NormalizedQueryRequestV1,
 ) -> Result<NormalizedQueryResponseV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     match request {
-        NormalizedQueryRequestV1::AnnotationText(request) => Ok(NormalizedQueryResponseV1::AnnotationText(crate::annotation_text::query(connection, request, None)?)),
+        NormalizedQueryRequestV1::AnnotationText(request) => {
+            Ok(NormalizedQueryResponseV1::AnnotationText(
+                crate::annotation_text::query(connection, request, None)?,
+            ))
+        }
         NormalizedQueryRequestV1::RecoveryIntentReview(request) => {
             Ok(NormalizedQueryResponseV1::RecoveryIntentReview(
                 query_recovery_intent_review(connection, request)?,
@@ -8195,6 +8262,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemDetail(request) => Ok(NormalizedQueryResponseV1::ItemDetail(
             Box::new(query_item_detail(connection, request)?),
         )),
+        NormalizedQueryRequestV1::AnnotationEditState(request) => {
+            Ok(NormalizedQueryResponseV1::AnnotationEditState(
+                query_annotation_edit_state(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ItemAnnotations(request) => {
             Ok(NormalizedQueryResponseV1::ItemAnnotations(
                 query_item_annotations(connection, request)?,
@@ -8342,10 +8414,16 @@ pub fn query_normalized_json_v1(
     connection: &mut Connection,
     request: serde_json::Value,
 ) -> Result<serde_json::Value, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     query_normalized_json_with_content(connection, request, None)
 }
 
-pub(crate) fn query_normalized_json_with_content(connection: &mut Connection, request: serde_json::Value, read: Option<&crate::annotation_text::RangeReader<'_>>) -> Result<serde_json::Value, NormalizedSqliteError> {
+pub(crate) fn query_normalized_json_with_content(
+    connection: &mut Connection,
+    request: serde_json::Value,
+    read: Option<&crate::annotation_text::RangeReader<'_>>,
+) -> Result<serde_json::Value, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let serde_json::Value::Object(mut fields) = request else {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized query request must be an object",
@@ -8368,7 +8446,10 @@ pub(crate) fn query_normalized_json_with_content(connection: &mut Connection, re
     }
 
     let request = match query_id.as_str() {
-        "item_annotation_text_range_v1" => decode_request!(crate::annotation_text::AnnotationTextRequest, AnnotationText),
+        "item_annotation_text_range_v1" => decode_request!(
+            crate::annotation_text::AnnotationTextRequest,
+            AnnotationText
+        ),
         "recovery_intent_review_v1" => decode_request!(
             NormalizedRecoveryIntentReviewRequestV1,
             RecoveryIntentReview
@@ -8422,6 +8503,9 @@ pub(crate) fn query_normalized_json_with_content(connection: &mut Connection, re
             )
         }
         "item_detail_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemDetail),
+        "item_annotation_edit_state_v1" => {
+            decode_request!(NormalizedItemDetailRequestV1, AnnotationEditState)
+        }
         "item_annotations_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemAnnotations),
         "rss_item_summary_v1" => decode_request!(NormalizedFacetSummaryRequestV1, RssItemSummary),
         "item_reader_body_v1" => {
@@ -8499,7 +8583,11 @@ pub(crate) fn query_normalized_json_with_content(connection: &mut Connection, re
         }
     };
     let response = match request {
-        NormalizedQueryRequestV1::AnnotationText(request) => NormalizedQueryResponseV1::AnnotationText(crate::annotation_text::query(connection, request, read)?),
+        NormalizedQueryRequestV1::AnnotationText(request) => {
+            NormalizedQueryResponseV1::AnnotationText(crate::annotation_text::query(
+                connection, request, read,
+            )?)
+        }
         request => query_normalized_v1(connection, request)?,
     };
 
@@ -8535,6 +8623,7 @@ pub(crate) fn query_normalized_json_with_content(connection: &mut Connection, re
         NormalizedQueryResponseV1::FriendsDirectoryPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemAnnotations(response) => encode_response!(response),
+        NormalizedQueryResponseV1::AnnotationEditState(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssItemSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemScan(response) => encode_response!(response),
@@ -8570,14 +8659,32 @@ mod tests {
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase", deny_unknown_fields)]
         struct Request {
-            #[serde(default, deserialize_with = "super::deserialize_local_admission_source")]
+            #[serde(
+                default,
+                deserialize_with = "super::deserialize_local_admission_source"
+            )]
             expected_source: Option<super::NormalizedFeedPageSourceV1>,
         }
-        assert!(serde_json::from_value::<Request>(serde_json::json!({})).unwrap().expected_source.is_none());
+        assert!(serde_json::from_value::<Request>(serde_json::json!({}))
+            .unwrap()
+            .expected_source
+            .is_none());
         let source = serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":0,"transitionSequence":0});
-        assert!(serde_json::from_value::<Request>(serde_json::json!({"expectedSource":source})).unwrap().expected_source.is_some());
-        for source in [serde_json::Value::Null, serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":-1,"transitionSequence":0}), serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":0,"transitionSequence":0,"extra":true})] {
-            assert!(serde_json::from_value::<Request>(serde_json::json!({"expectedSource":source})).is_err());
+        assert!(
+            serde_json::from_value::<Request>(serde_json::json!({"expectedSource":source}))
+                .unwrap()
+                .expected_source
+                .is_some()
+        );
+        for source in [
+            serde_json::Value::Null,
+            serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":-1,"transitionSequence":0}),
+            serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":0,"transitionSequence":0,"extra":true}),
+        ] {
+            assert!(serde_json::from_value::<Request>(
+                serde_json::json!({"expectedSource":source})
+            )
+            .is_err());
         }
     }
 
@@ -9755,16 +9862,33 @@ mod tests {
                 "a".repeat(64)
             ))
             .expect("fixture");
-        connection.execute_batch("UPDATE library_feed_items SET source_url='https://social.test/post/' || global_id,
+        connection
+            .execute_batch(
+                "UPDATE library_feed_items SET source_url='https://social.test/post/' || global_id,
             link_url='https://article.test/' || global_id, link_title='Article ' || global_id
-            WHERE global_id IN ('item-1','item-2');").expect("link provenance fixture");
+            WHERE global_id IN ('item-1','item-2');",
+            )
+            .expect("link provenance fixture");
         for id in ["item-1", "item-2"] {
-            let NormalizedQueryResponseV1::ItemDetail(detail) = query_normalized_v1(&mut connection,
-                NormalizedQueryRequestV1::ItemDetail(NormalizedItemDetailRequestV1 { global_id: id.to_owned(), schema_version: 1 }))
-                .expect("linked item detail") else { panic!("detail response"); };
+            let NormalizedQueryResponseV1::ItemDetail(detail) = query_normalized_v1(
+                &mut connection,
+                NormalizedQueryRequestV1::ItemDetail(NormalizedItemDetailRequestV1 {
+                    global_id: id.to_owned(),
+                    schema_version: 1,
+                }),
+            )
+            .expect("linked item detail") else {
+                panic!("detail response");
+            };
             let card = detail.item.expect("item").card;
-            assert_eq!(card.link_preview_url, Some(format!("https://article.test/{id}")));
-            assert_eq!(card.source_url, Some(format!("https://social.test/post/{id}")));
+            assert_eq!(
+                card.link_preview_url,
+                Some(format!("https://article.test/{id}"))
+            );
+            assert_eq!(
+                card.source_url,
+                Some(format!("https://social.test/post/{id}"))
+            );
             assert_eq!(card.link_preview_title, Some(format!("Article {id}")));
         }
         let request = NormalizedFeedPageRequestV1 {
@@ -9783,8 +9907,14 @@ mod tests {
         };
         assert_eq!(first.total_count, 2);
         assert_eq!(first.rows[0].global_id, "item-2");
-        assert_eq!(first.rows[0].link_preview_url.as_deref(), Some("https://article.test/item-2"));
-        assert_eq!(first.rows[0].source_url.as_deref(), Some("https://social.test/post/item-2"));
+        assert_eq!(
+            first.rows[0].link_preview_url.as_deref(),
+            Some("https://article.test/item-2")
+        );
+        assert_eq!(
+            first.rows[0].source_url.as_deref(),
+            Some("https://social.test/post/item-2")
+        );
         assert_eq!(first.rows[0].tags, ["favorite"]);
         let cursor = first.next_cursor.expect("cursor");
         assert_eq!(
@@ -9802,7 +9932,10 @@ mod tests {
             panic!("feed page response");
         };
         assert_eq!(second.rows[0].global_id, "item-1");
-        assert_eq!(second.rows[0].link_preview_url.as_deref(), Some("https://article.test/item-1"));
+        assert_eq!(
+            second.rows[0].link_preview_url.as_deref(),
+            Some("https://article.test/item-1")
+        );
         assert!(second.next_cursor.is_none());
         connection
             .execute_batch(

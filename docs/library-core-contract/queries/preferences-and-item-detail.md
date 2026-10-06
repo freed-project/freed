@@ -115,3 +115,19 @@ the mutation receipt. If a bounded scan fails, provider delivery pauses. It
 must not read a projected item map, reconstruct a Library shell, or fall back
 to renderer state. This changes where candidates are discovered, not provider
 admission, request behavior, retry budgets, or confirmation semantics.
+
+
+### Local annotation edit eligibility
+
+`item_annotation_edit_state_v1` is a bounded point query over the device-local
+unresolved-marker entity index. It returns the canonical source tuple, local
+invalidation sequence and pending boolean. It neither hydrates text nor changes
+state. Missing query support or incomplete local upgrade refuses editing while
+preserving readable authenticated quotes and canonical references.
+
+The editor retains its original annotation snapshot through preparation and
+signing. A fresh eligibility check cannot refresh or replace that original.
+Native and PWA admission check unresolved markers inside the write transaction
+after exact committed-retry recognition. Owner maintenance retires covered
+markers and records local invalidation in one transaction. This query only
+observes those commits; it never schedules or performs maintenance.

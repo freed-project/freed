@@ -441,6 +441,7 @@ mod tests {
             Some(&payload),
         );
         let mut db = Connection::open(&db_path).unwrap();
+        crate::normalized_local_annotations::open_owned(&mut db).unwrap();
         let receipt = accept_normalized_operation_transaction_with_source_v1(
             &mut db,
             &frames,

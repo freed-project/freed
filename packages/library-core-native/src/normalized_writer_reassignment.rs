@@ -37,6 +37,7 @@ fn source_control_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 pub(crate) fn current_authority(
     connection: &Connection,
 ) -> Result<(NormalizedAuthorityStateV2, String, String, i64), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let (
         library_id,
         epoch,

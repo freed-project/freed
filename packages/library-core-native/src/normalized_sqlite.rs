@@ -88,8 +88,9 @@ pub fn open_normalized_sqlite_database_v1(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {}
         Err(error) => return Err(NormalizedSqliteError::Transport(error.to_string())),
     }
-    let connection = Connection::open_with_flags(&resolved, normalized_sqlite_open_flags(create))?;
-    configure_normalized_sqlite_connection(&connection)?;
+    let mut connection =
+        Connection::open_with_flags(&resolved, normalized_sqlite_open_flags(create))?;
+    crate::normalized_local_annotations::open_owned(&mut connection)?;
     Ok(connection)
 }
 
@@ -219,6 +220,7 @@ pub fn verify_normalized_library_selection_v1(
     connection: &Connection,
     library_id: &str,
 ) -> Result<(), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let matches: bool = connection.query_row(
         "SELECT EXISTS(
            SELECT 1 FROM library_active_authority AS active
@@ -257,6 +259,10 @@ pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), Norma
         connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let application_id: u32 =
         connection.pragma_query_value(None, "application_id", |row| row.get(0))?;
+    if matches!(user_version, 4 | 5) {
+        crate::normalized_local_annotations::verify_catalog(connection, user_version)?;
+        return crate::normalized_local_annotations::require_ready(connection);
+    }
     if user_version == 0 {
         if application_id != 0 {
             return Err(NormalizedSqliteError::InvalidRequest(
@@ -357,6 +363,26 @@ pub(crate) fn migrate_native_handoff_schema_v2(
     crate::require_library_transfer_capability()
         .map_err(crate::NormalizedSqliteError::Transport)?;
     let version: u32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if matches!(version, 4 | 5) {
+        use crate::sqlite_contract_generated::{
+            ANNOTATION_RECOVERY_SCHEMA_SHA256, ANNOTATION_SCHEMA_SHA256,
+        };
+        crate::normalized_local_annotations::verify_catalog(transaction, version)?;
+        crate::normalized_local_annotations::require_ready(transaction)?;
+        if version == 5 {
+            return Ok(());
+        }
+        transaction.execute_batch(NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL)?;
+        let changed=transaction.execute("UPDATE library_storage_meta SET schema_version=5,schema_sha256=?1 WHERE singleton_id=1 AND schema_version=4 AND schema_sha256=?2;",params![ANNOTATION_RECOVERY_SCHEMA_SHA256,ANNOTATION_SCHEMA_SHA256])?;
+        let receipt=transaction.execute("UPDATE library_local_annotation_migration SET catalog_version=5,catalog_sha256=?1 WHERE singleton_id=1 AND phase='ready' AND catalog_version=4 AND catalog_sha256=?2;",params![ANNOTATION_RECOVERY_SCHEMA_SHA256,ANNOTATION_SCHEMA_SHA256])?;
+        if changed != 1 || receipt != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "annotation recovery migration identity changed",
+            ));
+        }
+        transaction.pragma_update(None, "user_version", 5)?;
+        return install_normalized_schema_v1(transaction);
+    }
     if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&version) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "native handoff requires an existing supported Library",
@@ -429,6 +455,7 @@ pub fn begin_normalized_checkpoint_stage_v2(
     connection: &Connection,
     request: &BeginNormalizedCheckpointStageV2,
 ) -> Result<NormalizedCheckpointStageStatusV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if request.stage_id.is_empty()
         || request.stage_id.len() > 255
         || request.library_id.is_empty()
@@ -495,6 +522,7 @@ pub fn append_normalized_checkpoint_stage_page_v2(
     stage_id: &str,
     records: &[NormalizedCheckpointRecordV2],
 ) -> Result<NormalizedCheckpointStageStatusV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if stage_id.is_empty()
         || stage_id.len() > 255
         || records.is_empty()
@@ -719,6 +747,7 @@ fn checkpoint_hex_identity(value: &str) -> bool {
 pub(crate) fn normalized_writer_identity(
     connection: &Connection,
 ) -> Result<(String, String, String, i64), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let (library_id, authority_epoch, writer_id, source_revision): (String, String, String, i64) =
         connection.query_row(
             "SELECT meta.library_id, meta.authority_epoch, actor.actor_id,
@@ -772,7 +801,7 @@ pub fn describe_normalized_cloud_preflight_identity_v1(
     // Opening already configured the handle. Recheck supported schema/storage
     // identity in the pinned snapshot without replaying DDL or migrating.
     let schema: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&schema) {
+    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION, 4, 5].contains(&schema) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized SQLite version identity is unsupported",
         ));

@@ -11,24 +11,32 @@ const storage = vi.hoisted(() => ({
   installOpfs: vi.fn(),
   reconcile: vi.fn(),
   vaultStorage: vi.fn(),
+  beginAnnotations: vi.fn(),
+  annotationPage: vi.fn(),
+  close: vi.fn(),
 }));
 vi.mock("@sqlite.org/sqlite-wasm", () => ({ default: async () => ({
   version: { libVersion: "test" },
-  oo1: { DB: class { constructor(...args: unknown[]) { storage.memoryOpen(...args); } } },
+  oo1: { DB: class { constructor(...args: unknown[]) { storage.memoryOpen(...args); } selectValue() { return 0; } } },
   installOpfsSAHPoolVfs: storage.installOpfs,
 }) }));
+vi.mock("./library-core-annotation-storage", () => ({ resumePwaAnnotationUpgrade: () => true }));
 vi.mock("./library-core-sqlite-engine", () => ({ PwaLibraryCoreSqliteEngine: class {
   constructor(...args: unknown[]) { storage.engineOpen(...args); }
   queryWithVerification = storage.query;
   auditNormalizedReplica = storage.audit;
   activateVerifiedPredecessorCheckpoint = storage.predecessor;
   preparePredecessorCheckpointRead = storage.predecessorRead;
+  beginAnnotationReconciliation = storage.beginAnnotations;
+  reconcileAnnotationPage = storage.annotationPage;
+  close = storage.close;
   initialize() {}
   status() { return { synthetic: true }; }
 } }));
 vi.mock("./library-core-opfs-content-vault", () => ({ PwaLibraryCoreOpfsContentVault: class {
   constructor(_engine: unknown, ranges: unknown) { storage.vaultStorage(ranges); }
   reconcile = storage.reconcile;
+  async close() {}
 } }));
 
 describe("demo worker storage isolation", () => {
@@ -36,10 +44,79 @@ describe("demo worker storage isolation", () => {
     vi.resetModules();
     vi.clearAllMocks();
     storage.audit.mockReset();
+    storage.beginAnnotations.mockReset().mockReturnValue(null);
+    storage.annotationPage.mockReset();
     vi.stubEnv("VITE_FREED_DEMO", "0");
     vi.stubEnv("VITE_FREED_PWA_SQLITE_MEMORY_E2E", "0");
   });
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+
+  it("yields annotation slices behind commands and cancels the old session on close", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("navigator", {});
+    vi.stubGlobal("location", new URL("https://demo.freed.wtf/"));
+    vi.stubGlobal("name", "freed-library-core-sqlite-demo");
+    vi.stubGlobal("onmessage", null);
+    const replies: unknown[]=[];
+    vi.stubGlobal("postMessage",(reply:unknown)=>replies.push(reply));
+    storage.beginAnnotations.mockReturnValue({identity:"old",through:["last",0],after:null});
+    storage.annotationPage.mockReturnValue({changed:false,localChanged:true,after:["first",0]});
+    await import("./library-core-sqlite-worker");
+    const send=(kind:"open"|"status"|"close",id=kind) =>
+      (globalThis.onmessage as unknown as (event:MessageEvent)=>void)({
+        data:createLibraryCoreSqliteWorkerRequest(kind,id),isTrusted:true,source:null,origin:"https://demo.freed.wtf",
+      } as MessageEvent);
+    send("open");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(replies).toContainEqual(expect.objectContaining({requestId:"open",ok:true}));
+    await vi.advanceTimersToNextTimerAsync();
+    expect(storage.annotationPage.mock.calls.length).toBeGreaterThan(0);
+    expect(replies).toContainEqual({kind:"local_changes_available"});
+    send("status"); send("close");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(replies).toContainEqual(expect.objectContaining({requestId:"status",ok:true}));
+    expect(replies).toContainEqual(expect.objectContaining({requestId:"close",ok:true}));
+    const calls=storage.annotationPage.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(storage.annotationPage).toHaveBeenCalledTimes(calls);
+    storage.beginAnnotations.mockReturnValue(null);
+    send("open");
+    await vi.advanceTimersByTimeAsync(10);
+    expect(storage.beginAnnotations).toHaveBeenCalledTimes(2);
+    expect(storage.annotationPage).toHaveBeenCalledTimes(calls);
+    expect(storage.close).toHaveBeenCalledOnce();
+  });
+
+  it.each(["SQLITE_BUSY", "corrupt coverage"])("defers busy maintenance and latches permanent refusal: %s", async reason => {
+    vi.useFakeTimers();
+    vi.spyOn(console,"error").mockImplementation(()=>{});
+    vi.stubGlobal("navigator", {});
+    vi.stubGlobal("location", new URL("https://demo.freed.wtf/"));
+    vi.stubGlobal("name", "freed-library-core-sqlite-demo");
+    vi.stubGlobal("onmessage", null);
+    const replies: unknown[]=[];
+    vi.stubGlobal("postMessage",(reply:unknown)=>replies.push(reply));
+    storage.beginAnnotations.mockReturnValueOnce({identity:"session",through:["last",0],after:null}).mockReturnValue(null);
+    storage.annotationPage.mockImplementationOnce(()=>{throw new Error(reason);})
+      .mockReturnValue({changed:false,localChanged:false,after:null});
+    await import("./library-core-sqlite-worker");
+    const send=(data:unknown)=>(globalThis.onmessage as unknown as (event:MessageEvent)=>void)({
+      data,isTrusted:true,source:null,origin:"https://demo.freed.wtf",
+    } as MessageEvent);
+    send(createLibraryCoreSqliteWorkerRequest("open","open"));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(storage.annotationPage).toHaveBeenCalledTimes(reason==="SQLITE_BUSY"?2:1);
+    const calls=storage.annotationPage.mock.calls.length;
+    send(createLibraryCoreSqliteWorkerRequest("status","status"));
+    send(createLibraryCoreSqliteQueryWorkerRequest("eligibility",{queryId:"item_annotation_edit_state_v1",schemaVersion:1,globalId:"item"}));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(replies).toContainEqual(expect.objectContaining({requestId:"status",ok:true}));
+    if (reason!=="SQLITE_BUSY") {
+      expect(replies).toContainEqual(expect.objectContaining({requestId:"eligibility",ok:false,message:expect.stringContaining("maintenance refused")}));
+      expect(replies).toContainEqual({kind:"local_changes_available"});
+    }
+    expect(storage.annotationPage).toHaveBeenCalledTimes(calls);
+  });
 
   it.each(["released", "occupied", "rejected"])("bounds ownership acquisition when the previous worker is %s", async (outcome) => {
     vi.useFakeTimers();

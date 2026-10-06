@@ -28,8 +28,19 @@ writes. Untouched fields retain their canonical values. Annotation admission and
 capture remain separate transactions: a later capture failure does not undo an
 accepted annotation. New-item initialization excludes initially existing IDs and
 refuses conflicting canonical annotations. Generic store APIs have no production
-annotation-edit UI caller; callers without a snapshot fail closed. Pending local
-annotations, Windows range-vault support and installed acceptance remain open.
+annotation-edit UI caller; callers without a snapshot fail closed.
+
+The pending-edit repair refuses fresh replacement while the same item has an
+unresolved local annotation intent. Eligibility remains separate from authenticated
+quote display. READY-only admission preserves exact retries before this guard.
+Device-local physical catalogs 4/5 add bounded upgrade receipts and unresolved
+markers without changing canonical or wire identities. Owner continuations page
+only unresolved markers, yield between transactions, and publish local change
+hints when authenticated settlement permits editing again. Native SQLite and
+SQLite-WASM cursor fixtures plus a shipping Chromium OPFS owner/reopen fixture
+cover retained progress beyond an unresolved prefix. Runtime review and remaining
+lifecycle proofs are outstanding; Windows range-vault and installed acceptance
+remain open.
 No new quote editor is included.
 
 Saved URL recovery now distinguishes absent targets from deleted items. The

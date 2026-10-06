@@ -765,6 +765,7 @@ pub const QUERY_IDS: &[&str] = &[
     "filter_scope_summary_v1",
     "friend_candidate_review_v1",
     "friends_directory_page_v1",
+    "item_annotation_edit_state_v1",
     "item_annotation_text_range_v1",
     "item_annotations_v1",
     "item_detail_v1",
@@ -967,6 +968,9 @@ pub const SQLITE_QUERY_PROGRAMS: &[SqliteQueryProgram] = &[
     SqliteQueryProgram { query_id: "item_annotation_text_range_v1", maximum_scan_rows: 65, sql: "SELECT h.text_value AS text, h.text_blob_digest AS blobDigest, CASE WHEN h.text_value IS NOT NULL THEN length(CAST(h.text_value AS BLOB)) ELSE b.byte_length END AS byteLength, b.storage_layout AS storageLayout, b.chunk_count AS chunkCount, b.range_count AS rangeCount, b.range_index_root_digest AS rangeRoot, COALESCE(p.policy, 'metadata_only') AS policy FROM library_feed_item_highlights h LEFT JOIN library_blobs b ON b.content_digest = h.text_blob_digest LEFT JOIN library_device_content_policies p ON p.content_digest = h.text_blob_digest WHERE h.global_id = ?1 ORDER BY h.ordinal LIMIT 1 OFFSET ?2;", reverse_sql: Some("SELECT chunk_index AS memberIndex, chunk_digest AS digest, bytes FROM library_blob_chunks WHERE content_digest = ?1 ORDER BY chunk_index LIMIT 2;"), count_sql: "SELECT count(*) FROM (SELECT ordinal FROM library_feed_item_highlights WHERE global_id = ?1 ORDER BY ordinal LIMIT 65);", variants: &[
         SqliteQueryVariant { variant_id: "chunks", sql: "SELECT chunk_index AS memberIndex, chunk_digest AS digest, bytes FROM library_blob_chunks WHERE content_digest = ?1 ORDER BY chunk_index LIMIT 2;", reverse_sql: "SELECT chunk_index AS memberIndex, chunk_digest AS digest, bytes FROM library_blob_chunks WHERE content_digest = ?1 ORDER BY chunk_index LIMIT 2;" },
         SqliteQueryVariant { variant_id: "ranges", sql: "SELECT r.range_index AS memberIndex, r.byte_offset AS byteOffset, r.byte_length AS byteLength, r.range_digest AS digest, l.storage_key AS storageKey, l.storage_kind AS storageKind FROM library_content_ranges r LEFT JOIN library_device_content_ranges l ON l.content_digest = r.content_digest AND l.range_index = r.range_index AND l.verified_byte_length = r.byte_length AND l.verified_range_digest = r.range_digest WHERE r.content_digest = ?1 ORDER BY r.range_index LIMIT 65;", reverse_sql: "SELECT r.range_index AS memberIndex, r.byte_offset AS byteOffset, r.byte_length AS byteLength, r.range_digest AS digest, l.storage_key AS storageKey, l.storage_kind AS storageKind FROM library_content_ranges r LEFT JOIN library_device_content_ranges l ON l.content_digest = r.content_digest AND l.range_index = r.range_index AND l.verified_byte_length = r.byte_length AND l.verified_range_digest = r.range_digest WHERE r.content_digest = ?1 ORDER BY r.range_index LIMIT 65;" },
+    ] },
+    SqliteQueryProgram { query_id: "item_annotation_edit_state_v1", maximum_scan_rows: 1, sql: "SELECT EXISTS (SELECT 1 FROM library_local_annotation_unresolved WHERE entity_id = ?1 LIMIT 1) AS pending, sequence AS localSequence FROM library_local_change_state WHERE singleton_id = 1;", reverse_sql: None, count_sql: "SELECT 1;", variants: &[
+
     ] },
 ];
 
@@ -2178,6 +2182,33 @@ pub const SQLITE_QUERY_ROW_MODELS: &[SqliteQueryRowModel] = &[
             nullable: true,
             minimum_utf8_bytes: Some(0),
             maximum_utf8_bytes: Some(65536),
+            minimum_integer: None,
+            maximum_integer: None,
+            enum_values: &[],
+            integer_values: &[],
+        },
+        ],
+    },
+    SqliteQueryRowModel {
+        query_id: "item_annotation_edit_state_v1",
+        fields: &[
+        SqliteQueryRowField {
+            name: "localSequence",
+            kind: SqliteQueryRowFieldKind::Integer,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
+            minimum_integer: Some(0),
+            maximum_integer: Some(9007199254740991),
+            enum_values: &[],
+            integer_values: &[],
+        },
+        SqliteQueryRowField {
+            name: "pending",
+            kind: SqliteQueryRowFieldKind::Boolean,
+            nullable: false,
+            minimum_utf8_bytes: None,
+            maximum_utf8_bytes: None,
             minimum_integer: None,
             maximum_integer: None,
             enum_values: &[],

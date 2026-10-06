@@ -604,9 +604,22 @@ pub(crate) const RETAINED_FOLLOWER_TABLES: &[&str] = &[
     "library_result_transport_heads",
     "library_result_transport_segments",
     "library_optimistic_fields",
+    "library_local_annotation_unresolved",
     "library_local_change_state",
     "library_local_invalidations",
 ];
+
+pub(crate) fn retained_follower_tables(
+    connection: &Connection,
+) -> Result<Vec<&'static str>, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
+    let version: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    Ok(RETAINED_FOLLOWER_TABLES
+        .iter()
+        .copied()
+        .filter(|table| *table != "library_local_annotation_unresolved" || matches!(version, 4 | 5))
+        .collect())
+}
 
 fn retain_follower_checkpoint_state(
     transaction: &Transaction<'_>,
@@ -667,7 +680,7 @@ fn retain_follower_checkpoint_state(
             "follower checkpoint would discard or regress local history",
         ));
     }
-    for table in RETAINED_FOLLOWER_TABLES {
+    for table in retained_follower_tables(transaction)? {
         transaction.execute_batch(&format!(
             "CREATE TABLE main.checkpoint_retained_{table} AS SELECT * FROM {table};"
         ))?;
@@ -713,7 +726,7 @@ fn restore_follower_checkpoint_state(
     // Suspend invalidation triggers while restoring the exact overlay history.
     // The retained singleton and its sequence are restored after the fields.
     transaction.execute("DELETE FROM library_local_change_state;", [])?;
-    for table in RETAINED_FOLLOWER_TABLES {
+    for table in retained_follower_tables(transaction)? {
         transaction.execute_batch(&format!(
             "INSERT INTO {table} SELECT * FROM main.checkpoint_retained_{table};
              DROP TABLE main.checkpoint_retained_{table};"
@@ -1324,6 +1337,7 @@ pub(crate) fn install_checkpoint_with_version_admission(
         Option<&NormalizedFollowerCheckpointReceiptV2>,
     ) -> Result<(), String>,
 ) -> Result<NormalizedCheckpointActivationReceiptV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(transaction)?;
     require_checkpoint_transfer_capability(transaction, stage_id)
         .map_err(NormalizedSqliteError::Transport)?;
     transaction.pragma_update(None, "defer_foreign_keys", true)?;
@@ -1362,7 +1376,7 @@ pub(crate) fn install_checkpoint_with_version_admission(
         .ok_or(invalid("normalized checkpoint stage is incomplete"))?;
     let native_version: u32 =
         transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if native_version == crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if matches!(native_version, 2 | 5) {
         let cancelled_target: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM library_local_handoff WHERE singleton_id = 1 AND installation_role = 'target' AND phase = 'cancelled');", [], |row| row.get(0))?;
         if cancelled_target {
             crate::normalized_handoff_cancellation::verify_cancelled_target_history_v1(transaction)
@@ -1578,6 +1592,9 @@ pub(crate) fn install_checkpoint_with_version_admission(
     }
     if let Some(receipt) = follower_receipt {
         install_follower_checkpoint_receipt(transaction, &stage, &checkpoint_digest, receipt)?;
+    }
+    if retain_follower {
+        crate::normalized_local_annotations::retire_checkpoint(transaction)?;
     }
     if retain_follower {
         // A stored, verified result plus its covered canonical revision is proof

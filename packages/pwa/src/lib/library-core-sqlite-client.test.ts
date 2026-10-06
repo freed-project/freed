@@ -94,6 +94,19 @@ describe("PWA SQLite worker response boundary", () => {
     vi.unstubAllGlobals();
   });
 
+  it("accepts only closed local maintenance hints and ignores the disposed worker", () => {
+    const changed=vi.fn();
+    const client=new PwaLibraryCoreSqliteClient(undefined,changed);
+    const worker=activeWorker();
+    worker.respond({kind:"local_changes_available",extra:true});
+    expect(changed).not.toHaveBeenCalled();
+    worker.respond({kind:"local_changes_available"});
+    expect(changed).toHaveBeenCalledOnce();
+    client.dispose();
+    worker.respond({kind:"local_changes_available"});
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
   it("isolates demo workers without opting ordinary app tabs into disposable storage", () => {
     vi.stubEnv("VITE_FREED_DEMO", "0");
     for (const [hostname, search, expected] of [

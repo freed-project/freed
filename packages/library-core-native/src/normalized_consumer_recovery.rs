@@ -124,7 +124,7 @@ pub fn archive_consumer_epoch_recovery_v1(
             let version: u32 = db
                 .pragma_query_value(None, "user_version", |r| r.get(0))
                 .map_err(|e| e.to_string())?;
-            Ok(version == crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION)
+            Ok(matches!(version, 2 | 5))
         },
         |db| {
             crate::normalized_sqlite::migrate_native_handoff_schema_v2(db)
@@ -260,7 +260,9 @@ fn archive_live_follower_rows(
     let mut digest = Sha256::new();
     let mut total = 0u64;
     let mut intent_counts = [0u64; 2];
-    for table in crate::normalized_import::RETAINED_FOLLOWER_TABLES {
+    for table in
+        crate::normalized_import::retained_follower_tables(tx).map_err(|e| e.to_string())?
+    {
         let mut metadata = tx
             .prepare(&format!("PRAGMA table_info({table});"))
             .map_err(|e| e.to_string())?;
@@ -294,7 +296,7 @@ fn archive_live_follower_rows(
         let mut rows = statement.query([]).map_err(|e| e.to_string())?;
         let mut ordinal = 0u64;
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            if *table == "library_intent_transactions" {
+            if table == "library_intent_transactions" {
                 let state_index = columns
                     .iter()
                     .position(|(name, _)| name == "state")
@@ -382,7 +384,8 @@ pub(crate) fn archive_promoted_consumer_in_transaction(
             crate::sqlite_contract_generated::NORMALIZED_SCHEMA_SHA256, "0".repeat(64), created_at],
     ).map_err(|e| e.to_string())?;
     archive_live_follower_rows(tx, handoff_id)?;
-    for table in crate::normalized_import::RETAINED_FOLLOWER_TABLES
+    for table in crate::normalized_import::retained_follower_tables(tx)
+        .map_err(|e| e.to_string())?
         .iter()
         .rev()
     {
@@ -927,10 +930,12 @@ pub fn read_consumer_recovery_summary_v1(
     let version: u32 = connection
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version == crate::sqlite_contract_generated::SQLITE_SCHEMA_VERSION {
+    crate::normalized_local_annotations::reject_building(connection)
+        .map_err(|error| error.to_string())?;
+    if matches!(version, 1 | 4) {
         return Ok(None);
     }
-    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5) {
         return Err("consumer recovery summary requires recognized native storage".into());
     }
     crate::normalized_sqlite::install_normalized_schema_v1(connection)
@@ -1017,7 +1022,9 @@ fn verify_archive_contents(
     let mut intent_counts = [0u64; 2];
     let mut digest = Sha256::new();
     let mut count = 0u64;
-    for table in crate::normalized_import::RETAINED_FOLLOWER_TABLES {
+    for table in
+        crate::normalized_import::retained_follower_tables(connection).map_err(|e| e.to_string())?
+    {
         let mut metadata = connection
             .prepare(&format!("PRAGMA table_info({table});"))
             .map_err(|e| e.to_string())?;
@@ -1060,7 +1067,7 @@ fn verify_archive_contents(
             if stored_ordinal != ordinal || lower_hex(&Sha256::digest(&bytes)) != row_digest {
                 return Err("consumer recovery archive row changed".into());
             }
-            if *table == "library_intent_transactions" {
+            if table == "library_intent_transactions" {
                 let state_index = layout
                     .iter()
                     .position(|(name, _)| name == "state")

@@ -332,7 +332,7 @@ export async function readLibraryCoreNormalizedItemContentV1(
       normalizedSourceToken(annotations.source) !==
       normalizedSourceToken(response.source)
     ) {
-      throw new LibraryCoreAnnotationHydrationError(Object.freeze({ originals: annotations, state: "stale", highlights: null }));
+      throw new LibraryCoreAnnotationHydrationError(Object.freeze({ originals: annotations, state: "stale", editState: "unavailable", highlights: null }));
     }
     detailItem.userState.tags = [...annotations.tags];
     annotationSnapshot = await hydrateLibraryCoreAnnotations(runtime.query, annotations);

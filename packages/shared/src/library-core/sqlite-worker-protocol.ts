@@ -1,3 +1,4 @@
+import { parseLibraryCoreItemAnnotationEditStateRequestV1, parseLibraryCoreItemAnnotationEditStateResponseV1, type LibraryCoreItemAnnotationEditStateRequestV1, type LibraryCoreItemAnnotationEditStateResponseV1 } from "./item-annotations-contracts.js";
 import { parseLibraryCoreItemAnnotationTextRequestV1, parseLibraryCoreItemAnnotationTextResponseV1, type LibraryCoreItemAnnotationTextRequestV1, type LibraryCoreItemAnnotationTextResponseV1 } from "./item-annotation-text-contracts.js";
 import type { LibraryCoreNormalizedReplicaAuditV1 } from "./normalized-checkpoint-contracts.js";
 import type { verifyLibraryCoreHandoffPredecessorCheckpointV1 } from "./handoff-certificate.js";
@@ -15,7 +16,7 @@ import {
   type LibraryCorePrepareConsumerRecoveryV1, type LibraryCoreCommitConsumerRecoveryV1,
   type LibraryCoreConsumerRecoveryStatusV1,
 } from "./consumer-recovery-contracts.js";
-import { LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION, LIBRARY_CORE_LOCAL_SCHEMA_SHA256 } from "./sqlite-contract.generated.js";
+import { LIBRARY_CORE_ANNOTATION_SCHEMA_SHA256, LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION, LIBRARY_CORE_LOCAL_SCHEMA_SHA256 } from "./sqlite-contract.generated.js";
 import { parseLibraryCoreRecoveryArchivePageRequestV1, parseLibraryCoreRecoveryArchivePageResponseV1, type LibraryCoreRecoveryArchivePageRequestV1, type LibraryCoreRecoveryArchivePageResponseV1 } from "./recovery-intent-page-contracts.js";
 import {
   parseLibraryCoreRecoveryIntentReviewRequestV1, parseLibraryCoreRecoveryIntentReviewResponseV1,
@@ -363,6 +364,7 @@ export type LibraryCoreSqliteQueryRequest =
   | LibraryCoreFriendCandidateReviewRequestV1
   | LibraryCoreFriendsDirectoryPageRequestV1
   | LibraryCoreItemDetailRequestV1
+  | LibraryCoreItemAnnotationEditStateRequestV1
   | LibraryCoreItemAnnotationsRequestV1
   | LibraryCoreRssItemSummaryRequestV1
   | LibraryCoreItemReaderBodyRequestV1
@@ -395,6 +397,8 @@ export type LibraryCoreSqliteQueryResponseFor<
   T extends LibraryCoreSqliteQueryRequest,
 > = T extends LibraryCoreItemAnnotationTextRequestV1 ? LibraryCoreItemAnnotationTextResponseV1 : T extends LibraryCorePreferenceScopeRequestV1 ? LibraryCorePreferenceScopeResponseV1 : T extends LibraryCorePreferencesRevisionRequestV1 ? LibraryCorePreferencesRevisionResponseV1 : T extends LibraryCoreRankingWeightScopeRequestV1 ? LibraryCoreRankingWeightScopeResponseV1 : T extends LibraryCorePreferenceValueRequestV1 ? LibraryCorePreferenceValueResponseV1 : T extends LibraryCoreRssItemSummaryRequestV1
   ? LibraryCoreRssItemSummaryResponseV1
+  : T extends LibraryCoreItemAnnotationEditStateRequestV1
+  ? LibraryCoreItemAnnotationEditStateResponseV1
   : T extends LibraryCoreItemAnnotationsRequestV1
   ? LibraryCoreItemAnnotationsResponseV1
   : T extends LibraryCoreFacetSummaryRequestV1
@@ -489,6 +493,8 @@ export function parseLibraryCoreSqliteQueryResponse<
   const parsed =
     request.queryId === "item_annotation_text_range_v1" ? parseLibraryCoreItemAnnotationTextResponseV1(value, request) : request.queryId === "priority_time_page_v1" ? parseLibraryCorePriorityTimePageResponseV1(value, request) : request.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeResponseV1(value, request) : request.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionResponseV1(value) : request.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeResponseV1(value, request) : request.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueResponseV1(value, request) : request.queryId === "rss_item_summary_v1"
       ? parseLibraryCoreRssItemSummaryResponseV1(value)
+      : request.queryId === "item_annotation_edit_state_v1"
+      ? parseLibraryCoreItemAnnotationEditStateResponseV1(value, request)
       : request.queryId === "item_annotations_v1"
       ? parseLibraryCoreItemAnnotationsResponseV1(value, request)
       : request.queryId === "account_detail_v1"
@@ -956,8 +962,8 @@ export interface LibraryCoreSqliteWorkerStatus {
   readonly contractVersion: typeof LIBRARY_CORE_SQLITE_CONTRACT_VERSION;
   readonly engine: "sqlite-wasm-opfs-sahpool";
   readonly protocolVersion: typeof LIBRARY_CORE_SQLITE_PROTOCOL_VERSION;
-  readonly schemaSha256: typeof LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 | typeof LIBRARY_CORE_LOCAL_SCHEMA_SHA256;
-  readonly schemaVersion: typeof LIBRARY_CORE_SQLITE_SCHEMA_VERSION | typeof LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION;
+  readonly schemaSha256: typeof LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 | typeof LIBRARY_CORE_LOCAL_SCHEMA_SHA256 | typeof LIBRARY_CORE_ANNOTATION_SCHEMA_SHA256[number];
+  readonly schemaVersion: typeof LIBRARY_CORE_SQLITE_SCHEMA_VERSION | typeof LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION | 4 | 5;
   readonly sqliteVersion: string;
   readonly storage: "opfs";
 }
@@ -1005,6 +1011,7 @@ export type LibraryCoreSqliteWorkerResult =
   | LibraryCoreScopeActionStageStatusV1;
 
 export type LibraryCoreSqliteWorkerResponse =
+  | Readonly<{ kind: "local_changes_available" }>
   | Readonly<{
       kind: "checkpoint_activation_progress";
       requestId: string;
@@ -1025,6 +1032,7 @@ export type LibraryCoreSqliteWorkerResponse =
       code:
         | "invalid_request"
         | "library_busy"
+        | "annotation_upgrade_pending"
         | "sqlite_initialization_failed"
         | "sqlite_integrity_failed";
       message: string;
@@ -1067,7 +1075,9 @@ export function parseLibraryCoreSqliteWorkerStatus(
     value.engine !== "sqlite-wasm-opfs-sahpool" ||
     value.protocolVersion !== LIBRARY_CORE_SQLITE_PROTOCOL_VERSION ||
     !((value.schemaVersion === LIBRARY_CORE_SQLITE_SCHEMA_VERSION && value.schemaSha256 === LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256) ||
-      (value.schemaVersion === LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION && value.schemaSha256 === LIBRARY_CORE_LOCAL_SCHEMA_SHA256)) ||
+      (value.schemaVersion === LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION && value.schemaSha256 === LIBRARY_CORE_LOCAL_SCHEMA_SHA256) ||
+      (value.schemaVersion === 4 && value.schemaSha256 === LIBRARY_CORE_ANNOTATION_SCHEMA_SHA256[0]) ||
+      (value.schemaVersion === 5 && value.schemaSha256 === LIBRARY_CORE_ANNOTATION_SCHEMA_SHA256[1])) ||
     typeof value.sqliteVersion !== "string" ||
     value.sqliteVersion.length < 1 ||
     value.sqliteVersion.length > 64 ||
@@ -1332,6 +1342,8 @@ export function parseLibraryCoreSqliteWorkerRequest(
     const query = isClosedRecord(value.query)
       ? value.query.queryId === "item_annotation_text_range_v1" ? parseLibraryCoreItemAnnotationTextRequestV1(value.query) : value.query.queryId === "priority_time_page_v1" ? parseLibraryCorePriorityTimePageRequestV1(value.query) : value.query.queryId === "preference_scope_v1" ? parseLibraryCorePreferenceScopeRequestV1(value.query) : value.query.queryId === "preferences_revision_v1" ? parseLibraryCorePreferencesRevisionRequestV1(value.query) : value.query.queryId === "ranking_weight_scope_v1" ? parseLibraryCoreRankingWeightScopeRequestV1(value.query) : value.query.queryId === "preference_value_v1" ? parseLibraryCorePreferenceValueRequestV1(value.query) : value.query.queryId === "rss_item_summary_v1"
         ? parseLibraryCoreRssItemSummaryRequestV1(value.query)
+        : value.query.queryId === "item_annotation_edit_state_v1"
+        ? parseLibraryCoreItemAnnotationEditStateRequestV1(value.query)
         : value.query.queryId === "item_annotations_v1"
         ? parseLibraryCoreItemAnnotationsRequestV1(value.query)
         : value.query.queryId === "account_detail_v1"

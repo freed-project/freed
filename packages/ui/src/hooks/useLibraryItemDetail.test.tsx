@@ -181,7 +181,7 @@ describe("useLibraryItemDetail", () => {
 
   it("retains separate rendered originals and refuses incomplete editor entrances", async () => {
     const selected = item("item-1");
-    const snapshot = { state: "ready" as const, highlights: [], originals: {
+    const snapshot = { state: "ready" as const, editState: "ready" as const, highlights: [], originals: {
       queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: selected.globalId,
       source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 7, transitionSequence: 7 }, tags: [], highlights: [],
     } };

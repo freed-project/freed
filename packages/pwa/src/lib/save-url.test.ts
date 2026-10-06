@@ -87,7 +87,7 @@ it("edits an existing note through canonical preservation without capture or fet
   try {
     const { updateSavedContentInPwa } = await import("./save-url");
     const item = { globalId: "saved:abc123", sourceUrl: "https://example.com/article" } as import("@freed/shared").FeedItem;
-    const annotationSnapshot = { state: "ready" as const, highlights: [], originals: {
+    const annotationSnapshot = { state: "ready" as const, editState: "ready" as const, highlights: [], originals: {
       queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: item.globalId,
       source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
     } };

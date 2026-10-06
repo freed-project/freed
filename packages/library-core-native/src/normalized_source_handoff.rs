@@ -461,7 +461,9 @@ pub(crate) fn source_consumer_incarnation_v1(
     let version: u32 = connection
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version == crate::sqlite_contract_generated::SQLITE_SCHEMA_VERSION {
+    crate::normalized_local_annotations::reject_building(connection)
+        .map_err(|error| error.to_string())?;
+    if matches!(version, 1 | 4) {
         return Ok(None);
     }
     let id = connection.query_row("SELECT handoff_id FROM library_local_handoff WHERE singleton_id = 1 AND installation_role = 'source' AND phase = 'demoted' AND library_id = ?1 AND successor_epoch_id = ?2;", params![library, epoch], |r| r.get::<_, String>(0)).optional().map_err(|e| e.to_string())?;

@@ -109,7 +109,7 @@ export function mount(resident: boolean) {
     capturedAt: 1, publishedAt: 1, contentType: "article", author: { id: "a", handle: "a", displayName: "Fixture" },
     content: { text: "Authenticated reader detail", mediaUrls: [], mediaTypes: [] }, topics: [],
     userState: { saved: true, hidden: false, archived: false, tags: [], highlights: [{ createdAt: 1, text: "\u2063", note: "Original note" }] } };
-  const annotations: LibraryCoreHydratedAnnotations = { state: "ready", highlights: item.userState.highlights!, originals: {
+  let annotations: LibraryCoreHydratedAnnotations = { state: "ready", editState: "ready", highlights: item.userState.highlights!, originals: {
     queryId: "item_annotations_v1", schemaVersion: 1, globalId: item.globalId,
     source: { generationId: "a".repeat(64) as never, projectionRevision: 2, transitionSequence: 2 }, tags: [],
     highlights: [{ createdAt: 1, text: "\u2063", textBlobDigest: null, note: "Original note" }],
@@ -133,6 +133,8 @@ export function mount(resident: boolean) {
   createRoot(container).render(<PlatformProvider value={platform}><AppShell><FeedView /></AppShell></PlatformProvider>);
   return {
     ready: () => settle?.(), submissions,
+    pending: (value: boolean) => { annotations = { ...annotations, editState: value ? "pending" : "ready" }; store.setState({ libraryItemVersion: (store.getState().libraryItemVersion ?? 0) + 1 }); },
+    openSnapshot: () => useCommandSurfaceStore.setState({ savedContentOpen: true, savedContentEditItem: item, savedContentInitialUrl: item.sourceUrl!, savedContentAnnotations: annotations }),
     fail: (state: typeof failure) => { failure = state; store.setState({ libraryItemVersion: (store.getState().libraryItemVersion ?? 0) + 1 }); },
     event: (complete: boolean) => window.dispatchEvent(new CustomEvent("freed:edit-saved-content", { detail: { item, ...(complete ? { annotations } : {}) } })),
     close: () => useCommandSurfaceStore.getState().closeSavedContentDialog(),

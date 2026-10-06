@@ -127,7 +127,7 @@ export type PwaConsumerRecoveryPlan = LibraryCoreConsumerRecoveryPlanV1;
 export function readPwaConsumerRecoveryPlan(db: Database, authority: Authority): PwaConsumerRecoveryPlan {
   const value = candidate(db, authority);
   let preparedRequest: LibraryCoreStoreFollowerActorRequestV2 | null = null;
-  if (readPwaLibraryStorageIdentity(db).schemaVersion === 2 &&
+  if ([2,5].includes(readPwaLibraryStorageIdentity(db).schemaVersion) &&
       db.selectValue("SELECT count(*) FROM library_local_recovery_archives WHERE recovery_id = ?1;", [value.id]) === 1) {
     preparedRequest = archivedRequest(db, value.id).input;
   }
@@ -150,7 +150,7 @@ export function readPwaConsumerRecoveryStatus(db: Database, authority: Authority
     return parseLibraryCoreConsumerRecoveryStatusV1({ state: plan.preparedRequest ? "prepared" : "required", plan,
       pendingIntentCount: counts[0]![0], publishedIntentCount: counts[0]![1] });
   }
-  if (readPwaLibraryStorageIdentity(db).schemaVersion === 1) return { state: "none" };
+  if ([1,4].includes(readPwaLibraryStorageIdentity(db).schemaVersion)) return { state: "none" };
   return readPwaExistingConsumerRecoveryStatus(db,authority);
 }
 

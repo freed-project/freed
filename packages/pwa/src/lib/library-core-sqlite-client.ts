@@ -161,6 +161,7 @@ const textEncoder = new TextEncoder();
 type PwaLibraryCoreSqliteWorkerErrorCode =
   | "invalid_request"
   | "library_busy"
+  | "annotation_upgrade_pending"
   | "sqlite_initialization_failed"
   | "sqlite_integrity_failed";
 
@@ -262,13 +263,16 @@ export class PwaLibraryCoreSqliteClient {
   readonly #onUnavailable:
     | ((client: PwaLibraryCoreSqliteClient) => void)
     | undefined;
+  readonly #onLocalChanges: (() => void) | undefined;
   readonly #pending = new Map<string, PendingRequest>();
   readonly #worker: Worker;
   #closed = false;
 
   constructor(
     onUnavailable?: (client: PwaLibraryCoreSqliteClient) => void,
+    onLocalChanges?: () => void,
   ) {
+    this.#onLocalChanges = onLocalChanges;
     this.#onUnavailable = onUnavailable;
     const memoryE2eRequested =
       (
@@ -985,6 +989,10 @@ export class PwaLibraryCoreSqliteClient {
 
   #receive(value: unknown): void {
     const response = closedResponseRecord(value);
+    if (response?.kind === "local_changes_available" && exactResponseKeys(response,["kind"])) {
+      if (!this.#closed) this.#onLocalChanges?.();
+      return;
+    }
     if (
       response === null ||
       typeof response.requestId !== "string" ||
@@ -1016,6 +1024,7 @@ export class PwaLibraryCoreSqliteClient {
         !exactResponseKeys(response, ["code", "message", "ok", "requestId"]) ||
         (response.code !== "invalid_request" &&
           response.code !== "library_busy" &&
+          response.code !== "annotation_upgrade_pending" &&
           response.code !== "sqlite_initialization_failed" &&
           response.code !== "sqlite_integrity_failed") ||
         typeof response.message !== "string" ||

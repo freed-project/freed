@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
 import type { LibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 /**
@@ -247,7 +248,28 @@ async function publishLocalChangeFeed(
   return Object.freeze({ published, sequence: currentSequence });
 }
 
+let localMaintenanceListener: Promise<() => void> | null = null;
+let localMaintenanceRefreshQueued = false;
+function observeLocalMaintenance(): void {
+  if (localMaintenanceListener) return;
+  localMaintenanceListener = listen("library-local-changes-available",() => {
+    if (localMaintenanceRefreshQueued) return;
+    localMaintenanceRefreshQueued=true;
+    const refresh=mutationQueue.then(async () => {
+      localMaintenanceRefreshQueued=false;
+      if (lastState) await reloadSqliteLibraryState();
+    });
+    mutationQueue=refresh.catch(() => { console.error("Local annotation refresh failed; editing will be checked again before submission"); });
+  }).catch(error => {
+    localMaintenanceListener=null;
+    console.error("Local annotation notifications are unavailable");
+    throw error;
+  });
+  void localMaintenanceListener.catch(() => undefined);
+}
+
 async function ensureInitialized(): Promise<LibraryCoreRuntimeStateV1> {
+  observeLocalMaintenance();
   if (lastState) return lastState;
   let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
   let legacyDataPresent = false;

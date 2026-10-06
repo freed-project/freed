@@ -1,5 +1,5 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect, test, type BrowserContext, type Page } from "@playwright/test";
 import {
@@ -145,6 +145,7 @@ for (const resident of [true, false]) {
   test(`annotation UI preserves original provenance through ${resident ? "resident" : "cold"} selection`, async ({ page }) => {
     const external: string[] = [];
     page.on("pageerror", error => console.error("Annotation fixture page error:", error.message));
+    page.on("console", message => { if(message.type() === "error") console.error("Annotation fixture console:",message.text()); });
     page.on("crash", () => console.error("Annotation fixture renderer crashed"));
     await page.route("**/*", async route => {
       const url = new URL(route.request().url());
@@ -175,6 +176,16 @@ for (const resident of [true, false]) {
     expect(await page.evaluate(() => (window as any).annotationUi.submissions[0].annotationSnapshot.originals.source.projectionRevision)).toBe(2);
     await page.evaluate(() => (window as any).annotationUi.close());
     await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
+    await page.evaluate(() => (window as any).annotationUi.pending(true));
+    await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeDisabled();
+    await expect(page.getByText("A saved annotation edit is still pending. Wait for it to settle before editing again.", { exact: true }).first()).toBeVisible();
+    await page.evaluate(() => (window as any).annotationUi.event(true));
+    await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
+    await page.evaluate(() => (window as any).annotationUi.openSnapshot());
+    await page.getByRole("button", { name: "Update save", exact: true }).click();
+    expect(await page.evaluate(() => (window as any).annotationUi.submissions.length)).toBe(1);
+    await page.evaluate(() => { (window as any).annotationUi.close(); (window as any).annotationUi.pending(false); });
+    await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeEnabled();
     await page.evaluate(() => (window as any).annotationUi.event(false));
     await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
     await page.evaluate(() => (window as any).annotationUi.event(true));
@@ -262,6 +273,12 @@ test("signed note survives shipping worker OPFS restart with canonical quotes an
       ...value, envelopeBytes: value.envelopeBytes.map(bytes => new Uint8Array(bytes)),
     }), value);
     const receipt = await commit(packet);
+    const pendingSecond=await prepare("tx:annotation:pending-second",snapshot);
+    const pendingPacket={ envelopeBytes:pendingSecond.members.map(member=>[...canonical(member.envelope)]),expectedSource:snapshot.originals.source };
+    const pendingTip=await page.evaluate(()=>(window as any).fixtureClient.followerMutationContext());
+    await expect(commit(pendingPacket)).rejects.toThrow(/LOCAL_ANNOTATION_PENDING/);
+    expect(await page.evaluate(()=>(window as any).fixtureClient.followerMutationContext())).toEqual(pendingTip);
+    expect((await query(originalRequest)).highlights).toEqual(snapshot.originals.highlights);
     const reopenWithSourceAdvance = async () => {
       await context!.close();
       context = await chromium.launchPersistentContext(profile, offlineBrowser);
@@ -279,7 +296,7 @@ test("signed note survives shipping worker OPFS restart with canonical quotes an
     await reopenWithSourceAdvance();
     expect(await commit(packet)).toEqual(receipt);
     // Settle with a real synthetic authority signature through the shipping worker.
-    // No activation, cloud transport or pending-view edit policy is exercised.
+    // No installed Library or cloud transport is exercised.
     const unsigned = parseLibraryCoreFollowerResultEnvelopeV1({
       actor_id: enrollment.body.actor_id, authoritative_source_revision: 2, authority_key_id: authorityId,
       canonical_operation_ids: signed.members.map(member => member.envelope.operation_id), epoch: 1, epoch_id: epochId,
@@ -315,10 +332,59 @@ test("signed note survives shipping worker OPFS restart with canonical quotes an
     expect((await query(originalRequest)).tags).toEqual(snapshot.originals.tags);
     // Result replay preserves signed receipt identity; this API reports current source revision.
     expect(await settle()).toEqual({ ...settledReceipt, sourceRevision: (await query(originalRequest)).source.projectionRevision });
-    // Existing follower API rejects resubmission once the intent is resolved.
-    await expect(commit(packet)).rejects.toThrow(/resolved follower intent cannot be recommitted/);
+    // Annotation retries preserve the original durable receipt after settlement.
+    expect(await commit(packet)).toEqual(receipt);
   } finally {
     await context?.close();
     await rm(profile, { recursive: true, force: true });
+  }
+});
+
+
+test("owner continuation reaches a covered OPFS suffix and resumes safely after close", async () => {
+  test.setTimeout(90_000);
+  const profile=await mkdtemp(resolve("../../.cache/annotation-maintenance-browser-"));
+  let context:BrowserContext|undefined;
+  try {
+    context=await chromium.launchPersistentContext(profile,offlineBrowser);
+    const fixture=await readFile(resolve("../shared/src/library-core/annotation-backfill-fixture-v1.sql"),"utf8");
+    const seed=fixture+`INSERT INTO library_local_annotation_unresolved(entity_id,transaction_id,member_index)
+      SELECT entity_id,transaction_id,member_index FROM library_intent_members WHERE mutation_id='feed_item_annotations_replace';
+      INSERT INTO library_intent_results
+      SELECT transaction_id,actor_id,'epoch','epoch',first_counter,printf('%064d',first_counter-1),
+        transaction_digest,'rejected',0,CAST(json_object(
+          'transaction_id',transaction_id,'transaction_digest',transaction_digest,
+          'library_id','library','actor_id',actor_id,'intent_epoch_id','epoch','epoch_id','epoch',
+          'status','rejected','result_body_digest',transaction_digest,'authoritative_source_revision',0) AS BLOB),0
+      FROM library_intent_transactions WHERE first_counter=1025;`;
+    // Inject relational fixture rows only. The unchanged shipping owner runs
+    // every subsequent maintenance turn; this is not signed-result admission proof.
+    await context.route("**/src/lib/library-core-sqlite-worker.ts*",async route=>{
+      const response=await route.fetch();
+      const body=await response.text();
+      const marker="await nextContentVault.reconcile();";
+      expect(body).toContain(marker);
+      await route.fulfill({response,body:body.replace(marker,marker+`database.exec(${JSON.stringify(seed)});`)});
+    });
+    let page=await openClient(context);
+    const eligibility=(item:string)=>page.evaluate(async globalId=>{
+      const client=(window as unknown as {fixtureClient:import("../src/lib/library-core-sqlite-client").PwaLibraryCoreSqliteClient}).fixtureClient;
+      return client.query({queryId:"item_annotation_edit_state_v1",schemaVersion:1,globalId});
+    },item);
+    await expect.poll(async()=>(await eligibility("item:1025")).pending,{timeout:60_000}).toBe(false);
+    expect((await eligibility("item:258")).pending).toBe(true);
+    const stable=await eligibility("item:1025");
+    expect(stable.localSequence).toBeGreaterThan(0);
+    await context.close();
+    context=await chromium.launchPersistentContext(profile,offlineBrowser);
+    page=await openClient(context);
+    expect(await eligibility("item:1025")).toEqual(stable);
+    expect((await eligibility("item:258")).pending).toBe(true);
+    // Read commands observe committed state; they do not advance maintenance's
+    // local sequence or invent coverage for the unresolved prefix.
+    for (let index=0;index<3;index++) expect(await eligibility("item:1025")).toEqual(stable);
+  } finally {
+    await context?.close();
+    await rm(profile,{recursive:true,force:true});
   }
 });

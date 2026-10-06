@@ -1,3 +1,4 @@
+import { assertLibraryCoreAnnotationEditEligible } from "@freed/shared/library-core";
 import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
 import { parseLibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 import { assembleHydratedAnnotationReplacement, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
@@ -1097,6 +1098,7 @@ export async function prepareDesktopRecoveryAnnotationTransaction(
 /** Edit only the item note; untouched canonical quote digests never enter an inline assembler. */
 async function updateSqliteSavedItemNote(globalId: string, note: string, originalSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations): Promise<void> {
   const snapshot = retainRenderedAnnotationSnapshot(originalSnapshot, globalId);
+  await assertLibraryCoreAnnotationEditEligible(queryNormalizedLibrary, snapshot);
   const originals = snapshot.originals;
   const context = await mutationContext();
   if (!context) throw new Error("Normalized SQLite annotation context is required");
@@ -1172,6 +1174,7 @@ async function maybeSubmitFeedItemAnnotationSets(
     for (const assignment of assignments.slice(start, start + batchLimit)) {
       const originals = await queryNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
       const snapshot = assignment.annotationSnapshot;
+      await assertLibraryCoreAnnotationEditEligible(queryNormalizedLibrary, snapshot);
       if (!sameAnnotationSource(snapshot.originals.source, originals.source) ||
           (expectedSource && !sameAnnotationSource(expectedSource, snapshot.originals.source))) throw new Error("Annotation source changed; reopen the item");
       expectedSource ??= snapshot.originals.source;

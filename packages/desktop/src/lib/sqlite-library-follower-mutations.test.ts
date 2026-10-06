@@ -38,7 +38,7 @@ import {
 const ITEM_ID = "rss:follower-item";
 
 function renderedAnnotationSnapshot() {
-  return { state: "ready" as const, highlights: [], originals: {
+  return { state: "ready" as const, editState: "ready" as const, highlights: [], originals: {
     queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: ITEM_ID,
     source: { generationId: "bc".repeat(32) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
   } };
@@ -214,6 +214,7 @@ describe("SQLite editable follower mutations", () => {
             source,
           };
         }
+        if (request.queryId === "item_annotation_edit_state_v1") return {queryId:request.queryId,schemaVersion:1,globalId:request.globalId,source,pending:false,localSequence:0};
         if (request.queryId === "item_annotations_v1") {
           return {
             queryId: request.queryId,
@@ -296,7 +297,7 @@ describe("SQLite editable follower mutations", () => {
     const action = dispatchSqliteMutation({ type: "UPDATE_FEED_ITEM", globalId: ITEM_ID, reqId: 40,
       updates: { userState: { tags: ["edited"] } as never }, annotationSnapshot: scenario === "missing" ? undefined : original });
     if (scenario === "success") await action;
-    else await expect(action).rejects.toThrow(scenario === "missing" ? "not ready" : scenario === "stale" ? "source changed" : scenario === "sign-race" ? "LOCAL_ADMISSION_SOURCE_STALE" : "capture failed");
+    else await expect(action).rejects.toThrow(scenario === "missing" ? "not ready" : scenario === "stale" ? "stale" : scenario === "sign-race" ? "LOCAL_ADMISSION_SOURCE_STALE" : "capture failed");
     expect(writes).toEqual(scenario === "success" ? ["feed_item_annotations_replace", "feed_item_capture_upsert"] : scenario === "capture-fails" ? ["feed_item_annotations_replace"] : []);
   });
 

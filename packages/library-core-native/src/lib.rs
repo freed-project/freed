@@ -150,8 +150,9 @@ pub use normalized_desktop_setup::{
     DesktopLibrarySetupChoiceV1, DESKTOP_LIBRARY_SETUP_FILE, DESKTOP_LIBRARY_SETUP_MAXIMUM_BYTES,
 };
 pub use normalized_follower::{
-    countersign_normalized_follower_actor_request_v2, enqueue_normalized_follower_intent_v1, enqueue_normalized_follower_intent_with_source_v1,
-    export_normalized_follower_intent_page_v1, import_normalized_follower_result_page_v1,
+    countersign_normalized_follower_actor_request_v2, enqueue_normalized_follower_intent_v1,
+    enqueue_normalized_follower_intent_with_source_v1, export_normalized_follower_intent_page_v1,
+    import_normalized_follower_result_page_v1,
     import_normalized_follower_result_transport_segment_v2,
     install_normalized_follower_actor_enrollment_v2, normalized_follower_mutation_context_v1,
     normalized_follower_runtime_status_v2, normalized_follower_transport_context_v2,
@@ -179,8 +180,10 @@ pub use normalized_migration::{
     NormalizedDesktopAuthorityPreparedV1,
 };
 pub use normalized_mutation::{
-    accept_normalized_operation_transaction_v1, accept_normalized_operation_transaction_with_source_v1, export_normalized_follower_result_page_v1,
-    export_normalized_follower_result_page_v2, ingest_normalized_follower_intent_page_v1,
+    accept_normalized_operation_transaction_v1,
+    accept_normalized_operation_transaction_with_source_v1,
+    export_normalized_follower_result_page_v1, export_normalized_follower_result_page_v2,
+    ingest_normalized_follower_intent_page_v1,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     NormalizedFollowerIntentStagePageV1, NormalizedFollowerIntentStageReceiptV1,
     NormalizedFollowerIntentStageRecordV1, NormalizedFollowerResultCursorV1,
@@ -191,9 +194,8 @@ pub use normalized_mutation::{
 };
 pub use normalized_operation::ActorState;
 pub use normalized_query::{
-    deserialize_local_admission_source,
-    query_normalized_json_v1, query_normalized_v1, NormalizedAccountDetailRequestV1,
-    NormalizedAccountDetailResponseV1, NormalizedAccountDetailV1,
+    deserialize_local_admission_source, query_normalized_json_v1, query_normalized_v1,
+    NormalizedAccountDetailRequestV1, NormalizedAccountDetailResponseV1, NormalizedAccountDetailV1,
     NormalizedAccountGraphPageRequestV1, NormalizedAccountGraphPageResponseV1,
     NormalizedAccountGraphRowV1, NormalizedChangeFeedRequestV1, NormalizedChangeFeedResponseV1,
     NormalizedChangeFeedRowV1, NormalizedFacetSummaryRequestV1, NormalizedFacetSummaryResponseV1,
@@ -297,3 +299,7 @@ pub use normalized_handoff_writer_certificate::{
 };
 
 mod normalized_local_annotations;
+
+pub use normalized_local_annotations::{
+    reconcile_normalized_annotation_slice_v1, NormalizedAnnotationReconciliationPassV1,
+};

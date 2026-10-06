@@ -1768,6 +1768,11 @@
           "sql": "SELECT r.range_index AS memberIndex, r.byte_offset AS byteOffset, r.byte_length AS byteLength, r.range_digest AS digest, l.storage_key AS storageKey, l.storage_kind AS storageKind FROM library_content_ranges r LEFT JOIN library_device_content_ranges l ON l.content_digest = r.content_digest AND l.range_index = r.range_index AND l.verified_byte_length = r.byte_length AND l.verified_range_digest = r.range_digest WHERE r.content_digest = ?1 ORDER BY r.range_index LIMIT 65;"
         }
       }
+    },
+    "item_annotation_edit_state_v1": {
+      "maximumScanRows": 1,
+      "countSql": "SELECT 1;",
+      "sql": "SELECT EXISTS (SELECT 1 FROM library_local_annotation_unresolved WHERE entity_id = ?1 LIMIT 1) AS pending, sequence AS localSequence FROM library_local_change_state WHERE singleton_id = 1;"
     }
   },
   "queryRowModels": {
@@ -2962,6 +2967,30 @@
         "name": "text",
         "nullable": true
       }
+    ],
+    "item_annotation_edit_state_v1": [
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "integer",
+        "maximumInteger": 9007199254740991,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": 0,
+        "minimumUtf8Bytes": null,
+        "name": "localSequence",
+        "nullable": false
+      },
+      {
+        "enumValues": [],
+        "integerValues": [],
+        "kind": "boolean",
+        "maximumInteger": null,
+        "maximumUtf8Bytes": null,
+        "minimumInteger": null,
+        "minimumUtf8Bytes": null,
+        "name": "pending",
+        "nullable": false
+      }
     ]
   },
   "scopeActionPrograms": {
@@ -2989,6 +3018,7 @@
     "filter_scope_summary_v1",
     "friend_candidate_review_v1",
     "friends_directory_page_v1",
+    "item_annotation_edit_state_v1",
     "item_annotation_text_range_v1",
     "item_annotations_v1",
     "item_detail_v1",

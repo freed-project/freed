@@ -590,7 +590,7 @@ pub(crate) fn sign_persisted_handoff_authorization_v1(
     let version: u32 = transaction
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|error| error.to_string())?;
-    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5) {
         return Err("handoff signing requires the durable native fence".into());
     }
     crate::normalized_sqlite::install_normalized_schema_v1(&transaction)
@@ -1612,10 +1612,12 @@ pub(crate) fn verify_handoff_checkpoint_install_v1(
     let version: u32 = connection
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|error| error.to_string())?;
-    if version == 1 {
+    crate::normalized_local_annotations::reject_building(connection)
+        .map_err(|error| error.to_string())?;
+    if matches!(version, 1 | 4) {
         return Ok(());
     }
-    if version != 2 {
+    if !matches!(version, 2 | 5) {
         return Err("handoff checkpoint storage is unsupported".into());
     }
     verify_existing_handoff_checkpoint_install_v1(connection, checkpoint_digest, receipt)
@@ -6147,7 +6149,8 @@ mod tests {
         // The initial source was cloned from the target fixture above. Build the
         // clean original-Primary case by removing only those synthetic local rows.
         // Production adoption never performs this cleanup.
-        for table in crate::normalized_import::RETAINED_FOLLOWER_TABLES
+        for table in crate::normalized_import::retained_follower_tables(&adopting)
+            .unwrap()
             .iter()
             .rev()
         {

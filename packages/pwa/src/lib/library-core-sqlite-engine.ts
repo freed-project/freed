@@ -1,3 +1,5 @@
+import { parseLibraryCoreItemAnnotationEditStateRequestV1, parseLibraryCoreItemAnnotationEditStateResponseV1, type LibraryCoreItemAnnotationEditStateRequestV1, type LibraryCoreItemAnnotationEditStateResponseV1 } from "@freed/shared/library-core";
+import { rejectPwaAnnotationBuilding, requirePwaAnnotationReady, pwaAnnotationPending, insertPwaAnnotationMarker, retirePwaAnnotationTransaction, retirePwaAnnotationCheckpoint, reconcilePwaAnnotationPage } from "./library-core-annotation-storage";
 import {
   ANNOTATION_TEXT_MAXIMUM_BYTES, ANNOTATION_TEXT_MAXIMUM_RANGES,
   parseLibraryCoreItemAnnotationTextRequestV1, parseLibraryCoreItemAnnotationTextResponseV1, sameAnnotationSource,
@@ -940,7 +942,7 @@ export class PwaLibraryCoreSqliteEngine {
       this.#database.exec(
         `PRAGMA user_version = ${LIBRARY_CORE_SQLITE_SCHEMA_VERSION};`,
       );
-    } else if (userVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION && userVersion !== LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION) {
+    } else if (userVersion !== LIBRARY_CORE_SQLITE_SCHEMA_VERSION && userVersion !== LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION && userVersion !== 4 && userVersion !== 5) {
       throw new Error("PWA Library SQLite schema version is unsupported");
     } else if (applicationId !== LIBRARY_CORE_SQLITE_APPLICATION_ID) {
       throw new Error("PWA Library SQLite application identity is unsupported");
@@ -972,6 +974,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   status(): LibraryCoreSqliteWorkerStatus {
+    rejectPwaAnnotationBuilding(this.#database);
     if (this.#connectionGeneration === 0) {
       throw new Error("PWA Library SQLite is not initialized");
     }
@@ -987,6 +990,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   describeNormalizedCheckpointExport(): LibraryCoreNormalizedCheckpointExportDescriptorV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const unresolvedIntentCount = safeInteger(
       this.#database.exec({
         sql: `SELECT count(*) FROM library_intent_transactions
@@ -1124,6 +1128,7 @@ export class PwaLibraryCoreSqliteEngine {
     check(): void;
     yieldControl(): Promise<void>;
   }): Promise<LibraryCoreNormalizedReplicaAuditV1> {
+    rejectPwaAnnotationBuilding(this.#database);
     if (!this.#persistentAuditTemporaryStorage) return this.#auditPagedReplica(control);
     control.check();
     const db = this.#database;
@@ -1274,6 +1279,7 @@ export class PwaLibraryCoreSqliteEngine {
   exportPinnedNormalizedCheckpointPage(
     input: LibraryCorePinnedNormalizedCheckpointExportRequestV2,
   ): LibraryCoreNormalizedCheckpointExportPageV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const { page: request, snapshot } = input;
     if (
       request.maximumRecords < 1 ||
@@ -1373,6 +1379,7 @@ export class PwaLibraryCoreSqliteEngine {
   beginNormalizedCheckpointStage(
     input: LibraryCoreBeginNormalizedCheckpointStageV2,
   ): LibraryCoreNormalizedCheckpointStageStatusV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const stage = parseLibraryCoreBeginNormalizedCheckpointStageV2(input);
     this.#database.exec({
       sql: `INSERT OR IGNORE INTO library_checkpoint_stages
@@ -1416,6 +1423,7 @@ export class PwaLibraryCoreSqliteEngine {
   appendNormalizedCheckpointStagePage(
     input: LibraryCoreNormalizedCheckpointStagePageV2,
   ): LibraryCoreNormalizedCheckpointStageStatusV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const page = parseLibraryCoreNormalizedCheckpointStagePageV2(input);
     const records = page.records.map((record) => {
       const parsed = parseLibraryCoreNormalizedCheckpointRecordV2(record);
@@ -1524,6 +1532,7 @@ export class PwaLibraryCoreSqliteEngine {
   async verifyNormalizedCheckpointActorRetirements(
     stageId: string,
   ): Promise<void> {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       typeof stageId !== "string" ||
       stageId.length === 0 ||
@@ -1695,6 +1704,7 @@ export class PwaLibraryCoreSqliteEngine {
       "library_intent_result_cursors", "library_intent_transport_heads",
       "library_intent_transport_segments", "library_result_transport_heads",
       "library_result_transport_segments", "library_optimistic_fields",
+      ...(Number(this.#database.selectValue("PRAGMA user_version;"))>=4 ? ["library_local_annotation_unresolved"] : []),
       "library_local_change_state", "library_local_invalidations",
     ];
     for (const table of tables) {
@@ -1765,6 +1775,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   requireCheckpointTransferCapability(stageId: string): void {
+    rejectPwaAnnotationBuilding(this.#database);
     if (LIBRARY_TRANSFER_ENABLED) return;
     const changesAuthority = this.#database.selectValue(`SELECT EXISTS(
       SELECT 1 FROM library_meta m JOIN library_checkpoint_stages s ON s.stage_id=?1
@@ -1776,6 +1787,7 @@ export class PwaLibraryCoreSqliteEngine {
   async verifyNormalizedCheckpointSuccessor(
     input: LibraryCoreActivateNormalizedCheckpointStageV2,
   ): Promise<void> {
+    rejectPwaAnnotationBuilding(this.#database);
     this.#successorProof = null;
     const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
     this.requireCheckpointTransferCapability(activation.stageId);
@@ -1787,6 +1799,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   async preparePredecessorCheckpointRead(stageId: string) {
+    rejectPwaAnnotationBuilding(this.#database);
     this.requireCheckpointTransferCapability(stageId);
     parseLibraryCoreActivateNormalizedCheckpointStageV2({ stageId, replaceExisting: false, followerReceipt: null });
     return await preparePwaHistoricalChainReads(this.#database, stageId, this.#subtle)
@@ -1801,6 +1814,7 @@ export class PwaLibraryCoreSqliteEngine {
     successorStageId: string,
     onProgress?: (completedRecords: number, totalRecords: number) => void,
   ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+    rejectPwaAnnotationBuilding(this.#database);
     requireLibraryTransferCapability();
     const activation = parseLibraryCoreActivateNormalizedCheckpointStageV2(input);
     // Use the same closed stage-ID codec as ordinary checkpoint activation.
@@ -1841,6 +1855,7 @@ export class PwaLibraryCoreSqliteEngine {
     input: LibraryCoreActivateNormalizedCheckpointStageV2,
     onProgress?: (completedRecords: number, totalRecords: number) => void,
   ): LibraryCoreNormalizedCheckpointActivationReceiptV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     return this.#activateNormalizedCheckpoint(input,onProgress);
   }
 
@@ -1849,6 +1864,7 @@ export class PwaLibraryCoreSqliteEngine {
     input:LibraryCoreActivateNormalizedCheckpointStageV2,
     projection:Readonly<{beforeReplace():void;afterReplace():void}>,
   ):LibraryCoreNormalizedCheckpointActivationReceiptV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     return this.#activateNormalizedCheckpoint(input,undefined,projection);
   }
 
@@ -2262,6 +2278,7 @@ export class PwaLibraryCoreSqliteEngine {
         }
       }
       if (retainedFollowerTables.length > 0) {
+        retirePwaAnnotationCheckpoint(this.#database);
         // A previously verified result plus a covered canonical revision settles
         // an overlay. Checkpoint effects alone never acknowledge a pending edit.
         this.#database.exec({
@@ -2337,6 +2354,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   readNormalizedCheckpointReceipt(): LibraryCoreNormalizedCheckpointSelectionV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const rows = this.#database.exec({
       sql: `SELECT authority_epoch_id, checkpoint_digest,
                    checkpoint_generation, control_revision, installed_at,
@@ -2382,6 +2400,7 @@ export class PwaLibraryCoreSqliteEngine {
   mutateDeviceGraphLayout(
     input: LibraryCoreDeviceGraphLayoutMutationV1,
   ): LibraryCoreDeviceGraphLayoutMutationResultV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreDeviceGraphLayoutMutationV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const mutation = parsed.value;
@@ -2468,6 +2487,7 @@ export class PwaLibraryCoreSqliteEngine {
   queryDeviceContacts(
     input: LibraryCoreDeviceContactQueryRequestV1,
   ): LibraryCoreDeviceContactQueryResponseV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreDeviceContactQueryRequestV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const request = parsed.value;
@@ -2760,6 +2780,7 @@ export class PwaLibraryCoreSqliteEngine {
   mutateDeviceContactSync(
     input: LibraryCoreDeviceContactSyncMutationV1,
   ): LibraryCoreDeviceContactMutationReceiptV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreDeviceContactSyncMutationV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const mutation = parsed.value;
@@ -3413,6 +3434,7 @@ export class PwaLibraryCoreSqliteEngine {
   mutateContentPolicy(
     input: LibraryCoreContentPolicyMutationV1,
   ): LibraryCoreContentPolicyMutationReceiptV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreContentPolicyMutationV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const mutation = parsed.value;
@@ -3527,6 +3549,7 @@ export class PwaLibraryCoreSqliteEngine {
   readContentState(
     input: LibraryCoreContentStateRequestV1,
   ): LibraryCoreContentStateV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreContentStateRequestV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const request = parsed.value;
@@ -3592,6 +3615,7 @@ export class PwaLibraryCoreSqliteEngine {
   pageHydrationCandidates(
     input: LibraryCoreHydrationCandidatePageRequestV1,
   ): LibraryCoreHydrationCandidatePageV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreHydrationCandidatePageRequestV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const request = parsed.value;
@@ -3644,6 +3668,7 @@ export class PwaLibraryCoreSqliteEngine {
   pageEvictionCandidates(
     input: LibraryCoreEvictionCandidatePageRequestV1,
   ): LibraryCoreEvictionCandidatePageV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreEvictionCandidatePageRequestV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const request = parsed.value;
@@ -3725,6 +3750,7 @@ export class PwaLibraryCoreSqliteEngine {
     byteLength: number;
     rangeContentDigest: string;
   }> {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       !isLibraryCoreLowercaseHex64(contentDigest) ||
       !Number.isSafeInteger(rangeIndex) ||
@@ -3754,6 +3780,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   markContentAccessed(contentDigest: string, accessedAt: number): void {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       !isLibraryCoreLowercaseHex64(contentDigest) ||
       !Number.isSafeInteger(accessedAt) ||
@@ -3779,6 +3806,7 @@ export class PwaLibraryCoreSqliteEngine {
     rangeContentDigest: string;
     storageKey: string;
   }> {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       !isLibraryCoreLowercaseHex64(contentDigest) ||
       !Number.isSafeInteger(rangeIndex) ||
@@ -3820,6 +3848,7 @@ export class PwaLibraryCoreSqliteEngine {
     byteLength: number;
     rangeCount: number;
   }> {
+    rejectPwaAnnotationBuilding(this.#database);
     if (!isLibraryCoreLowercaseHex64(contentDigest)) {
       throw new TypeError("content completion identity is invalid");
     }
@@ -3848,6 +3877,7 @@ export class PwaLibraryCoreSqliteEngine {
     rangeIndex: number;
     storageKey: string;
   }>[] {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       !isLibraryCoreLowercaseHex64(contentDigest) ||
       (afterRangeIndex !== null &&
@@ -3885,6 +3915,7 @@ export class PwaLibraryCoreSqliteEngine {
   registerVerifiedContentCompletion(
     input: LibraryCoreContentCompletionRequestV1,
   ): LibraryCoreContentCompletionReceiptV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreContentCompletionRequestV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const request = parsed.value;
@@ -4017,6 +4048,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   markContentCorrupt(contentDigest: string, detectedAt: number): void {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       !isLibraryCoreLowercaseHex64(contentDigest) ||
       !Number.isSafeInteger(detectedAt) ||
@@ -4071,6 +4103,7 @@ export class PwaLibraryCoreSqliteEngine {
   registerVerifiedContentRange(
     input: LibraryCoreVerifiedContentRangePublicationV1,
   ): LibraryCoreVerifiedContentRangeReceiptV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const parsed = parseLibraryCoreVerifiedContentRangePublicationV1(input);
     if (!parsed.ok) throw new TypeError(parsed.error);
     const publication = parsed.value;
@@ -4225,6 +4258,7 @@ export class PwaLibraryCoreSqliteEngine {
     canonicalStorageKey: string;
     storageKey: string;
   }> | null {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       storageKey.length === 0 ||
       new TextEncoder().encode(storageKey).length > 1_024
@@ -4265,6 +4299,7 @@ export class PwaLibraryCoreSqliteEngine {
     canonicalStorageKey: string;
     storageKey: string;
   }>[] {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       afterStorageKey !== null &&
       (afterStorageKey.length === 0 ||
@@ -4309,6 +4344,7 @@ export class PwaLibraryCoreSqliteEngine {
     rangeIndex: number;
     storageKey: string;
   }>[] {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       !isLibraryCoreLowercaseHex64(contentDigest) ||
       (afterRangeIndex !== null &&
@@ -4339,6 +4375,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   pruneVerifiedContentRangeStorageProofs(storageKeys: readonly string[]): void {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       storageKeys.length > 128 ||
       new Set(storageKeys).size !== storageKeys.length ||
@@ -4378,14 +4415,17 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   consumerRecoveryStatus() {
+    rejectPwaAnnotationBuilding(this.#database);
     return readPwaConsumerRecoveryStatus(this.#database, this.followerActorEnrollmentContext().authority);
   }
 
   consumerRecoveryPlan() {
+    rejectPwaAnnotationBuilding(this.#database);
     return readPwaConsumerRecoveryPlan(this.#database, this.followerActorEnrollmentContext().authority);
   }
 
   async prepareConsumerRecovery(recoveryId: string, request: LibraryCoreStoreFollowerActorRequestV2): Promise<void> {
+    rejectPwaAnnotationBuilding(this.#database);
     requireLibraryTransferCapability();
     if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
     await preparePwaConsumerRecovery(this.#database, this.#capi, this.#subtle,
@@ -4393,6 +4433,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   async commitConsumerRecovery(recoveryId: string, committedAt: number): Promise<void> {
+    rejectPwaAnnotationBuilding(this.#database);
     requireLibraryTransferCapability();
     if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
     await commitPwaConsumerRecovery(this.#database, this.#capi, this.#subtle,
@@ -4400,6 +4441,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   followerActorEnrollmentContext(): LibraryCoreFollowerActorEnrollmentContextV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const rows = this.#database.exec({
       sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
                    e.authority_key_id, e.authority_public_key
@@ -4502,6 +4544,7 @@ export class PwaLibraryCoreSqliteEngine {
   async storeFollowerActorRequest(
     input: LibraryCoreStoreFollowerActorRequestV2,
   ): Promise<LibraryCoreFollowerActorRequestReceiptV2> {
+    rejectPwaAnnotationBuilding(this.#database);
     const request = parseLibraryCoreStoreFollowerActorRequestV2(input);
     const context = this.followerActorEnrollmentContext();
     if (context.request) {
@@ -4669,6 +4712,7 @@ export class PwaLibraryCoreSqliteEngine {
   async installFollowerActorEnrollment(
     input: LibraryCoreInstallFollowerActorEnrollmentV2,
   ): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
+    rejectPwaAnnotationBuilding(this.#database);
     return this.#installFollowerActorEnrollment(input);
   }
 
@@ -4677,6 +4721,7 @@ export class PwaLibraryCoreSqliteEngine {
     input: LibraryCoreInstallFollowerActorEnrollmentV2,
     afterInstall: () => void,
   ): Promise<LibraryCoreFollowerActorEnrollmentReceiptV2> {
+    rejectPwaAnnotationBuilding(this.#database);
     return this.#installFollowerActorEnrollment(input, afterInstall);
   }
 
@@ -4911,6 +4956,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   followerMutationContext(): LibraryCoreFollowerMutationContextV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const rows = this.#database.exec({
       sql: `SELECT m.library_id, e.epoch_number, e.epoch_id,
                    a.actor_id, a.public_key,
@@ -4986,6 +5032,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   followerTransportContext(): LibraryCoreFollowerTransportContextV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const rows = this.#database.exec({
       sql: `SELECT request.actor_id, m.library_id, e.epoch_id,
                    COALESCE(intent_head.next_actor_counter, 1),
@@ -5042,6 +5089,7 @@ export class PwaLibraryCoreSqliteEngine {
   pageFollowerTransport(
     input: LibraryCoreFollowerTransportPageRequestV2,
   ): LibraryCoreFollowerTransportPageResponseV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const request = parseLibraryCoreFollowerTransportPageRequestV2(input);
     const rows = this.#database.exec({
       sql: `SELECT member.actor_counter, member.canonical_member
@@ -5094,6 +5142,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   async reapplyConsumerIntent(input: LibraryCoreReapplyConsumerIntentV1): Promise<LibraryCoreRecoveryReissueReceiptV1> {
+    rejectPwaAnnotationBuilding(this.#database);
     requireLibraryTransferCapability();
     const { review, intent } = parseLibraryCoreReapplyConsumerIntentV1(input);
     if (!this.#capi || !this.#database.pointer || this.#capi.sqlite3_get_autocommit(this.#database.pointer) !== 1) {
@@ -5187,6 +5236,7 @@ export class PwaLibraryCoreSqliteEngine {
   async commitFollowerIntent(
     input: LibraryCoreFollowerIntentCommitV1,
   ): Promise<LibraryCoreFollowerIntentCommitResultV1> {
+    rejectPwaAnnotationBuilding(this.#database);
     const commit = parseLibraryCoreFollowerIntentCommitV1(input);
     const firstCandidate = decodeLibraryCoreCanonicalValue(
       commit.envelopeBytes[0]!,
@@ -5226,6 +5276,7 @@ export class PwaLibraryCoreSqliteEngine {
 
   /** Internal storage adapter hook. No worker command exposes admission callbacks. */
   async prepareFollowerIntentTransaction(input: LibraryCoreFollowerIntentCommitV1) {
+    rejectPwaAnnotationBuilding(this.#database);
     const commit=parseLibraryCoreFollowerIntentCommitV1(input);
     const first=decodeLibraryCoreCanonicalValue(commit.envelopeBytes[0]!);
     if (first===null || typeof first!=="object" || Array.isArray(first)) {
@@ -5343,6 +5394,8 @@ export class PwaLibraryCoreSqliteEngine {
     committedAt: number;
   }, admit?:()=>void): LibraryCoreFollowerIntentCommitResultV1 {
     const { commit, actorState, verified, committedAt } = prepared;
+    rejectPwaAnnotationBuilding(this.#database);
+    if (verified.members.some(member=>member.envelope.operation_type==="feed_item_annotations_replace")) requirePwaAnnotationReady(this.#database);
     const effects = verified.members.flatMap((member, memberIndex) =>
       libraryCoreOptimisticFieldsForEnvelopeV1(member.envelope).map((effect) =>
         Object.freeze({ effect, member, memberIndex }),
@@ -5366,6 +5419,9 @@ export class PwaLibraryCoreSqliteEngine {
         projectionRevision: current.sourceRevision,
         transitionSequence: current.sourceRevision,
       })) throw new Error("LOCAL_ADMISSION_SOURCE_STALE");
+    }
+    for (const member of verified.members) {
+      if (member.envelope.operation_type==="feed_item_annotations_replace" && pwaAnnotationPending(this.#database,member.envelope.entity_id)) throw new Error("LOCAL_ANNOTATION_PENDING");
     }
     const enrollment = this.followerMutationContext();
     if (enrollment.actor_id !== actorState.actor_id || enrollment.actor_public_key !== actorState.actor_public_key ||
@@ -5546,6 +5602,9 @@ export class PwaLibraryCoreSqliteEngine {
           member.member_digest,
         ],
       });
+      if (envelope.operation_type==="feed_item_annotations_replace") {
+        insertPwaAnnotationMarker(this.#database,envelope.entity_id,verified.transaction_body.transaction_id,memberIndex);
+      }
     });
     for (const { effect, member, memberIndex } of effects) {
       this.#database.exec({
@@ -5616,6 +5675,7 @@ export class PwaLibraryCoreSqliteEngine {
   pageFollowerIntents(
     input: LibraryCoreFollowerIntentPageRequestV1,
   ): LibraryCoreFollowerIntentPageResponseV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const request = parseLibraryCoreFollowerIntentPageRequestV1(input);
     if (request.cursor !== null) {
       const cursorRows = this.#database.exec({
@@ -5734,6 +5794,7 @@ export class PwaLibraryCoreSqliteEngine {
   publishFollowerIntent(
     input: LibraryCoreFollowerIntentPublicationV1,
   ): LibraryCoreFollowerIntentPublicationReceiptV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const publication = parseLibraryCoreFollowerIntentPublicationV1(input);
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
@@ -5810,6 +5871,7 @@ export class PwaLibraryCoreSqliteEngine {
   publishNormalizedFollowerIntentTransport(
     input: LibraryCoreNormalizedIntentTransportPublicationV2,
   ): LibraryCoreNormalizedIntentTransportPublicationReceiptV2 {
+    rejectPwaAnnotationBuilding(this.#database);
     const publication =
       parseLibraryCoreNormalizedIntentTransportPublicationV2(input);
     const { header, reference } = publication;
@@ -6572,6 +6634,7 @@ export class PwaLibraryCoreSqliteEngine {
   async importNormalizedOperationPage(
     input: LibraryCoreNormalizedOperationImportPageV2,
   ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
+    rejectPwaAnnotationBuilding(this.#database);
     return this.#importNormalizedOperationPage(input);
   }
 
@@ -6580,6 +6643,7 @@ export class PwaLibraryCoreSqliteEngine {
     input: LibraryCoreNormalizedOperationImportPageV2,
     prepare: (result: Uint8Array) => Promise<Readonly<{ beforeMaterialize(): void; afterMaterialize(): void }>>,
   ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
+    rejectPwaAnnotationBuilding(this.#database);
     return this.#importNormalizedOperationPage(input, prepare);
   }
 
@@ -7414,6 +7478,7 @@ export class PwaLibraryCoreSqliteEngine {
                 WHERE source_revision = ?1;`,
           bind: [nextRevision],
         });
+        retirePwaAnnotationTransaction(this.#database,resultEnvelope.transaction_id);
         reconcile?.afterMaterialize();
         this.#database.exec("COMMIT;");
         appliedTransactionCount += 1;
@@ -7611,6 +7676,7 @@ export class PwaLibraryCoreSqliteEngine {
   async importNormalizedFollowerResultTransport(
     input: LibraryCoreNormalizedResultTransportImportV2,
   ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
+    rejectPwaAnnotationBuilding(this.#database);
     return this.#importNormalizedFollowerResultTransport(input);
   }
 
@@ -7619,6 +7685,7 @@ export class PwaLibraryCoreSqliteEngine {
     input: LibraryCoreNormalizedResultTransportImportV2,
     prepare: (results: readonly Uint8Array[]) => Promise<() => void>,
   ): Promise<LibraryCoreNormalizedResultTransportImportReceiptV2> {
+    rejectPwaAnnotationBuilding(this.#database);
     return this.#importNormalizedFollowerResultTransport(input, prepare);
   }
 
@@ -7880,6 +7947,7 @@ export class PwaLibraryCoreSqliteEngine {
   async applyFollowerResult(
     input: LibraryCoreFollowerResultApplyV1,
   ): Promise<LibraryCoreFollowerResultApplyReceiptV1> {
+    rejectPwaAnnotationBuilding(this.#database);
     const { apply, candidate, verified, authority, receivedAt } = await this.#prepareFollowerResult(input);
 
     this.#applyVerifiedFollowerResult(verified, authority, receivedAt, true);
@@ -7901,6 +7969,7 @@ export class PwaLibraryCoreSqliteEngine {
     input: LibraryCoreFollowerResultApplyV1,
     prepare: (result: Uint8Array) => Promise<Readonly<{ beforeMaterialize(): void; afterMaterialize(): void }>>,
   ): Promise<void> {
+    rejectPwaAnnotationBuilding(this.#database);
     const result = await this.#prepareFollowerResult(input);
     await this.#applyAcceptedFollowerResultThroughOperationImport(result.verified,prepare);
   }
@@ -7955,6 +8024,7 @@ export class PwaLibraryCoreSqliteEngine {
 
   /** Internal receipt write owner. Canonical catch-up is a separate import boundary. */
   async prepareFollowerResultTransaction(input: LibraryCoreFollowerResultApplyV1) {
+    rejectPwaAnnotationBuilding(this.#database);
     const prepared = await this.#prepareFollowerResult(input);
     return Object.freeze({
       commit: (capi: Pick<CAPI,"sqlite3_get_autocommit"|"sqlite3_txn_state">) => {
@@ -7973,6 +8043,7 @@ export class PwaLibraryCoreSqliteEngine {
     receivedAt: number,
     manageTransaction: boolean,
   ): LibraryCoreFollowerResultApplyReceiptV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     if (manageTransaction) this.#database.exec("BEGIN IMMEDIATE;");
     try {
       const retryInsideTransaction = this.#followerResultRetry(
@@ -8246,6 +8317,7 @@ export class PwaLibraryCoreSqliteEngine {
       ) {
         throw new Error("follower result cursor compare-and-swap failed");
       }
+      retirePwaAnnotationTransaction(this.#database,envelope.transaction_id);
       if (manageTransaction) this.#database.exec("COMMIT;");
       return Object.freeze({
         actorId: envelope.actor_id,
@@ -8306,6 +8378,9 @@ export class PwaLibraryCoreSqliteEngine {
     transactionId: string,
     envelopeBytes: readonly Uint8Array[],
   ): LibraryCoreFollowerIntentCommitResultV1 | null {
+    rejectPwaAnnotationBuilding(this.#database);
+    const annotationReplay=this.#database.selectValue("SELECT EXISTS(SELECT 1 FROM library_intent_members WHERE transaction_id=?1 AND mutation_id='feed_item_annotations_replace');",[transactionId])===1;
+    if (annotationReplay) requirePwaAnnotationReady(this.#database);
     const transactions = this.#database.exec({
       sql: `SELECT actor_id, member_count, first_counter, last_counter, state
             FROM library_intent_transactions WHERE transaction_id = ?1;`,
@@ -8351,7 +8426,9 @@ export class PwaLibraryCoreSqliteEngine {
       })[0],
       "stored optimistic field count",
     );
-    const state = text(transaction[4], "stored intent state");
+    // Annotation intents have no optimistic fields. Exact bytes always read
+    // back their original pending admission receipt, including after settlement.
+    const state = annotationReplay ? "pending" : text(transaction[4], "stored intent state");
     if (state !== "pending" && state !== "published") {
       throw new Error("resolved follower intent cannot be recommitted");
     }
@@ -8371,6 +8448,7 @@ export class PwaLibraryCoreSqliteEngine {
     input: LibraryCoreAnyScopeActionRequestV1,
     createdAt: number,
   ): LibraryCoreScopeActionStageStatusV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     const request = parseLibraryCoreAnyScopeActionRequestV1(input);
     if (
       stageId.length < 1 ||
@@ -8426,6 +8504,7 @@ export class PwaLibraryCoreSqliteEngine {
     expectedOrdinal: number,
     entityIds: readonly string[],
   ): LibraryCoreScopeActionStageStatusV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     if (
       !Number.isSafeInteger(expectedOrdinal) ||
       expectedOrdinal < 0 ||
@@ -8471,6 +8550,7 @@ export class PwaLibraryCoreSqliteEngine {
     stageId: string,
     expectedMemberCount: number,
   ): LibraryCoreScopeActionStageStatusV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     if (!Number.isSafeInteger(expectedMemberCount) || expectedMemberCount < 0) {
       throw new Error("Library scope action final count is invalid");
     }
@@ -8503,6 +8583,7 @@ export class PwaLibraryCoreSqliteEngine {
     stageId: string,
     afterOrdinal: number,
   ): LibraryCoreScopeActionStagePageV1 {
+    rejectPwaAnnotationBuilding(this.#database);
     if (!Number.isSafeInteger(afterOrdinal) || afterOrdinal < -1) {
       throw new Error("Library scope action page cursor is invalid");
     }
@@ -8524,6 +8605,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   closeScopeAction(stageId: string): void {
+    rejectPwaAnnotationBuilding(this.#database);
     this.#database.exec({
       sql: LIBRARY_CORE_SQLITE_SCOPE_ACTION_PROGRAMS.delete,
       bind: [stageId],
@@ -8533,6 +8615,7 @@ export class PwaLibraryCoreSqliteEngine {
   query<T extends LibraryCoreSqliteQueryRequest>(
     input: T,
   ): LibraryCoreSqliteQueryResponseFor<T> {
+    rejectPwaAnnotationBuilding(this.#database);
     switch (input.queryId) {
       case "item_annotation_text_range_v1":
         throw new Error("Annotation text requires the verified query route");
@@ -8598,6 +8681,8 @@ export class PwaLibraryCoreSqliteEngine {
         return this.#queryItemDetail(
           input,
         ) as LibraryCoreSqliteQueryResponseFor<T>;
+      case "item_annotation_edit_state_v1":
+        return this.#queryAnnotationEditState(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "item_annotations_v1":
         return this.#queryItemAnnotations(input) as LibraryCoreSqliteQueryResponseFor<T>;
       case "rss_item_summary_v1":
@@ -8802,6 +8887,7 @@ export class PwaLibraryCoreSqliteEngine {
   }
 
   async queryWithVerification<T extends LibraryCoreSqliteQueryRequest>(input: T, readAnnotationRange?: (storageKey: string, byteLength: number) => Promise<Uint8Array>): Promise<LibraryCoreSqliteQueryResponseFor<T>> {
+    rejectPwaAnnotationBuilding(this.#database);
     if (input.queryId === "item_annotation_text_range_v1") return await this.#queryAnnotationText(input, readAnnotationRange) as LibraryCoreSqliteQueryResponseFor<T>;
     if (input.queryId !== "recovery_intent_review_v1") return this.query(input);
     if (!this.#capi) throw new Error("PWA recovery SQLite transaction API is unavailable");
@@ -8811,7 +8897,7 @@ export class PwaLibraryCoreSqliteEngine {
   #queryRecoveryIntents(input: LibraryCoreRecoveryIntentPageRequestV1): LibraryCoreRecoveryIntentPageResponseV1 {
     const request = parseLibraryCoreRecoveryIntentPageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    if (readPwaLibraryStorageIdentity(this.#database).schemaVersion !== 2) throw new Error("Recovery archives are unavailable in this storage version");
+    if (![2,5].includes(readPwaLibraryStorageIdentity(this.#database).schemaVersion)) throw new Error("Recovery archives are unavailable in this storage version");
     return this.#database.transaction(() => {
       const { generationId, sourceRevision } = this.#querySource();
       const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.recovery_intent_page_v1;
@@ -8851,7 +8937,7 @@ export class PwaLibraryCoreSqliteEngine {
   #queryRecoveryArchives(input: LibraryCoreRecoveryArchivePageRequestV1): LibraryCoreRecoveryArchivePageResponseV1 {
     const request = parseLibraryCoreRecoveryArchivePageRequestV1(input);
     if (!request.ok) throw new TypeError(request.error);
-    if (readPwaLibraryStorageIdentity(this.#database).schemaVersion !== 2) throw new Error("Recovery archives are unavailable in this storage version");
+    if (![2,5].includes(readPwaLibraryStorageIdentity(this.#database).schemaVersion)) throw new Error("Recovery archives are unavailable in this storage version");
     return this.#database.transaction(() => {
       const { generationId, sourceRevision } = this.#querySource();
       const program = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.recovery_archive_page_v1;
@@ -10712,6 +10798,51 @@ export class PwaLibraryCoreSqliteEngine {
     });
     if (!parsed.ok) throw new Error(parsed.error);
     return parsed.value;
+  }
+
+  /** Owner-only maintenance, never entered by a query or status command. */
+  beginAnnotationReconciliation(): { identity: string; through: readonly [string,number]; after: readonly [string,number] | null } | null {
+    rejectPwaAnnotationBuilding(this.#database);
+    requirePwaAnnotationReady(this.#database);
+    return this.#database.transaction(() => {
+      const identity=this.#annotationReconciliationIdentity();
+      if (identity===null) return null;
+      const rows=this.#database.exec({sql:"SELECT transaction_id,member_index FROM library_local_annotation_unresolved INDEXED BY library_local_annotation_transaction ORDER BY transaction_id DESC,member_index DESC LIMIT 1;",rowMode:"array",returnValue:"resultRows"});
+      return rows.length ? {identity,through:[text(rows[0]![0],"annotation transaction"),safeInteger(rows[0]![1],"annotation member")] as const,after:null} : null;
+    });
+  }
+
+  reconcileAnnotationPage(pass: { identity: string; through: readonly [string,number]; after: readonly [string,number] | null }): { changed: boolean; localChanged: boolean; after: readonly [string,number] | null } {
+    rejectPwaAnnotationBuilding(this.#database);
+    return this.#database.transaction("IMMEDIATE",() => {
+      requirePwaAnnotationReady(this.#database);
+      if (this.#annotationReconciliationIdentity() !== pass.identity) return {changed:true,localChanged:false,after:null};
+      const before=this.#database.selectValue("SELECT sequence FROM library_local_change_state WHERE singleton_id=1;");
+      const after=reconcilePwaAnnotationPage(this.#database,pass.after,pass.through);
+      return {changed:false,localChanged:before!==this.#database.selectValue("SELECT sequence FROM library_local_change_state WHERE singleton_id=1;"),after};
+    });
+  }
+
+  #annotationReconciliationIdentity(): string | null {
+    const rows=this.#database.exec({sql:"SELECT json_array(meta.library_id,meta.authority_epoch,generation.generation_id,active.epoch_id) FROM library_meta AS meta JOIN library_materialization_generation AS generation USING(singleton_id) JOIN library_active_authority AS active ON active.library_id=meta.library_id;",rowMode:0,returnValue:"resultRows"});
+    if (!rows.length) return null;
+    if (rows.length!==1) throw new Error("Annotation maintenance identity is ambiguous");
+    return `${this.#connectionGeneration}:${text(rows[0],"annotation maintenance identity")}`;
+  }
+
+  #queryAnnotationEditState(input: LibraryCoreItemAnnotationEditStateRequestV1): LibraryCoreItemAnnotationEditStateResponseV1 {
+    const parsed = parseLibraryCoreItemAnnotationEditStateRequestV1(input);
+    if (!parsed.ok) throw new TypeError(parsed.error);
+    return this.#database.transaction(() => {
+      requirePwaAnnotationReady(this.#database);
+      const { generationId, sourceRevision } = this.#querySource();
+      const rows = this.#database.exec({ sql: LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.item_annotation_edit_state_v1.sql, bind: [parsed.value.globalId], rowMode: "object", returnValue: "resultRows" });
+      const row = rows.length === 1 ? coerceLibraryCoreGeneratedSqliteQueryRow("item_annotation_edit_state_v1", rows[0]) : null;
+      if (!row) throw new Error("Annotation edit state row is invalid");
+      const response = parseLibraryCoreItemAnnotationEditStateResponseV1({ ...parsed.value, ...row, source: { generationId, projectionRevision: sourceRevision, transitionSequence: sourceRevision } }, parsed.value);
+      if (!response.ok) throw new Error(response.error);
+      return response.value;
+    });
   }
 
   #queryItemAnnotations(

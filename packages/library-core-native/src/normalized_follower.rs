@@ -374,6 +374,7 @@ pub fn prepare_normalized_follower_actor_request_v2(
     actor_store: &dyn ActorKeyStore,
     created_at: i64,
 ) -> Result<NormalizedFollowerActorRequestV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if created_at < 0 {
         return Err(invalid("normalized follower actor request time is invalid"));
     }
@@ -714,6 +715,7 @@ pub fn install_normalized_follower_actor_enrollment_v2(
     connection: &mut Connection,
     canonical_enrollment_certificate: &[u8],
 ) -> Result<NormalizedFollowerActorEnrollmentV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let response = install_follower_actor_enrollment_in_transaction(
         &transaction,
@@ -792,6 +794,7 @@ pub fn countersign_normalized_follower_actor_request_v2(
     authority_store: &dyn AuthorityKeyStore,
     accepted_at: i64,
 ) -> Result<NormalizedFollowerActorEnrollmentV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if accepted_at < 0 {
         return Err(invalid("normalized follower enrollment time is invalid"));
     }
@@ -864,6 +867,7 @@ fn active_follower_actor(
 pub fn normalized_follower_mutation_context_v1(
     connection: &Connection,
 ) -> Result<NormalizedMutationContextV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let (authority, _, _, _) = current_authority(connection)?;
     let (actor_id, actor_public_key, epoch_id) = active_follower_actor(connection)?;
     if epoch_id != authority.epoch_id {
@@ -914,6 +918,7 @@ pub fn normalized_follower_mutation_context_v1(
 pub fn normalized_follower_transport_context_v2(
     connection: &Connection,
 ) -> Result<NormalizedFollowerTransportContextV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let context = connection
         .query_row(
             "SELECT request.actor_id, meta.library_id, epoch.epoch_id,
@@ -972,6 +977,7 @@ pub fn page_normalized_follower_transport_v2(
     connection: &Connection,
     request: &NormalizedFollowerTransportPageRequestV2,
 ) -> Result<NormalizedFollowerTransportPageV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if request.actor_id.len() != 64
         || !(1..=MAX_SAFE_INTEGER).contains(&request.first_actor_counter)
         || request.limit == 0
@@ -1066,6 +1072,7 @@ pub fn enqueue_normalized_follower_intent_v1(
     canonical_envelopes: &[Vec<u8>],
     enqueued_at: i64,
 ) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let receipt = enqueue_normalized_follower_intent_in_transaction_v1(
         &transaction,
@@ -1083,9 +1090,12 @@ pub fn enqueue_normalized_follower_intent_with_source_v1(
     enqueued_at: i64,
     expected_source: Option<&crate::normalized_query::NormalizedFeedPageSourceV1>,
 ) -> Result<NormalizedFollowerIntentCommitReceiptV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let receipt = enqueue_follower_intent_with_admission(
-        &transaction, canonical_envelopes, enqueued_at,
+        &transaction,
+        canonical_envelopes,
+        enqueued_at,
         |connection| {
             crate::normalized_handoff::require_handoff_follower_edit_admission_v1(connection)?;
             crate::normalized_query::require_local_admission_source(connection, expected_source)
@@ -1127,6 +1137,7 @@ pub(crate) fn enqueue_follower_intent_with_admission(
     {
         return Err(invalid("normalized follower intent request is invalid"));
     }
+    crate::normalized_local_annotations::reject_building(transaction)?;
     let expected = normalized_follower_mutation_context_v1(transaction)?;
     let verified = verify_operation_transaction(canonical_envelopes, |identity| {
         let mut actor = actor_state_at(transaction, identity)?;
@@ -1142,6 +1153,13 @@ pub(crate) fn enqueue_follower_intent_with_admission(
         || verified.actor_id != expected.actor_id
     {
         return Err(invalid("normalized follower intent authority changed"));
+    }
+    if verified
+        .members
+        .iter()
+        .any(|member| member.operation_type == "feed_item_annotations_replace")
+    {
+        crate::normalized_local_annotations::require_ready(transaction)?;
     }
     let first = verified
         .members
@@ -1253,6 +1271,7 @@ pub(crate) fn enqueue_follower_intent_with_admission(
         ));
     }
     admit(transaction)?;
+    crate::normalized_local_annotations::admit_members(transaction, &verified.members)?;
     let canonical_transaction = encode_canonical_value(
         &json!({
             "actor_id": verified.actor_id,
@@ -1312,6 +1331,12 @@ pub(crate) fn enqueue_follower_intent_with_admission(
                 member.canonical_envelope_json.as_bytes(),
                 member.member_digest,
             ],
+        )?;
+        crate::normalized_local_annotations::insert_member(
+            transaction,
+            &verified.transaction_id,
+            index,
+            member,
         )?;
         for effect in &optimistic_fields[index] {
             let (value_type, boolean_value, integer_value) = match effect.value {
@@ -1380,6 +1405,7 @@ pub fn export_normalized_follower_intent_page_v1(
     connection: &Connection,
     request: &NormalizedFollowerIntentPageRequestV1,
 ) -> Result<NormalizedFollowerIntentPageV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if request.actor_id.is_empty()
         || request.actor_id.len() > 255
         || request.maximum_records == 0
@@ -1517,6 +1543,7 @@ pub fn record_normalized_follower_intent_publication_v1(
     actor_id: &str,
     published_at: i64,
 ) -> Result<NormalizedFollowerIntentPublicationReceiptV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if transaction_id.is_empty()
         || transaction_id.len() > 255
         || actor_id.is_empty()
@@ -1575,6 +1602,7 @@ pub fn record_normalized_follower_intent_transport_publication_v2(
     connection: &mut Connection,
     publication: &NormalizedFollowerIntentTransportPublicationV2,
 ) -> Result<NormalizedFollowerIntentTransportPublicationReceiptV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let bounded_text = |value: &str, maximum: usize| !value.is_empty() && value.len() <= maximum;
     if !bounded_text(&publication.actor_id, 255)
         || !bounded_text(&publication.library_id, 255)
@@ -1955,6 +1983,7 @@ pub(crate) fn import_normalized_follower_result_page_in_transaction_v1(
     records: &[NormalizedFollowerResultRecordV1],
     received_at: i64,
 ) -> Result<NormalizedFollowerResultImportReceiptV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(transaction)?;
     if records.is_empty() || records.len() > 128 || !(0..=MAX_SAFE_INTEGER).contains(&received_at) {
         return Err(invalid("normalized follower result page is invalid"));
     }
@@ -2076,6 +2105,10 @@ pub(crate) fn import_normalized_follower_result_page_in_transaction_v1(
                 record.authoritative_source_revision
             ],
         )?;
+        crate::normalized_local_annotations::retire_transaction(
+            transaction,
+            &record.transaction_id,
+        )?;
         next_sequence += 1;
         previous_digest = Some(record.result_digest.clone());
     }
@@ -2106,6 +2139,7 @@ pub fn import_normalized_follower_result_page_v1(
     records: &[NormalizedFollowerResultRecordV1],
     received_at: i64,
 ) -> Result<NormalizedFollowerResultImportReceiptV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let receipt = import_normalized_follower_result_page_in_transaction_v1(
         &transaction,
@@ -2171,6 +2205,7 @@ pub fn import_normalized_follower_result_transport_segment_v2(
     connection: &mut Connection,
     publication: &NormalizedFollowerResultTransportImportV2,
 ) -> Result<NormalizedFollowerResultTransportImportReceiptV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     import_result_transport_with_reconciliation(connection, publication, |_| Ok(()))
 }
 
@@ -2404,6 +2439,7 @@ pub(crate) fn import_result_transport_with_reconciliation(
 pub fn normalized_follower_runtime_status_v2(
     connection: &Connection,
 ) -> Result<NormalizedFollowerRuntimeStatusV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let receipt: Option<(String, String, i64, i64)> = connection
         .query_row(
             "SELECT library_id, authority_epoch_id, checkpoint_generation,
@@ -3071,41 +3107,739 @@ mod tests {
         )
         .expect("verified follower enrollment");
         EnrolledFollowerFixture {
-            connection, authority_store, checkpoint, request, accepted, actor_key_pair, verified,
+            connection,
+            authority_store,
+            checkpoint,
+            request,
+            accepted,
+            actor_key_pair,
+            verified,
         }
     }
 
     #[test]
+    fn annotation_pending_signed_result_and_application_both_arrival_orders() {
+        use crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload;
+        for result_first in [true, false] {
+            let EnrolledFollowerFixture {
+                mut connection,
+                actor_key_pair,
+                verified,
+                authority_store,
+                accepted,
+                ..
+            } = enrolled_follower_fixture();
+            connection.execute_batch("INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item:a','saved','article',0,0,'author','author','Author',0,1,0,0);").unwrap();
+            assert!(crate::normalized_local_annotations::resume(&mut connection).unwrap());
+            let frames = signed_envelopes_from_tip_with_payload(
+                &actor_key_pair,
+                &verified,
+                "tx:annotation:settle",
+                1,
+                None,
+                &verified.actor_chain_genesis,
+                &[("item:a", 1200)],
+                "feed_item_annotations_replace",
+                Some(
+                    &json!({"assigned_at_ms":1200,"highlights":[{"createdAt":1000,"note":"exact note","text":"quote","textBlobDigest":null}],"tags":["original"]}),
+                ),
+            );
+            let edit_request = json!({"queryId":"item_annotation_edit_state_v1","schemaVersion":1,"globalId":"item:a"});
+            connection.pragma_update(None, "query_only", true).unwrap();
+            let available = crate::normalized_query::query_normalized_json_v1(
+                &mut connection,
+                edit_request.clone(),
+            )
+            .unwrap();
+            assert_eq!(available["pending"], false);
+            connection.pragma_update(None, "query_only", false).unwrap();
+            enqueue_normalized_follower_intent_with_source_v1(&mut connection, &frames, 2200, None)
+                .unwrap();
+            let pending = crate::normalized_query::query_normalized_json_v1(
+                &mut connection,
+                edit_request.clone(),
+            )
+            .unwrap();
+            assert_eq!(pending["pending"], true);
+            assert!(
+                pending["localSequence"].as_u64().unwrap()
+                    > available["localSequence"].as_u64().unwrap()
+            );
+
+            let authority_key =
+                crate::load_established_authority_key_pair(&authority_store, &accepted.library_id)
+                    .unwrap();
+            let mut primary = Connection::open_in_memory().unwrap();
+            rusqlite::backup::Backup::new(&connection, &mut primary)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            crate::normalized_mutation::resolve_normalized_operation_transaction_v1(
+                &mut primary,
+                &frames,
+                &authority_key,
+                2400,
+            )
+            .unwrap();
+            let result = crate::export_normalized_follower_result_page_v1(
+                &primary,
+                &crate::NormalizedFollowerResultPageRequestV1 {
+                    actor_id: accepted.actor_id,
+                    after: None,
+                    maximum_records: 128,
+                    maximum_response_bytes: 1_048_576,
+                },
+            )
+            .unwrap();
+            assert_eq!(result.records.len(), 1);
+            assert_eq!(result.records[0].status, "accepted");
+            if result_first {
+                import_normalized_follower_result_page_v1(&mut connection, &result.records, 2500)
+                    .unwrap();
+                assert!(
+                    crate::normalized_local_annotations::pending(&connection, "item:a").unwrap(),
+                    "signed acceptance alone is not materialization"
+                );
+            }
+            // Reuses the verified canonical transaction application boundary.
+            // Shipping operation-page transport parity is a separate fixture.
+            crate::normalized_mutation::resolve_normalized_operation_transaction_v1(
+                &mut connection,
+                &frames,
+                &authority_key,
+                2600,
+            )
+            .unwrap();
+            assert!(!crate::normalized_local_annotations::pending(&connection, "item:a").unwrap());
+            if !result_first {
+                import_normalized_follower_result_page_v1(&mut connection, &result.records, 2700)
+                    .unwrap();
+            }
+            assert!(!crate::normalized_local_annotations::pending(&connection, "item:a").unwrap());
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT note FROM library_feed_item_highlights WHERE global_id='item:a';",
+                        [],
+                        |r| r.get::<_, String>(0)
+                    )
+                    .unwrap(),
+                "exact note"
+            );
+            let settled =
+                crate::normalized_query::query_normalized_json_v1(&mut connection, edit_request)
+                    .unwrap();
+            assert_eq!(settled["pending"], false);
+            assert!(
+                settled["localSequence"].as_u64().unwrap()
+                    > pending["localSequence"].as_u64().unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn annotation_pending_signed_already_applied_uses_original_operations_in_both_orders() {
+        use crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload;
+        for (result_first, checkpoint_only) in [(true, false), (false, false), (true, true)] {
+            let EnrolledFollowerFixture {
+                mut connection,
+                actor_key_pair,
+                verified,
+                authority_store,
+                accepted,
+                ..
+            } = enrolled_follower_fixture();
+            connection.execute_batch("INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item:a','saved','article',0,0,'a','a','A',0,1,0,0),('item:b','saved','article',0,0,'b','b','B',0,1,0,0);").unwrap();
+            assert!(crate::normalized_local_annotations::resume(&mut connection).unwrap());
+            let payload = json!({"assigned_at_ms":1200,"highlights":[],"tags":["original"]});
+            let original = signed_envelopes_from_tip_with_payload(
+                &actor_key_pair,
+                &verified,
+                "tx:original",
+                1,
+                None,
+                &verified.actor_chain_genesis,
+                &[("item:a", 1200), ("item:b", 1200)],
+                "feed_item_annotations_replace",
+                Some(&payload),
+            );
+            enqueue_normalized_follower_intent_with_source_v1(
+                &mut connection,
+                &original,
+                2000,
+                None,
+            )
+            .unwrap();
+            let authority_key =
+                crate::load_established_authority_key_pair(&authority_store, &accepted.library_id)
+                    .unwrap();
+            let mut primary = Connection::open_in_memory().unwrap();
+            rusqlite::backup::Backup::new(&connection, &mut primary)
+                .unwrap()
+                .run_to_completion(128, std::time::Duration::ZERO, None)
+                .unwrap();
+            connection
+                .execute("DELETE FROM library_writer_admission;", [])
+                .unwrap();
+            let original_receipt =
+                crate::normalized_mutation::accept_normalized_operation_transaction_v1(
+                    &mut primary,
+                    &original,
+                    &authority_key,
+                    2200,
+                )
+                .unwrap();
+            let tip = normalized_follower_mutation_context_v1(&connection).unwrap();
+            let replacement = signed_envelopes_from_tip_with_payload(
+                &actor_key_pair,
+                &verified,
+                "tx:new-intent",
+                tip.next_counter,
+                tip.previous_operation_id.as_deref(),
+                &tip.previous_chain_digest,
+                &[("item:a", 1300)],
+                "feed_item_annotations_replace",
+                Some(&json!({"assigned_at_ms":1300,"highlights":[],"tags":["original"]})),
+            );
+            // Historical pre-upgrade queues may contain overlapping signed
+            // replacements. This fixture changes only derived markers to admit
+            // that retained history, not the signature-verifying intent path.
+            connection.execute("DELETE FROM library_local_annotation_unresolved WHERE transaction_id='tx:original';",[]).unwrap();
+            enqueue_normalized_follower_intent_with_source_v1(
+                &mut connection,
+                &replacement,
+                2300,
+                None,
+            )
+            .unwrap();
+            connection.execute("INSERT INTO library_local_annotation_unresolved SELECT entity_id,transaction_id,member_index FROM library_intent_members WHERE transaction_id='tx:original';",[]).unwrap();
+            crate::normalized_mutation::tests::persist_signed_already_applied_fixture(
+                &mut primary,
+                &replacement,
+                &authority_key,
+                &original_receipt.follower_result_digest,
+                original_receipt.committed_revision + if checkpoint_only { 0 } else { 1 },
+            );
+            let results = crate::export_normalized_follower_result_page_v1(
+                &primary,
+                &crate::NormalizedFollowerResultPageRequestV1 {
+                    actor_id: accepted.actor_id,
+                    after: None,
+                    maximum_records: 128,
+                    maximum_response_bytes: 1_048_576,
+                },
+            )
+            .unwrap();
+            assert_eq!(results.records.len(), 2);
+            assert_eq!(results.records[1].status, "already_applied");
+            let body: Value =
+                serde_json::from_str(&results.records[1].canonical_result_json).unwrap();
+            assert_eq!(
+                body["canonical_operation_ids"].as_array().unwrap().len(),
+                2,
+                "O has two members while N has one"
+            );
+            assert_eq!(body["transaction_id"], "tx:new-intent");
+            if result_first {
+                import_normalized_follower_result_page_v1(&mut connection, &results.records, 2600)
+                    .unwrap();
+                assert!(
+                    crate::normalized_local_annotations::pending(&connection, "item:a").unwrap()
+                );
+            }
+            let snapshot = crate::describe_normalized_operation_export_v2(&primary).unwrap();
+            let page = crate::export_normalized_operation_page_v2(
+                &primary,
+                &crate::NormalizedOperationExportRequestV2 {
+                    snapshot: snapshot.clone(),
+                    after: None,
+                    after_source_revision: 0,
+                    maximum_records: 128,
+                    maximum_response_bytes: 1_048_576,
+                },
+            )
+            .unwrap();
+            crate::import_normalized_operation_page_v2(
+                &mut connection,
+                &crate::NormalizedOperationImportPageV2 {
+                    snapshot,
+                    page,
+                    received_at: 2700,
+                },
+            )
+            .unwrap();
+            if !result_first {
+                import_normalized_follower_result_page_v1(&mut connection, &results.records, 2800)
+                    .unwrap();
+            }
+            if result_first && !checkpoint_only {
+                // Start with real verified signed O/A and fault retained proof.
+                // These are storage-corruption negatives, not signature checks.
+                for fault in [
+                    "DELETE FROM library_operation_replication_results WHERE transaction_id='tx:original';",
+                    "DELETE FROM library_operations WHERE transaction_id='tx:original' AND member_index=0;",
+                    "UPDATE library_operations SET member_count=1000,member_index=999 WHERE transaction_id='tx:original' AND member_index=0;",
+                    "UPDATE library_operations SET envelope_digest=printf('%064d',9) WHERE transaction_id='tx:original' AND member_index=0;",
+                    "UPDATE library_transactions SET transaction_digest=printf('%064d',9) WHERE transaction_id='tx:original';",
+                    "UPDATE library_transactions SET authority_epoch='foreign-epoch' WHERE transaction_id='tx:original';",
+                    "UPDATE library_transactions SET actor_id=(SELECT actor_id FROM library_actors WHERE actor_id<>library_transactions.actor_id LIMIT 1) WHERE transaction_id='tx:original';",
+                    "UPDATE library_intent_results SET canonical_result=CAST(json_set(CAST(canonical_result AS TEXT),'$.original_result_digest',printf('%064d',9)) AS BLOB) WHERE transaction_id='tx:new-intent';",
+                ] {
+                    let tx=connection.transaction().unwrap();
+                    tx.execute_batch(fault).unwrap();
+                    crate::normalized_local_annotations::retire_transaction(&tx,"tx:new-intent").unwrap();
+                    assert!(crate::normalized_local_annotations::pending(&tx,"item:a").unwrap(),"fault must preserve exclusion: {fault}");
+                    tx.rollback().unwrap();
+                }
+                let tx = connection.transaction().unwrap();
+                crate::normalized_local_annotations::retire_transaction(&tx, "tx:new-intent")
+                    .unwrap();
+                assert!(!crate::normalized_local_annotations::pending(&tx, "item:a").unwrap());
+                tx.rollback().unwrap();
+                assert!(
+                    crate::normalized_local_annotations::pending(&connection, "item:a").unwrap(),
+                    "rollback restores marker and invalidation"
+                );
+            }
+            if checkpoint_only {
+                let descriptor = crate::describe_normalized_checkpoint_export_v2(&primary).unwrap();
+                let page = crate::export_normalized_checkpoint_page_v2(
+                    &primary,
+                    &crate::NormalizedCheckpointExportRequestV2::default(),
+                )
+                .unwrap();
+                assert!(page.done);
+                connection
+                    .execute("DELETE FROM library_operation_replication_results;", [])
+                    .unwrap();
+                connection
+                    .execute("DELETE FROM library_operations;", [])
+                    .unwrap();
+                connection
+                    .execute("DELETE FROM library_transactions;", [])
+                    .unwrap();
+                crate::begin_normalized_checkpoint_stage_v2(
+                    &connection,
+                    &crate::BeginNormalizedCheckpointStageV2 {
+                        stage_id: "annotation-cover".into(),
+                        library_id: descriptor.library_id,
+                        authority_epoch: descriptor.authority_epoch,
+                        source_revision: descriptor.source_revision,
+                        expected_record_count: page.records.len(),
+                        created_at: 2900,
+                    },
+                )
+                .unwrap();
+                crate::append_normalized_checkpoint_stage_page_v2(
+                    &mut connection,
+                    "annotation-cover",
+                    &page.records,
+                )
+                .unwrap();
+                crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                    &mut connection,
+                    "annotation-cover",
+                    &crate::NormalizedFollowerCheckpointReceiptV2 {
+                        checkpoint_generation: 1,
+                        writer_actor_id: descriptor.writer_id,
+                        manifest_object_key: "manifest-cover".into(),
+                        manifest_transport_object_id: "object-cover".into(),
+                        manifest_content_digest: "9".repeat(64),
+                        control_revision: "control-cover".into(),
+                        installed_at: 3000,
+                    },
+                )
+                .unwrap();
+                assert!(
+                    !crate::normalized_local_annotations::pending(&connection, "item:a").unwrap(),
+                    "checkpoint coverage is independent of retained O history"
+                );
+            }
+            let mut pass = None;
+            for _ in 0..8 {
+                pass =
+                    crate::reconcile_normalized_annotation_slice_v1(&mut connection, pass).unwrap();
+                if pass.is_none() {
+                    break;
+                }
+            }
+            assert!(pass.is_none());
+            assert!(!crate::normalized_local_annotations::pending(&connection, "item:a").unwrap());
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT count(*) FROM library_intent_transactions;",
+                        [],
+                        |row| row.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                2,
+                "retry evidence remains"
+            );
+        }
+    }
+
+    #[test]
+    fn annotation_pending_local_primary_refuses_after_signing_and_keeps_committed_retry() {
+        use crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload;
+        let EnrolledFollowerFixture {
+            mut connection,
+            actor_key_pair,
+            verified,
+            authority_store,
+            accepted,
+            ..
+        } = enrolled_follower_fixture();
+        connection.execute_batch("INSERT INTO library_feed_items(global_id,platform,content_type,captured_at,published_at,author_id,author_handle,author_display_name,hidden,saved,archived,updated_at) VALUES('item:a','saved','article',0,0,'author','author','Author',0,1,0,0);").unwrap();
+        assert!(crate::normalized_local_annotations::resume(&mut connection).unwrap());
+        let authority_key =
+            crate::load_established_authority_key_pair(&authority_store, &accepted.library_id)
+                .unwrap();
+        let first = signed_envelopes_from_tip_with_payload(
+            &actor_key_pair,
+            &verified,
+            "tx:annotation:primary",
+            1,
+            None,
+            &verified.actor_chain_genesis,
+            &[("item:a", 1200)],
+            "feed_item_annotations_replace",
+            Some(&json!({"assigned_at_ms":1200,"highlights":[],"tags":["original"]})),
+        );
+        // The packet was prepared and signed before local pending state arrived.
+        enqueue_normalized_follower_intent_with_source_v1(&mut connection, &first, 2200, None)
+            .unwrap();
+        let before = connection.total_changes();
+        assert!(
+            crate::normalized_mutation::accept_normalized_operation_transaction_with_source_v1(
+                &mut connection,
+                &first,
+                &authority_key,
+                2300,
+                None
+            )
+            .unwrap_err()
+            .to_string()
+            .contains("LOCAL_ANNOTATION_PENDING")
+        );
+        assert_eq!(
+            connection.total_changes(),
+            before,
+            "local Primary pending refusal writes nothing"
+        );
+        // The authenticated remote resolver must still materialize the pending intent.
+        let original =
+            match crate::normalized_mutation::resolve_normalized_operation_transaction_v1(
+                &mut connection,
+                &first,
+                &authority_key,
+                2400,
+            )
+            .unwrap()
+            {
+                crate::normalized_mutation::NormalizedMutationResolutionV1::Accepted(receipt) => {
+                    receipt
+                }
+                _ => panic!("expected canonical acceptance"),
+            };
+        let context = normalized_follower_mutation_context_v1(&connection).unwrap();
+        let second = signed_envelopes_from_tip_with_payload(
+            &actor_key_pair,
+            &verified,
+            "tx:annotation:primary:second",
+            context.next_counter,
+            context.previous_operation_id.as_deref(),
+            &context.previous_chain_digest,
+            &[("item:a", 1300)],
+            "feed_item_annotations_replace",
+            Some(&json!({"assigned_at_ms":1300,"highlights":[],"tags":["next"]})),
+        );
+        enqueue_normalized_follower_intent_with_source_v1(&mut connection, &second, 2500, None)
+            .unwrap();
+        let before = connection.total_changes();
+        let retried =
+            crate::normalized_mutation::accept_normalized_operation_transaction_with_source_v1(
+                &mut connection,
+                &first,
+                &authority_key,
+                2600,
+                None,
+            )
+            .unwrap();
+        assert_eq!(retried, original);
+        assert_eq!(
+            connection.total_changes(),
+            before,
+            "known canonical retry precedes the new pending marker"
+        );
+        let changed = signed_envelopes_from_tip_with_payload(
+            &actor_key_pair,
+            &verified,
+            "tx:annotation:primary",
+            1,
+            None,
+            &verified.actor_chain_genesis,
+            &[("item:a", 1200)],
+            "feed_item_annotations_replace",
+            Some(&json!({"assigned_at_ms":1200,"highlights":[],"tags":["changed"]})),
+        );
+        assert!(
+            crate::normalized_mutation::accept_normalized_operation_transaction_with_source_v1(
+                &mut connection,
+                &changed,
+                &authority_key,
+                2700,
+                None
+            )
+            .is_err()
+        );
+        assert_eq!(connection.total_changes(), before);
+    }
+
+    #[test]
+    fn annotation_pending_follower_rejects_new_signed_edit_but_preserves_exact_retry() {
+        use crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip_with_payload;
+        let EnrolledFollowerFixture {
+            mut connection,
+            actor_key_pair,
+            verified,
+            ..
+        } = enrolled_follower_fixture();
+        assert!(crate::normalized_local_annotations::resume(&mut connection).unwrap());
+        let payload = json!({"assigned_at_ms":1200,"highlights":[],"tags":["original"]});
+        let first = signed_envelopes_from_tip_with_payload(
+            &actor_key_pair,
+            &verified,
+            "tx:annotation:pending",
+            1,
+            None,
+            &verified.actor_chain_genesis,
+            &[("item:a", 1200)],
+            "feed_item_annotations_replace",
+            Some(&payload),
+        );
+        let receipt =
+            enqueue_normalized_follower_intent_with_source_v1(&mut connection, &first, 2200, None)
+                .unwrap();
+        assert!(crate::normalized_local_annotations::pending(&connection, "item:a").unwrap());
+        assert!(!crate::normalized_local_annotations::pending(&connection, "item:b").unwrap());
+        let sequence: i64 = connection
+            .query_row(
+                "SELECT sequence FROM library_local_change_state;",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(sequence, 1);
+        // Phase fencing precedes even a valid durable retry. This fault injection
+        // tests ordinary boundary refusal, not migration crash durability.
+        connection
+            .execute_batch("UPDATE library_local_annotation_migration SET phase='building';")
+            .unwrap();
+        let blocked_changes = connection.total_changes();
+        assert!(enqueue_normalized_follower_intent_with_source_v1(
+            &mut connection,
+            &first,
+            2201,
+            None
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("BUILDING"));
+        assert!(normalized_follower_mutation_context_v1(&connection)
+            .unwrap_err()
+            .to_string()
+            .contains("BUILDING"));
+        assert!(normalized_follower_runtime_status_v2(&connection)
+            .unwrap_err()
+            .to_string()
+            .contains("BUILDING"));
+        assert!(record_normalized_follower_intent_publication_v1(
+            &mut connection,
+            "invalid",
+            "invalid",
+            "invalid",
+            0
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("BUILDING"));
+        assert!(
+            crate::normalized_sqlite::install_normalized_schema_v1(&connection)
+                .unwrap_err()
+                .to_string()
+                .contains("BUILDING")
+        );
+        assert_eq!(connection.total_changes(), blocked_changes);
+        connection
+            .execute_batch("UPDATE library_local_annotation_migration SET phase='ready';")
+            .unwrap();
+        connection.execute_batch("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;").unwrap();
+        let before = connection.total_changes();
+        assert_eq!(
+            enqueue_normalized_follower_intent_with_source_v1(&mut connection, &first, 2201, None)
+                .unwrap(),
+            receipt
+        );
+        assert_eq!(connection.total_changes(), before);
+        let changed = signed_envelopes_from_tip_with_payload(
+            &actor_key_pair,
+            &verified,
+            "tx:annotation:pending",
+            1,
+            None,
+            &verified.actor_chain_genesis,
+            &[("item:a", 1200)],
+            "feed_item_annotations_replace",
+            Some(&json!({"assigned_at_ms":1200,"highlights":[],"tags":["changed"]})),
+        );
+        assert!(enqueue_normalized_follower_intent_with_source_v1(
+            &mut connection,
+            &changed,
+            2202,
+            None
+        )
+        .is_err());
+        assert_eq!(connection.total_changes(), before);
+        let context = normalized_follower_mutation_context_v1(&connection).unwrap();
+        let second = signed_envelopes_from_tip_with_payload(
+            &actor_key_pair,
+            &verified,
+            "tx:annotation:second",
+            context.next_counter,
+            context.previous_operation_id.as_deref(),
+            &context.previous_chain_digest,
+            &[("item:a", 1300)],
+            "feed_item_annotations_replace",
+            Some(&json!({"assigned_at_ms":1300,"highlights":[],"tags":["second"]})),
+        );
+        assert!(enqueue_normalized_follower_intent_with_source_v1(
+            &mut connection,
+            &second,
+            2300,
+            None
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("LOCAL_ANNOTATION_PENDING"));
+        assert_eq!(
+            connection.total_changes(),
+            before,
+            "pending refusal is before any write"
+        );
+        let unrelated = signed_envelopes_from_tip_with_payload(
+            &actor_key_pair,
+            &verified,
+            "tx:annotation:unrelated",
+            context.next_counter,
+            context.previous_operation_id.as_deref(),
+            &context.previous_chain_digest,
+            &[("item:b", 1300)],
+            "feed_item_annotations_replace",
+            Some(&json!({"assigned_at_ms":1300,"highlights":[],"tags":[]})),
+        );
+        enqueue_normalized_follower_intent_with_source_v1(&mut connection, &unrelated, 2301, None)
+            .unwrap();
+        assert!(crate::normalized_local_annotations::pending(&connection, "item:b").unwrap());
+        connection
+            .execute_batch("UPDATE library_local_annotation_migration SET phase='building';")
+            .unwrap();
+        let before = connection.total_changes();
+        assert!(enqueue_normalized_follower_intent_with_source_v1(
+            &mut connection,
+            &first,
+            2400,
+            None
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("BUILDING"));
+        assert_eq!(
+            connection.total_changes(),
+            before,
+            "BUILDING also refuses exact retries"
+        );
+    }
+
+    #[test]
     fn local_admission_follower_source_fence_preserves_exact_retry() {
-        let EnrolledFollowerFixture { mut connection, actor_key_pair, verified, .. } =
-            enrolled_follower_fixture();
+        let EnrolledFollowerFixture {
+            mut connection,
+            actor_key_pair,
+            verified,
+            ..
+        } = enrolled_follower_fixture();
         let envelopes = signed_envelopes(&actor_key_pair, &verified);
-        let (generation_id, source_revision) = crate::normalized_query::query_source(&connection).unwrap();
+        let (generation_id, source_revision) =
+            crate::normalized_query::query_source(&connection).unwrap();
         let expected_source = crate::normalized_query::NormalizedFeedPageSourceV1 {
-            generation_id, projection_revision: source_revision, transition_sequence: source_revision,
+            generation_id,
+            projection_revision: source_revision,
+            transition_sequence: source_revision,
         };
         let mut stale_source = expected_source.clone();
         stale_source.transition_sequence += 1;
         let before_stale = connection.total_changes();
-        assert!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2200, Some(&stale_source)).unwrap_err().to_string().contains("LOCAL_ADMISSION_SOURCE_STALE"));
+        assert!(enqueue_normalized_follower_intent_with_source_v1(
+            &mut connection,
+            &envelopes,
+            2200,
+            Some(&stale_source)
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("LOCAL_ADMISSION_SOURCE_STALE"));
         assert_eq!(connection.total_changes(), before_stale);
-        let intent = enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2_200, Some(&expected_source))
-            .expect("enqueue follower intent");
+        let intent = enqueue_normalized_follower_intent_with_source_v1(
+            &mut connection,
+            &envelopes,
+            2_200,
+            Some(&expected_source),
+        )
+        .expect("enqueue follower intent");
         connection.execute_batch("UPDATE library_meta SET source_revision=source_revision+1; UPDATE library_change_state SET revision=revision+1;").unwrap();
         let before_retry = connection.total_changes();
-        assert_eq!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &envelopes, 2201, Some(&expected_source)).unwrap(), intent);
+        assert_eq!(
+            enqueue_normalized_follower_intent_with_source_v1(
+                &mut connection,
+                &envelopes,
+                2201,
+                Some(&expected_source)
+            )
+            .unwrap(),
+            intent
+        );
         assert_eq!(connection.total_changes(), before_retry);
         let changed = crate::normalized_operation_test_fixtures::tests::signed_envelopes_from_tip(
-            &actor_key_pair, &verified, "tx:read:native-verified", 1, None,
-            &verified.actor_chain_genesis, &[("rss:item:1", 990), ("rss:item:2", 991)], "feed_item_read_assignment");
-        assert!(enqueue_normalized_follower_intent_with_source_v1(&mut connection, &changed, 2202, Some(&expected_source)).is_err());
+            &actor_key_pair,
+            &verified,
+            "tx:read:native-verified",
+            1,
+            None,
+            &verified.actor_chain_genesis,
+            &[("rss:item:1", 990), ("rss:item:2", 991)],
+            "feed_item_read_assignment",
+        );
+        assert!(enqueue_normalized_follower_intent_with_source_v1(
+            &mut connection,
+            &changed,
+            2202,
+            Some(&expected_source)
+        )
+        .is_err());
         assert_eq!(connection.total_changes(), before_retry);
     }
 
     #[test]
     fn normalized_follower_enrollment_is_v2_replayable_and_initializes_intents() {
         let EnrolledFollowerFixture {
-            mut connection, authority_store, checkpoint, request, accepted, actor_key_pair, verified,
+            mut connection,
+            authority_store,
+            checkpoint,
+            request,
+            accepted,
+            actor_key_pair,
+            verified,
         } = enrolled_follower_fixture();
         crate::normalized_preference_projection::check_dormant_migration_contract(&connection);
         let envelopes = signed_envelopes(&actor_key_pair, &verified);

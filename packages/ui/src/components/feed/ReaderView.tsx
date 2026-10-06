@@ -1030,11 +1030,12 @@ export function ReaderView({
           </h1>
 
           {annotationStatus && <p role="status">{annotationStatus}</p>}
+          {!annotationStatus && annotations?.state === "ready" && annotations.editState !== "ready" && <p role="status">{annotations.editState === "pending" ? "A saved annotation edit is still pending. Wait for it to settle before editing again." : "Annotation editing is temporarily unavailable. Saved annotations have not changed."}</p>}
           {item.platform === "saved" && updateSavedContent && (
             <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  disabled={!annotations || annotations.state !== "ready"}
+                  disabled={!annotations || annotations.state !== "ready" || annotations.editState !== "ready"}
                   onClick={() => openSavedContentEditor(item, annotations)}
                   className="btn-secondary rounded-lg px-3 py-2 text-sm font-semibold"
                 >
