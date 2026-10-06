@@ -1,7 +1,8 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium, expect, test, type BrowserContext, type Page } from "@playwright/test";
+import type { UpdateSavedContentInput } from "../../ui/src/context/PlatformContext";
 import {
   LibraryCoreSha256,
   LIBRARY_CORE_PRIMARY_WRITER_OPERATION_TYPES_V2,
@@ -15,10 +16,23 @@ import {
   parseLibraryCoreFollowerResultEnvelopeV1, libraryCoreFollowerResultBodyV1,
   type LibraryCoreCanonicalValue, type LibraryCoreDigestDomain,
   type LibraryCoreNormalizedQueryExecutor,
+  type LibraryCoreSqliteQueryRequest,
 
   createLibraryCoreContentRangeStorageKeyV1,
   digestLibraryCoreMediaBlobBytesV1,
 } from "@freed/shared/library-core";
+
+interface AnnotationFixtureWindow extends Window {
+  fixtureClient: import("../src/lib/library-core-sqlite-client").PwaLibraryCoreSqliteClient;
+  annotationUi: ReturnType<typeof import("./fixtures/annotation-ui").mount>;
+  $RefreshReg$: () => void;
+  $RefreshSig$: () => (type: unknown) => unknown;
+  __vite_plugin_react_preamble_installed__: boolean;
+}
+
+test.beforeAll(async () => {
+  await mkdir(resolve("../../.cache"), { recursive: true });
+});
 
 const quote = "\ufeffExact\r\ne\u0301\0🦉";
 const bytes = new TextEncoder().encode(quote);
@@ -158,44 +172,44 @@ for (const resident of [true, false]) {
       const refreshPath = "/@react-refresh";
       const refresh = (await import(refreshPath)).default;
       refresh.injectIntoGlobalHook(window);
-      (window as any).$RefreshReg$ = () => {};
-      (window as any).$RefreshSig$ = () => (type: unknown) => type;
-      (window as any).__vite_plugin_react_preamble_installed__ = true;
+      (window as AnnotationFixtureWindow).$RefreshReg$ = () => {};
+      (window as AnnotationFixtureWindow).$RefreshSig$ = () => (type: unknown) => type;
+      (window as AnnotationFixtureWindow).__vite_plugin_react_preamble_installed__ = true;
       const path = "/tests/fixtures/annotation-ui.tsx";
-      (window as any).annotationUi = (await import(path)).mount(resident);
+      (window as AnnotationFixtureWindow).annotationUi = (await import(path)).mount(resident);
     }, resident);
     if (resident) await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeDisabled();
     else await expect(page.getByText("Loading item...", { exact: true })).toBeVisible();
-    await page.evaluate(() => (window as any).annotationUi.ready());
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.ready());
     await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Edit save", exact: true }).click();
     await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Original note");
     await page.getByLabel("Notes", { exact: true }).fill("Edited note");
     await page.getByRole("button", { name: "Update save", exact: true }).click();
     await expect(page.getByText("LOCAL_ADMISSION_SOURCE_STALE: reopen the item", { exact: true })).toBeVisible();
-    expect(await page.evaluate(() => (window as any).annotationUi.submissions[0].annotationSnapshot.originals.source.projectionRevision)).toBe(2);
-    await page.evaluate(() => (window as any).annotationUi.close());
+    expect(await page.evaluate(() => ((window as AnnotationFixtureWindow).annotationUi.submissions[0] as UpdateSavedContentInput).annotationSnapshot!.originals.source.projectionRevision)).toBe(2);
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.close());
     await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
-    await page.evaluate(() => (window as any).annotationUi.pending(true));
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.pending(true));
     await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeDisabled();
     await expect(page.getByText("A saved annotation edit is still pending. Wait for it to settle before editing again.", { exact: true }).first()).toBeVisible();
-    await page.evaluate(() => (window as any).annotationUi.event(true));
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.event(true));
     await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
-    await page.evaluate(() => (window as any).annotationUi.openSnapshot());
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.openSnapshot());
     await page.getByRole("button", { name: "Update save", exact: true }).click();
-    expect(await page.evaluate(() => (window as any).annotationUi.submissions.length)).toBe(1);
-    await page.evaluate(() => { (window as any).annotationUi.close(); (window as any).annotationUi.pending(false); });
+    expect(await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.submissions.length)).toBe(1);
+    await page.evaluate(() => { (window as AnnotationFixtureWindow).annotationUi.close(); (window as AnnotationFixtureWindow).annotationUi.pending(false); });
     await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeEnabled();
-    await page.evaluate(() => (window as any).annotationUi.event(false));
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.event(false));
     await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
-    await page.evaluate(() => (window as any).annotationUi.event(true));
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.event(true));
     await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Original note");
-    await page.evaluate(() => (window as any).annotationUi.close());
-    await page.evaluate(() => (window as any).annotationUi.openWithoutSnapshot());
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.close());
+    await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.openWithoutSnapshot());
     await page.getByRole("button", { name: "Update save", exact: true }).click();
     await expect(page.getByText("Annotations are not ready for editing; reopen the item", { exact: true })).toBeVisible();
-    expect(await page.evaluate(() => (window as any).annotationUi.submissions.length)).toBe(1);
-    await page.evaluate(() => { (window as any).annotationUi.close(); (window as any).annotationUi.fail("corrupt"); });
+    expect(await page.evaluate(() => (window as AnnotationFixtureWindow).annotationUi.submissions.length)).toBe(1);
+    await page.evaluate(() => { (window as AnnotationFixtureWindow).annotationUi.close(); (window as AnnotationFixtureWindow).annotationUi.fail("corrupt"); });
     await expect(page.getByText("Saved annotation text is corrupt. Saved annotations have not changed.", { exact: true }).first()).toBeVisible();
     if (resident) await expect(page.getByRole("button", { name: "Edit save", exact: true })).toBeDisabled();
     expect(external).toEqual([]);
@@ -244,11 +258,11 @@ test("signed note survives shipping worker OPFS restart with canonical quotes an
     `);
     let page = await openClient(context);
     await page.evaluate(async ({ request, certificate }) => {
-      const client = (window as any).fixtureClient as import("../src/lib/library-core-sqlite-client").PwaLibraryCoreSqliteClient;
+      const client = (window as AnnotationFixtureWindow).fixtureClient as import("../src/lib/library-core-sqlite-client").PwaLibraryCoreSqliteClient;
       await client.storeFollowerActorRequest({ canonicalRequestBytes: new Uint8Array(request), createdAt: 1000 });
       await client.installFollowerActorEnrollment({ canonicalCertificateBytes: new Uint8Array(certificate), enrolledAt: 1100 });
     }, { request: [...canonical(enrollmentRequest.request)], certificate: [...canonical(certificate.certificate)] });
-    const query = (async (request: unknown) => page.evaluate(request => (window as any).fixtureClient.query(request), request)) as LibraryCoreNormalizedQueryExecutor;
+    const query = (async (request: LibraryCoreSqliteQueryRequest) => page.evaluate(request => (window as AnnotationFixtureWindow).fixtureClient.query(request), request)) as LibraryCoreNormalizedQueryExecutor;
     const originalRequest = { queryId: "item_annotations_v1", schemaVersion: 1, globalId: "item" } as const;
     const snapshot = retainRenderedAnnotationSnapshot(await hydrateLibraryCoreAnnotations(query, await query(originalRequest)), "item");
     expect(snapshot.highlights![0]!.text).toBe(quote);
@@ -256,7 +270,7 @@ test("signed note survives shipping worker OPFS restart with canonical quotes an
     expect(snapshot.originals.tags).toEqual(["alpha", exactTag]);
     const payload = replaceHydratedSavedNote(snapshot, note, 3000);
     const prepare = async (transactionId: string, original: typeof snapshot) => {
-      const tip = await page.evaluate(() => (window as any).fixtureClient.followerMutationContext());
+      const tip = await page.evaluate(() => (window as AnnotationFixtureWindow).fixtureClient.followerMutationContext());
       const member = FEED_ITEM_ANNOTATIONS_REPLACE_TRANSACTION_MEMBER_SCHEMA.construct({
         actor_id: tip.actor_id, actor_sequence: tip.next_actor_sequence, causal_frontier: tip.observed_frontier,
         created_at_ms: 3000, entity_id: "item", epoch: tip.epoch, epoch_id: tip.epoch_id,
@@ -269,15 +283,15 @@ test("signed note survives shipping worker OPFS restart with canonical quotes an
     };
     const signed = await prepare("tx:annotation:restart", snapshot);
     const packet = { envelopeBytes: signed.members.map(member => [...canonical(member.envelope)]), expectedSource: snapshot.originals.source };
-    const commit = (value: typeof packet) => page.evaluate(value => (window as any).fixtureClient.commitFollowerIntent({
+    const commit = (value: typeof packet) => page.evaluate(value => (window as AnnotationFixtureWindow).fixtureClient.commitFollowerIntent({
       ...value, envelopeBytes: value.envelopeBytes.map(bytes => new Uint8Array(bytes)),
     }), value);
     const receipt = await commit(packet);
     const pendingSecond=await prepare("tx:annotation:pending-second",snapshot);
     const pendingPacket={ envelopeBytes:pendingSecond.members.map(member=>[...canonical(member.envelope)]),expectedSource:snapshot.originals.source };
-    const pendingTip=await page.evaluate(()=>(window as any).fixtureClient.followerMutationContext());
+    const pendingTip=await page.evaluate(()=>(window as AnnotationFixtureWindow).fixtureClient.followerMutationContext());
     await expect(commit(pendingPacket)).rejects.toThrow(/LOCAL_ANNOTATION_PENDING/);
-    expect(await page.evaluate(()=>(window as any).fixtureClient.followerMutationContext())).toEqual(pendingTip);
+    expect(await page.evaluate(()=>(window as AnnotationFixtureWindow).fixtureClient.followerMutationContext())).toEqual(pendingTip);
     expect((await query(originalRequest)).highlights).toEqual(snapshot.originals.highlights);
     const reopenWithSourceAdvance = async () => {
       await context!.close();
@@ -311,7 +325,7 @@ test("signed note survives shipping worker OPFS restart with canonical quotes an
     const result = canonical({ ...unsigned, result_body_digest: resultDigest,
       signature: sign(null, encodeLibraryCoreSignatureInput("follower-result-envelope", { result_body_digest: resultDigest }), authority.privateKey).toString("hex"),
     });
-    const settle = () => page.evaluate(bytes => (window as any).fixtureClient.applyFollowerResult({ canonicalResultBytes: new Uint8Array(bytes) }), [...result]);
+    const settle = () => page.evaluate(bytes => (window as AnnotationFixtureWindow).fixtureClient.applyFollowerResult({ canonicalResultBytes: new Uint8Array(bytes) }), [...result]);
     const settledReceipt = await settle();
     await context.close();
     context = await chromium.launchPersistentContext(profile, offlineBrowser);
@@ -325,9 +339,9 @@ test("signed note survives shipping worker OPFS restart with canonical quotes an
     const stale = await prepare("tx:annotation:stale", nextSnapshot);
     const stalePacket = { envelopeBytes: stale.members.map(member => [...canonical(member.envelope)]), expectedSource: nextSnapshot.originals.source };
     await reopenWithSourceAdvance();
-    const before = await page.evaluate(() => (window as any).fixtureClient.followerMutationContext());
+    const before = await page.evaluate(() => (window as AnnotationFixtureWindow).fixtureClient.followerMutationContext());
     await expect(commit(stalePacket)).rejects.toThrow(/LOCAL_ADMISSION_SOURCE_STALE/);
-    expect(await page.evaluate(() => (window as any).fixtureClient.followerMutationContext())).toEqual(before);
+    expect(await page.evaluate(() => (window as AnnotationFixtureWindow).fixtureClient.followerMutationContext())).toEqual(before);
     expect((await query(originalRequest)).highlights).toEqual(payload.highlights);
     expect((await query(originalRequest)).tags).toEqual(snapshot.originals.tags);
     // Result replay preserves signed receipt identity; this API reports current source revision.
