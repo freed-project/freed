@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { generateSampleLibraryData } from "@freed/shared";
-import { decodeLibraryCoreItemScanCursorV1, parseLibraryCoreSqliteQueryResponse } from "@freed/shared/library-core";
+import { decodeLibraryCoreItemScanCursorV1, hydrateLibraryCoreAnnotations, parseLibraryCoreSqliteQueryResponse, type LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
 import { tauriInitScript } from "./tauri-init.js";
 
 it("serializes yielding mock writes and saves each complete snapshot before acknowledgment", async () => {
@@ -122,4 +122,46 @@ it("mock background and item-detail responses preserve nullable seen confirmatio
     const scan = parseLibraryCoreSqliteQueryResponse(runtime.__TAURI_MOCK_HANDLERS__.query_normalized_library({ request: scanRequest }), scanRequest);
     expect(scan.rows[0]?.seenSyncedAt).toBe(stamp);
   }
+});
+
+function annotationQueryRuntime() {
+  const runtime = {} as {
+    __TAURI_MOCK_SQLITE_LIBRARY__: { items: Record<string, unknown> };
+    __TAURI_MOCK_HANDLERS__: Record<string, (args: unknown) => unknown>;
+  };
+  new Function("window", tauriInitScript())(runtime);
+  const item = generateSampleLibraryData({ seed: 42 }).items[0]!;
+  runtime.__TAURI_MOCK_SQLITE_LIBRARY__.items = { [item.globalId]: item };
+  const query: LibraryCoreNormalizedQueryExecutor = async request =>
+    parseLibraryCoreSqliteQueryResponse(
+      runtime.__TAURI_MOCK_HANDLERS__.query_normalized_library({ request }), request,
+    );
+  return { runtime, query, item };
+}
+
+it("mock annotation edit-state query keeps settled primary annotations editable", async () => {
+  const { query, item } = annotationQueryRuntime();
+  const edit = await query({ queryId: "item_annotation_edit_state_v1", schemaVersion: 1, globalId: item.globalId });
+  expect(edit).toMatchObject({ globalId: item.globalId, pending: false, localSequence: 0 });
+  const originals = await query({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: item.globalId });
+  expect(edit.source).toEqual(originals.source);
+  const snapshot = await hydrateLibraryCoreAnnotations(query, originals);
+  expect(snapshot).toMatchObject({ state: "ready", editState: "ready" });
+});
+
+it("mock annotation edit-state query excludes only queued follower annotation targets", async () => {
+  const { runtime, query, item } = annotationQueryRuntime();
+  const request = { queryId: "item_annotation_edit_state_v1", schemaVersion: 1, globalId: item.globalId } as const;
+  expect(await query(request)).toMatchObject({ pending: false, localSequence: 0 });
+  await runtime.__TAURI_MOCK_HANDLERS__.enqueue_normalized_library_follower_intent({
+    request: { canonicalEnvelopeJson: [JSON.stringify({
+      entity_id: item.globalId, operation_type: "feed_item_annotations_replace",
+      payload: { highlights: [], tags: ["queued"] },
+    })] },
+  });
+  expect(await query(request)).toMatchObject({ pending: true, localSequence: 1 });
+  expect(await query({ ...request, globalId: "unrelated-item" })).toMatchObject({ pending: false, localSequence: 1 });
+  expect(await query({ ...request, globalId: "toString" })).toMatchObject({ pending: false, localSequence: 1 });
+  const snapshot = await hydrateLibraryCoreAnnotations(query, await query({ ...request, queryId: "item_annotations_v1" }));
+  expect(snapshot).toMatchObject({ state: "ready", editState: "pending" });
 });

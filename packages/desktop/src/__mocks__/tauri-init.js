@@ -197,6 +197,17 @@ export function tauriInitScript() {
       });
       var first = envelopes[0];
       envelopes.forEach(applyNormalizedEnvelope);
+      // Queued annotation intents remain excluded from further edits. Primary
+      // commits acknowledge applied snapshots; queued follower intents do not.
+      envelopes.forEach(function(envelope) {
+        if (envelope.operation_type !== 'feed_item_annotations_replace') return;
+        var state = sqliteState();
+        state.annotationPendingItems = state.annotationPendingItems || Object.create(null);
+        Object.defineProperty(state.annotationPendingItems, envelope.entity_id, {
+          value: true, enumerable: true, configurable: true, writable: true,
+        });
+        state.annotationLocalSequence = (state.annotationLocalSequence || 0) + 1;
+      });
       sqliteState().revision += 1;
       return {
         transactionId: first.transaction_id,
@@ -1556,6 +1567,18 @@ export function tauriInitScript() {
             };
           }),
           schemaVersion: request.schemaVersion,
+          source: source,
+        };
+      }
+      if (request.queryId === 'item_annotation_edit_state_v1') {
+        return {
+          globalId: request.globalId,
+          localSequence: state.annotationLocalSequence || 0,
+          pending: !!(state.annotationPendingItems &&
+            Object.prototype.hasOwnProperty.call(state.annotationPendingItems, request.globalId) &&
+            state.annotationPendingItems[request.globalId] === true),
+          queryId: request.queryId,
+          schemaVersion: 1,
           source: source,
         };
       }
