@@ -28,7 +28,10 @@ credentials. It uses the existing approved Vercel preview OAuth relay through
 `app.freed.wtf`; it does not register a new Google callback or deploy production.
 Credential presence does not prove a successful OAuth exchange. Verify sign-in
 on the resulting dedicated preview origin and use a separate browser profile.
-Do not substitute the production PWA for a matching test candidate.
+Do not substitute the production PWA for a matching test candidate. Acceptance
+previews retain normal onboarding and Library selection, with automatic sample
+population disabled. A fresh profile must not create a sample Library on its own;
+after joining, restarting must reopen that Library without reseeding it.
 
 For isolated workflow acceptance, build both clients from the same reviewed,
 clean source. Verify `git status --short` is empty, then set the existing build

@@ -72,7 +72,7 @@ test("linked worktrees preserve their exact project identity", () => {
 });
 
 
-test("transfer preview uses clean committed source and refuses missing OAuth configuration", () => {
+test("transfer preview preserves normal Library startup, committed source and OAuth preflight", () => {
   withTempDirectory((directory) => {
     const repo = path.join(directory, "repo");
     const bin = path.join(directory, "bin");
@@ -98,7 +98,13 @@ test("transfer preview uses clean committed source and refuses missing OAuth con
     const sha = git("rev-parse", "HEAD");
     // Tool shims retain the real Node parser; no network or project registry exists.
     writeFileSync(path.join(bin, "node"), `#!/bin/sh\nexec '${process.execPath}' "$@"\n`);
-    writeFileSync(path.join(bin, "npm"), "#!/bin/sh\nexit 0\n");
+    writeFileSync(path.join(bin, "npm"), `#!${process.execPath}
+if (process.argv[2] === "run") {
+  require("node:fs").appendFileSync(process.env.FIXTURE_LOG, JSON.stringify({
+    command: "local-build", featurePreview: process.env.VITE_FREED_FEATURE_PREVIEW,
+  }) + "\\n");
+}
+`);
     writeFileSync(path.join(bin, "npx"), `#!${process.execPath}
 const fs = require("node:fs"), path = require("node:path");
 const args = process.argv.slice(2), command = args[1];
@@ -110,6 +116,7 @@ if (command === "pull") {
 }
 const config = JSON.parse(fs.readFileSync(path.join(cwd, "vercel.json")));
 fs.appendFileSync(process.env.FIXTURE_LOG, JSON.stringify({ command, args,
+  featurePreview: process.env.VITE_FREED_FEATURE_PREVIEW,
   sha: process.env.FREED_BUILD_COMMIT_SHA, kind: process.env.FREED_BUILD_KIND,
   config, privateFiles: [".env.local", "TASK-DECISIONS.local.md"].some(p => fs.existsSync(path.join(cwd, p))) }) + "\\n");
 if (command === "deploy") console.log("https://fixture-aubreyfs-projects.vercel.app");
@@ -117,18 +124,21 @@ if (command === "deploy") console.log("https://fixture-aubreyfs-projects.vercel.
     for (const file of ["node", "npm", "npx"]) chmodSync(path.join(bin, file), 0o755);
     const run = (oauth) => spawnSync("bash", ["scripts/vercel-deploy-preview.sh", "pwa-transfer-acceptance"], {
       cwd: repo, encoding: "utf8", env: { ...process.env, NODE_BIN: path.join(bin, "node"),
-        FIXTURE_LOG: log, FIXTURE_OAUTH: oauth, VERCEL_TOKEN: "" },
+        FIXTURE_LOG: log, FIXTURE_OAUTH: oauth, VERCEL_TOKEN: "", VITE_FREED_FEATURE_PREVIEW: "1" },
     });
     const valid = run("VITE_GDRIVE_CLIENT_ID=fixture-client\nGDRIVE_CLIENT_SECRET=fixture-secret\n");
     assert.equal(valid.status, 0, valid.stdout + valid.stderr);
     const calls = readFileSync(log, "utf8").trim().split("\n").map(JSON.parse);
-    assert.deepEqual(calls.map(c => c.command), ["pull", "build", "deploy"]);
-    for (const call of calls) {
+    assert.deepEqual(calls.map(c => c.command), ["local-build", "pull", "build", "deploy"]);
+    assert.equal(calls[0].featurePreview, "0");
+    assert.equal(calls.find(c => c.command === "build").featurePreview, "0");
+    for (const call of calls.slice(1)) {
       assert.equal(call.sha, sha);
       assert.equal(call.kind, "preview");
       assert.equal(call.privateFiles, false);
       assert.match(call.config.buildCommand, /build:transfer-acceptance$/);
       assert.ok(call.config.buildCommand.includes(`FREED_BUILD_COMMIT_SHA=${sha}`));
+      assert.match(call.config.buildCommand, /VITE_FREED_FEATURE_PREVIEW=0/);
       assert.equal(call.config.ignoreCommand, undefined);
     }
     assert.doesNotMatch(valid.stdout + valid.stderr, /fixture-secret/);
@@ -136,7 +146,7 @@ if (command === "deploy") console.log("https://fixture-aubreyfs-projects.vercel.
     const missing = run("VITE_GDRIVE_CLIENT_ID=fixture-client\n");
     assert.notEqual(missing.status, 0);
     assert.match(missing.stderr, /matching server credentials/);
-    assert.deepEqual(readFileSync(log, "utf8").trim().split("\n").map(JSON.parse).map(c => c.command), ["pull"]);
+    assert.deepEqual(readFileSync(log, "utf8").trim().split("\n").map(JSON.parse).map(c => c.command), ["local-build", "pull"]);
     rmSync(log);
     writeFileSync(path.join(repo, "untracked.txt"), "unreviewed");
     const dirty = run("");
