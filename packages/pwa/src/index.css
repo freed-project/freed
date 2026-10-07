@@ -243,6 +243,13 @@ body:has(.app-theme-shell[data-mobile-device="true"]) {
   overflow-x: clip;
 }
 
+/* Keep the feed and inline reader on the same document scroller. Avoid handing
+   iOS touch scrolling to a temporary nested scroller when opening a post.
+   Desktop readers and modal overlays keep their own scrolling regions. */
+.app-theme-shell[data-mobile-device="true"] .reader-inline {
+  overflow: visible;
+}
+
 /* Keep the reading width inset while the shell and toolbar paint edge to edge. */
 .app-theme-shell > .app-content-frame {
   padding-left: max(var(--feed-card-gap, 8px), var(--safe-area-left, 0px));

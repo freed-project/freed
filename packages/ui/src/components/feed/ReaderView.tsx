@@ -829,7 +829,7 @@ export function ReaderView({
     <div
       className={
         inline
-          ? "flex-1 min-w-0 overflow-auto bg-transparent"
+          ? "reader-inline flex-1 min-w-0 overflow-auto bg-transparent"
           : "reader-overlay fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
       }
     >
