@@ -505,6 +505,18 @@ mod tests {
     use super::*;
     use crate::normalized_sqlite::install_normalized_schema_v1;
 
+    // Catalog and transfer assertions need a ready fixture, not completion
+    // within one production time slice on a loaded runner.
+    fn finish_upgrade(db: &mut Connection) {
+        let deadline = Instant::now() + Duration::from_secs(60);
+        while !resume(db).unwrap() {
+            assert!(
+                Instant::now() < deadline,
+                "annotation upgrade did not finish"
+            );
+        }
+    }
+
     fn fixture(path: &std::path::Path, source: u32) -> Connection {
         let db = Connection::open(path).unwrap();
         install_normalized_schema_v1(&db).unwrap();
@@ -891,7 +903,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("library.sqlite");
         let mut db = fixture(&path, 1);
-        assert!(resume(&mut db).unwrap());
+        finish_upgrade(&mut db);
         {
             let tx = db
                 .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -942,22 +954,11 @@ mod tests {
 
     #[test]
     fn annotation_upgrade_preserves_sources_and_reopens_exact_catalog() {
-        // Catalog preservation must hold across any number of production time
-        // slices. A loaded runner may exhaust one slice before finishing setup.
-        let finish = |db: &mut Connection| {
-            let deadline = Instant::now() + Duration::from_secs(60);
-            while !resume(db).unwrap() {
-                assert!(
-                    Instant::now() < deadline,
-                    "annotation upgrade did not finish"
-                );
-            }
-        };
         for source in [1, 2] {
             let dir = tempfile::tempdir().unwrap();
             let file = dir.path().join("library.sqlite");
             let mut db = fixture(&file, source);
-            finish(&mut db);
+            finish_upgrade(&mut db);
             let target = if source == 1 { 4 } else { 5 };
             assert_eq!(version(&db).unwrap(), target);
             verify_catalog(&db, target).unwrap();
@@ -965,7 +966,7 @@ mod tests {
             drop(db);
             let mut db = Connection::open(&file).unwrap();
             verify_catalog(&db, target).unwrap();
-            finish(&mut db);
+            finish_upgrade(&mut db);
             install_normalized_schema_v1(&db).unwrap();
             // The immutable pre-upgrade opener admits exactly versions 1/2.
             assert!(![1, 2].contains(&version(&db).unwrap()));
