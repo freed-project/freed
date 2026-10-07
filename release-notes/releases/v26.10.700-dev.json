@@ -3,8 +3,10 @@
   "version": "26.10.700-dev",
   "channel": "dev",
   "dayKey": "26.10.7",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against the exact product source. Local ARM64 installed Library verification passed; signed artifact and multi-device acceptance remain separate release checks."
+  ],
   "generatedAt": "2026-10-07T04:28:07.888Z",
   "model": "heuristic",
   "source": {
@@ -57,10 +59,19 @@
     ]
   },
   "release": {
-    "deck": "Linux Library credentials and repair release admission",
-    "features": [],
-    "fixes": [],
-    "followUps": []
+    "deck": "Linux Library keys and transfer preview startup",
+    "features": [
+      "Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts."
+    ],
+    "fixes": [
+      "Locked or unavailable Linux vaults return an error instead of replacing Library keys.",
+      "Transfer acceptance previews retain normal onboarding and Library selection without automatically creating a sample Library.",
+      "Desktop Settings shows the ten newest individual releases with complete notes.",
+      "Descriptions in sidebar tiles without media are centered."
+    ],
+    "followUps": [
+      "Primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit."
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.700-dev\n\nLinux Library credentials and repair release admission\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.700-dev\n\nLinux Library keys and transfer preview startup\n\n### Features\n\n- Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts\n\n### Fixes\n\n- Locked or unavailable Linux vaults return an error instead of replacing Library keys\n- Transfer acceptance previews retain normal onboarding and Library selection without automatically creating a sample Library\n- Desktop Settings shows the ten newest individual releases with complete notes\n- Descriptions in sidebar tiles without media are centered\n\n### Follow-ups\n\n- Primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
