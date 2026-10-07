@@ -73,7 +73,9 @@ export default defineConfig(({ mode }) => ({
   // other's optimized dependency graph when the complete suite runs both.
   cacheDir: process.env.FREED_E2E_PERF === "1"
     ? rootFile("node_modules/.vite-feed-perf")
-    : undefined,
+    : process.env.VITE_TEST_TAURI && mode === "library-transfer-acceptance"
+      ? rootFile("node_modules/.vite-transfer-acceptance")
+      : undefined,
   define: {
     __LIBRARY_TRANSFER_ACCEPTANCE__: mode === "library-transfer-acceptance" || mode === "test",
     __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
