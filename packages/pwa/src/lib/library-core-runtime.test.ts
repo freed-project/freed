@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   commitReadAssignments: vi.fn(),
   commitUserStateAssignments: vi.fn(),
   commitFeedItemCaptures: vi.fn(),
+  commitAnnotations: vi.fn(),
   commitFeedItemRemove: vi.fn(),
   commitFeedItemRemoves: vi.fn(),
   commitRssFeedUpsert: vi.fn(),
@@ -46,6 +47,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("./library-core-pwa-follower-mutations", () => ({
   PWA_LIBRARY_CORE_SQLITE_CAPTURE_BATCH_LIMIT: 32,
+  PWA_LIBRARY_CORE_SQLITE_ANNOTATION_BATCH_LIMIT: 32,
+  commitPwaLibraryCoreFeedItemAnnotationSets: mocks.commitAnnotations,
   PWA_LIBRARY_CORE_SQLITE_RECORD_BATCH_LIMIT: 256,
   PWA_LIBRARY_CORE_SQLITE_REMOVE_BATCH_LIMIT: 256,
   PWA_LIBRARY_CORE_SQLITE_RSS_FEED_BATCH_LIMIT: 256,
@@ -95,10 +98,12 @@ vi.mock("./library-core-pwa-follower-enrollment", () => ({
 }));
 
 vi.mock("./factory-reset-coordinator", () => ({
+  assertPwaRuntimeCurrent: vi.fn(),
   registerPwaFactoryResetQuiesceHandler: vi.fn(),
 }));
 
 vi.mock("./library-core-sqlite-runtime", () => ({
+  subscribePwaLibraryCoreLocalChanges: vi.fn(() => () => {}),
   importPwaNormalizedOperationPage: mocks.importOperationPage,
   activatePwaNormalizedCheckpointStage: vi.fn(),
   appendPwaNormalizedCheckpointStagePage: vi.fn(),
@@ -180,6 +185,9 @@ function emptyOptimisticFieldsResponse(
   };
 }
 
+function editStateResponse(globalId: string, source: { generationId: string; projectionRevision: number; transitionSequence: number } = QUERY_SOURCE, pending = false) {
+  return {queryId:"item_annotation_edit_state_v1",schemaVersion:1,globalId,source,pending,localSequence:0};
+}
 function mockNormalizedQuery(
   handler: (request: {
     readonly queryId: string;
@@ -189,6 +197,7 @@ function mockNormalizedQuery(
   mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
     request.queryId === "optimistic_fields_v1"
       ? emptyOptimisticFieldsResponse()
+      : request.queryId === "item_annotation_edit_state_v1" ? editStateResponse(request.globalId)
       : request.queryId === "item_annotations_v1"
         ? {
             queryId: request.queryId,
@@ -296,6 +305,7 @@ function normalizedItemDetail(
         likedAt: null,
         likedSyncedAt: null,
         linkPreviewTitle: null,
+        linkPreviewUrl: null,
         locationName: null,
         mediaTypes: [],
         mediaUrls: [],
@@ -307,6 +317,7 @@ function normalizedItemDetail(
         sourceUrl: null,
         tags: [],
       },
+      seenSyncedAt: null,
       contentBody: { blobDigest: null, storage: "inline" },
       mediaBlobDigests: [],
       preservedBody: { blobDigest: null, storage: "none" },
@@ -389,6 +400,8 @@ describe("PWA Library Core bounded scanner", () => {
         },
       ],
     });
+
+
     mocks.createNormalizedCheckpointWriter.mockReset();
     mocks.createNormalizedCheckpointWriter.mockReturnValue({});
     mocks.createCloudAdapter.mockReset();
@@ -429,6 +442,114 @@ describe("PWA Library Core bounded scanner", () => {
     mocks.commitAccountUpserts.mockReset();
     mocks.commitAccountRemove.mockReset();
     mocks.commitAccountRemoves.mockReset();
+  });
+
+  it("carries original rendered annotations and refuses source advancement without requerying replacements", async () => {
+    const snapshot = { state: "ready" as const, editState: "ready" as const, highlights: [], originals: {
+      queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: "item",
+      source: { ...QUERY_SOURCE, generationId: QUERY_SOURCE.generationId as import("@freed/shared/library-core").LibraryCoreLowercaseHex64 }, tags: ["original-tag"], highlights: [],
+    } };
+    mocks.queryNormalizedLibrary.mockImplementation(async request => request.queryId === "item_annotation_edit_state_v1" ? editStateResponse("item") : snapshot.originals);
+    const { enqueuePwaLibraryCoreSavedItemNote } = await import("./library-core-runtime");
+    await enqueuePwaLibraryCoreSavedItemNote("item", "note", snapshot);
+    expect(mocks.commitAnnotations).toHaveBeenCalledWith([expect.objectContaining({ entityId: "item", tags: ["original-tag"] })], expect.any(Number), QUERY_SOURCE);
+    mocks.commitAnnotations.mockClear();
+    mocks.queryNormalizedLibrary.mockImplementation(async request => request.queryId === "item_annotation_edit_state_v1" ? editStateResponse("item",{...QUERY_SOURCE,projectionRevision:8}) : {...snapshot.originals,source:{...QUERY_SOURCE,projectionRevision:8}});
+    await expect(enqueuePwaLibraryCoreSavedItemNote("item", "next", snapshot)).rejects.toThrow("source changed");
+    expect(mocks.commitAnnotations).not.toHaveBeenCalled();
+  });
+
+  it("preserves canonical quote digests and source in generic annotation replacements", async () => {
+    mocks.commitAnnotations.mockReset().mockResolvedValue(undefined);
+    const digest = "b".repeat(64);
+    const canonical = { createdAt: 1, text: null, textBlobDigest: digest, note: "old" };
+    const original = { queryId: "item_annotations_v1", schemaVersion: 1, globalId: "item", source: QUERY_SOURCE, tags: ["old-tag"], highlights: [canonical] };
+    mocks.queryNormalizedLibrary.mockImplementation(async request => request.queryId === "item_annotation_edit_state_v1" ? editStateResponse("item") : request.queryId === "item_annotations_v1" ? original : {
+      queryId: request.queryId, schemaVersion: 1, globalId: "item", annotationIndex: 0, source: QUERY_SOURCE, state: "ready",
+      text: { blobDigest: digest, contentLength: 5, startOffset: 0, endOffset: 5, bytesBase64: "UXVvdGU=" },
+    });
+    const { enqueuePwaLibraryCoreFeedItemAnnotationSets } = await import("./library-core-runtime");
+    const annotationSnapshot = { state: "ready" as const, editState: "ready" as const, originals: { ...original, queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, source: { ...QUERY_SOURCE, generationId: QUERY_SOURCE.generationId as import("@freed/shared/library-core").LibraryCoreLowercaseHex64 } }, highlights: [{ createdAt: 1, text: "Quote", note: "old" }] };
+    await enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [{ createdAt: 1, text: "Quote", note: "changed" }], tags: ["new-tag"], annotationSnapshot }]);
+    expect(mocks.commitAnnotations).toHaveBeenCalledWith([{ entityId: "item", highlights: [{ ...canonical, note: "changed" }], tags: ["new-tag"] }], expect.any(Number), QUERY_SOURCE);
+    mocks.commitAnnotations.mockClear();
+    await expect(enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [], tags: [], annotationSnapshot }])).rejects.toThrow("omits an authenticated quote");
+    mocks.commitAnnotations.mockClear();
+    await expect(enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: [], tags: [] } as never])).rejects.toThrow("not ready");
+    mocks.queryNormalizedLibrary.mockImplementation(async request => request.queryId === "item_annotation_edit_state_v1" ? editStateResponse("item",{...QUERY_SOURCE,projectionRevision:8}) : {...original,source:{...QUERY_SOURCE,projectionRevision:8},tags:["remote"]});
+    await expect(enqueuePwaLibraryCoreFeedItemAnnotationSets([{ entityId: "item", highlights: annotationSnapshot.highlights, tags: ["stale"], annotationSnapshot }])).rejects.toThrow("source changed");
+    expect(mocks.commitAnnotations).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "stale", "sign-race", "capture-fails", "success"] as const)("guards PWA store writes with original provenance: %s", async scenario => {
+    const runtime = await import("./library-core-runtime");
+    const { useAppStore } = await import("./store");
+    const canonical = { createdAt: 1, text: null, textBlobDigest: "de".repeat(32), note: "keep" };
+    const original = { queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: "item",
+      source: { ...QUERY_SOURCE, generationId: QUERY_SOURCE.generationId as import("@freed/shared/library-core").LibraryCoreLowercaseHex64 }, tags: ["original"], highlights: [canonical] };
+    const snapshot = { state: "ready" as const, editState: "ready" as const, originals: original, highlights: [{ createdAt: 1, text: "Quote", note: "keep" }] };
+    // This store uses the one-argument overload, which returns a FeedItem.
+    const detail = vi.spyOn(runtime as { readPwaLibraryCoreItemDetail(id: string): Promise<import("@freed/shared").FeedItem | null> }, "readPwaLibraryCoreItemDetail").mockResolvedValue({
+      globalId: "item", platform: "rss", contentType: "article", capturedAt: 1, publishedAt: 1,
+      author: { id: "author", handle: "author", displayName: "Author" },
+      content: { text: "Text", mediaUrls: [], mediaTypes: [] }, topics: [],
+      userState: { hidden: false, saved: true, archived: false, tags: ["remote"], highlights: [] },
+    });
+    const capture = vi.spyOn(runtime, "enqueuePwaLibraryCoreFeedItemCapture");
+    const drain = vi.spyOn(runtime, "drainPwaLibraryCoreLocalChanges").mockResolvedValue(null);
+    const writes: string[] = [];
+    mocks.queryNormalizedLibrary.mockImplementation(async request => request.queryId === "item_annotation_edit_state_v1" ? editStateResponse("item",{...QUERY_SOURCE,projectionRevision:scenario === "stale" ? 8 : 7}) : {...original,source:{...original.source,projectionRevision:scenario === "stale" ? 8 : 7}});
+    mocks.commitAnnotations.mockReset().mockImplementation(async (rows, _now, source) => {
+      expect(source).toEqual(original.source);
+      expect(rows).toEqual([{ entityId: "item", tags: ["edited"], highlights: [canonical] }]);
+      if (scenario === "sign-race") throw new Error("LOCAL_ADMISSION_SOURCE_STALE");
+      writes.push("annotations");
+    });
+    capture.mockImplementation(async () => {
+      if (scenario === "capture-fails") throw new Error("capture failed");
+      writes.push("capture");
+    });
+    try {
+      const action = useAppStore.getState().updateItem("item", { userState: { tags: ["edited"] } as never }, scenario === "missing" ? undefined : snapshot);
+      if (scenario === "success") await action;
+      else await expect(action).rejects.toThrow(scenario === "missing" ? "not ready" : scenario === "stale" ? "source changed" : scenario === "sign-race" ? "LOCAL_ADMISSION_SOURCE_STALE" : "capture failed");
+      expect(writes).toEqual(scenario === "success" ? ["annotations", "capture"] : scenario === "capture-fails" ? ["annotations"] : []);
+      if (["missing", "stale", "sign-race"].includes(scenario)) expect(capture).not.toHaveBeenCalled();
+    } finally {
+      detail.mockRestore(); capture.mockRestore(); drain.mockRestore();
+    }
+  });
+
+  it("keeps initialization distinct from existing replacements and fences each new batch", async () => {
+    const { preparePwaNewItemAnnotations, initializePwaNewItemAnnotations } = await import("./library-core-runtime");
+    const items = Array.from({ length: 34 }, (_, index) => ({
+      globalId: `item-${index}`, platform: "rss" as const, contentType: "article" as const,
+      capturedAt: 1, publishedAt: 1,
+      author: { id: "author", handle: "author", displayName: "Author" },
+      content: { text: "Text", mediaUrls: [], mediaTypes: [] },
+      userState: { hidden: false, saved: false, archived: false, tags: ["new"] },
+      topics: [],
+    }));
+    let revision = QUERY_SOURCE.projectionRevision;
+    mocks.queryNormalizedLibrary.mockImplementation(async request => request.queryId === "item_detail_v1"
+      ? { item: request.globalId === "item-0" ? {} : null }
+      : { tags: [], highlights: [], source: { ...QUERY_SOURCE, projectionRevision: revision } });
+    mocks.commitAnnotations.mockReset().mockImplementation(async (_rows, _now, expectedSource) => {
+      expect(expectedSource.projectionRevision).toBe(revision);
+      revision += 1;
+    });
+    const originals = await preparePwaNewItemAnnotations([...items, items[1]!]);
+    expect(originals).toHaveLength(33);
+    expect(originals.some(row => row.entityId === "item-0")).toBe(false);
+    await initializePwaNewItemAnnotations(originals);
+    expect(mocks.commitAnnotations.mock.calls.map(call => call[0].length)).toEqual([32, 1]);
+    mocks.commitAnnotations.mockClear();
+    mocks.queryNormalizedLibrary.mockResolvedValue({ tags: ["concurrent"], highlights: [], source: QUERY_SOURCE });
+    await expect(initializePwaNewItemAnnotations(originals)).rejects.toThrow("initialization refused");
+    expect(mocks.commitAnnotations).not.toHaveBeenCalled();
+    mocks.queryNormalizedLibrary.mockImplementation(async () => ({ tags: [], highlights: [], source: { ...QUERY_SOURCE, projectionRevision: revision++ } }));
+    await expect(initializePwaNewItemAnnotations(originals)).rejects.toThrow("source changed");
+    expect(mocks.commitAnnotations).not.toHaveBeenCalled();
   });
 
   it("reads the exact selected OPFS SQLite checkpoint receipt", async () => {
@@ -1056,6 +1177,7 @@ describe("PWA Library Core bounded scanner", () => {
           likedAt: null,
           likedSyncedAt: null,
           linkPreviewTitle: null,
+          linkPreviewUrl: null,
           locationName: null,
           mediaTypes: [],
           mediaUrls: [],
@@ -1067,6 +1189,7 @@ describe("PWA Library Core bounded scanner", () => {
           sourceUrl: null,
           tags: [],
         },
+        seenSyncedAt: null,
         contentBody: { blobDigest: null, storage: "inline" },
         mediaBlobDigests: [],
         preservedBody: { blobDigest: null, storage: "none" },
@@ -1090,6 +1213,7 @@ describe("PWA Library Core bounded scanner", () => {
       ...normalizedItemDetail("item-pinned"),
       item: {
         ...normalizedItemDetail("item-pinned").item,
+        seenSyncedAt: null,
         contentBody: { blobDigest: bodyDigest, storage: "blob" },
         mediaBlobDigests: [mediaDigest, bodyDigest],
         preservedBody: { blobDigest: bodyDigest, storage: "blob" },

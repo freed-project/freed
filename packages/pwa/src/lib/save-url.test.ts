@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+const mockSavedNote = vi.fn(async () => undefined);
 const mockEnqueueCapture = vi.fn(async () => undefined);
 const mockEnqueueAnnotations = vi.fn(async () => undefined);
 const mockEnqueueRemove = vi.fn(async () => undefined);
@@ -17,8 +18,10 @@ vi.mock("@freed/capture-save/normalize", () => ({
 }));
 
 vi.mock("./library-core-runtime", () => ({
+  enqueuePwaLibraryCoreSavedItemNote: mockSavedNote,
   enqueuePwaLibraryCoreFeedItemCapture: mockEnqueueCapture,
-  enqueuePwaLibraryCoreFeedItemAnnotationSets: mockEnqueueAnnotations,
+  preparePwaNewItemAnnotations: vi.fn(async (items: import("@freed/shared").FeedItem[]) => items.filter(item => item.userState.tags.length || item.userState.highlights?.length).map(item => ({ entityId: item.globalId, highlights: item.userState.highlights, tags: item.userState.tags }))),
+  initializePwaNewItemAnnotations: mockEnqueueAnnotations,
   enqueuePwaLibraryCoreFeedItemRemove: mockEnqueueRemove,
 }));
 
@@ -75,4 +78,26 @@ describe("saveUrlInPwa", () => {
       "IndexedDB unavailable",
     );
   });
+});
+
+
+it("edits an existing note through canonical preservation without capture or fetch", async () => {
+  vi.clearAllMocks();
+  vi.stubGlobal("fetch", vi.fn());
+  try {
+    const { updateSavedContentInPwa } = await import("./save-url");
+    const item = { globalId: "saved:abc123", sourceUrl: "https://example.com/article" } as import("@freed/shared").FeedItem;
+    const annotationSnapshot = { state: "ready" as const, editState: "ready" as const, highlights: [], originals: {
+      queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: item.globalId,
+      source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
+    } };
+    await updateSavedContentInPwa(item, { url: item.sourceUrl!, notes: "Revised", annotationSnapshot });
+    expect(mockSavedNote).toHaveBeenCalledWith(item.globalId, "Revised", annotationSnapshot);
+    expect(mockEnqueueAnnotations).not.toHaveBeenCalled();
+    expect(mockEnqueueCapture).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    mockSavedNote.mockRejectedValueOnce(new Error("Annotation text is unavailable"));
+    await expect(updateSavedContentInPwa(item, { url: item.sourceUrl!, notes: "", annotationSnapshot })).rejects.toThrow("unavailable");
+    expect(mockEnqueueRemove).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
 });

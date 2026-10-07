@@ -590,7 +590,7 @@ pub(crate) fn sign_persisted_handoff_authorization_v1(
     let version: u32 = transaction
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|error| error.to_string())?;
-    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5) {
         return Err("handoff signing requires the durable native fence".into());
     }
     crate::normalized_sqlite::install_normalized_schema_v1(&transaction)
@@ -1612,11 +1612,17 @@ pub(crate) fn verify_handoff_checkpoint_install_v1(
     let version: u32 = connection
         .pragma_query_value(None, "user_version", |row| row.get(0))
         .map_err(|error| error.to_string())?;
-    if version == 1 {
+    crate::normalized_local_annotations::reject_building(connection)
+        .map_err(|error| error.to_string())?;
+    if matches!(version, 1 | 4) {
         return Ok(());
     }
-    if version != 2 {
+    if !matches!(version, 2 | 5 | 6) {
         return Err("handoff checkpoint storage is unsupported".into());
+    }
+    if version == crate::sqlite_contract_generated::VIEWER_STORAGE_SCHEMA_VERSION {
+        crate::normalized_sqlite::install_normalized_schema_v1(connection)
+            .map_err(|error| error.to_string())?;
     }
     verify_existing_handoff_checkpoint_install_v1(connection, checkpoint_digest, receipt)
 }
@@ -1662,6 +1668,9 @@ pub(crate) fn verify_existing_handoff_checkpoint_install_v1(
     if demoted_source {
         if receipt.is_none() {
             return Err("source adoption requires a follower receipt".into());
+        }
+        if crate::normalized_consumer_recovery::verify_demoted_viewer_successor_checkpoint(connection)? {
+            return Ok(());
         }
         return crate::normalized_source_handoff::verify_demoted_source_selection(connection);
     }
@@ -6147,7 +6156,8 @@ mod tests {
         // The initial source was cloned from the target fixture above. Build the
         // clean original-Primary case by removing only those synthetic local rows.
         // Production adoption never performs this cleanup.
-        for table in crate::normalized_import::RETAINED_FOLLOWER_TABLES
+        for table in crate::normalized_import::retained_follower_tables(&adopting)
+            .unwrap()
             .iter()
             .rev()
         {
@@ -6241,6 +6251,43 @@ mod tests {
             .run_to_completion(64, std::time::Duration::ZERO, None)
             .unwrap();
         drop(delayed_source);
+        // Exercise the real adoption transaction with a separate synthetic viewer.
+        // Catalog refusal after checkpoint work must roll the whole adoption back.
+        if !recovered_incarnation && !cancelled_consumer {
+            let viewer_path = directory.path().join("viewer-source.sqlite");
+            let mut viewer = rusqlite::Connection::open(&viewer_path).unwrap();
+            rusqlite::backup::Backup::new(&adopting, &mut viewer).unwrap()
+                .run_to_completion(64, std::time::Duration::ZERO, None).unwrap();
+            viewer.execute_batch("PRAGMA synchronous=FULL;").unwrap();
+            assert!(crate::adopt_source_handoff_with_access_after_remote_verification_v2(
+                &mut viewer, &source_plan, "\"source-winner\"", 106, true,
+            ).unwrap_err().contains("viewer adoption requires catalog 5"));
+            assert_eq!(crate::read_native_handoff_status_v1(&mut viewer).unwrap().unwrap().phase,
+                crate::HandoffPhaseV1::Authorized);
+            assert_eq!(viewer.pragma_query_value::<u32, _>(None, "user_version", |r| r.get(0)).unwrap(), 2);
+            crate::normalized_local_annotations::open_owned(&mut viewer).unwrap();
+            let readonly = crate::adopt_source_handoff_with_access_after_remote_verification_v2(
+                &mut viewer, &source_plan, "\"source-winner\"", 106, true,
+            ).unwrap();
+            assert_eq!(readonly.phase, crate::HandoffPhaseV1::Demoted);
+            assert_eq!(viewer.pragma_query_value::<u32, _>(None, "user_version", |r| r.get(0)).unwrap(), 6);
+            drop(viewer);
+            let mut viewer = open_normalized_sqlite_database_v1(&viewer_path, false).unwrap();
+            assert_eq!(crate::recover_demoted_source_handoff_with_access_v2(
+                &mut viewer, id, "source-adoption", &source_plan.expected_control, true,
+            ).unwrap(), Some(readonly));
+            assert!(crate::recover_demoted_source_handoff_v1(
+                &mut viewer, id, "source-adoption", &source_plan.expected_control,
+            ).unwrap_err().contains("local access choice"));
+            assert!(crate::normalized_viewer::require_editable(&viewer).is_err());
+            let receipt: String = viewer.query_row("SELECT source_handoff_id FROM library_local_viewer_policy;", [], |r| r.get(0)).unwrap();
+            assert_eq!(&receipt, id);
+            viewer.execute("UPDATE library_local_viewer_policy SET source_handoff_id=?1;", ["f".repeat(64)]).unwrap();
+            assert!(crate::recover_demoted_source_handoff_with_access_v2(
+                &mut viewer, id, "source-adoption", &source_plan.expected_control, true,
+            ).unwrap_err().contains("viewer policy receipt"));
+            viewer.execute("UPDATE library_local_viewer_policy SET source_handoff_id=?1;", [id]).unwrap();
+        }
         let demoted = crate::adopt_source_handoff_after_remote_verification_v1(
             &mut adopting,
             &source_plan,
@@ -7338,6 +7385,40 @@ mod tests {
                     .as_bytes(),
                 next_certificate
             );
+            let source_viewer_path = directory.path().join("viewer-source.sqlite");
+            let mut source_viewer = open_normalized_sqlite_database_v1(&source_viewer_path, false).unwrap();
+            let source_viewer_actor_store = Store {
+                bytes: RefCell::new(Some(Ed25519KeyPair::generate_pkcs8(&ring::rand::SystemRandom::new()).unwrap().as_ref().to_vec())),
+                writes: Cell::new(0),
+            };
+            let viewer_actor = crate::prepare_normalized_follower_actor_request_v2(
+                &mut source_viewer, &installation_witness, &source_viewer_actor_store, 108,
+            ).unwrap();
+            assert_ne!(viewer_actor.actor_id, consumer_actor.actor_id);
+            let viewer_enrollment = crate::countersign_normalized_follower_actor_request_v2(
+                &mut database, viewer_actor.canonical_enrollment_request_json.as_bytes(), &current, 2201,
+            ).unwrap();
+            crate::install_normalized_follower_actor_enrollment_v2(
+                &mut source_viewer, viewer_enrollment.canonical_enrollment_certificate_json.as_bytes(),
+            ).unwrap();
+            let mut refreshed = stage_replica(&mut source_viewer, &database, "source-viewer-refresh");
+            refreshed.checkpoint_generation = source_viewer.query_row(
+                "SELECT checkpoint_generation + 1 FROM library_follower_checkpoint_receipt;", [], |r| r.get(0),
+            ).unwrap();
+            refreshed.installed_at = 2201;
+            crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut source_viewer, "source-viewer-refresh", &refreshed,
+            ).unwrap();
+            drop(source_viewer);
+            let mut source_viewer = open_normalized_sqlite_database_v1(&source_viewer_path, false).unwrap();
+            assert!(crate::normalized_library_is_read_only_v1(&source_viewer).unwrap());
+            assert_eq!(crate::normalized_follower_mutation_context_v1(&source_viewer).unwrap().actor_id, viewer_actor.actor_id);
+            crate::normalized_handoff::require_handoff_follower_lifecycle_admission_v1(&source_viewer).unwrap();
+            let tx = source_viewer.transaction().unwrap();
+            assert!(crate::normalized_follower::normalized_follower_signing_context_v1(&tx).is_err());
+            assert!(crate::normalized_primary_mutation_context_v1(&tx).is_err());
+            assert!(crate::require_normalized_provider_handoff_admission_v2(&tx).is_err());
+            tx.rollback().unwrap();
             let returning_path = directory.path().join("roundtrip-target.sqlite");
             let leaving_path = directory.path().join("roundtrip-source.sqlite");
             for (source, path) in [(&adopting, &returning_path), (&database, &leaving_path)] {
@@ -7837,6 +7918,54 @@ mod tests {
                 1
             );
 
+            let source_consent: (Vec<u8>, Vec<u8>) = source_viewer.query_row(
+                "SELECT canonical_authorization,canonical_activation FROM library_local_handoff;",
+                [], |r| Ok((r.get(0)?,r.get(1)?)),
+            ).unwrap();
+            // The source viewer already received the target enrollment in its
+            // same-epoch refresh, so it can verify the successor locally.
+            let mut next_viewer_receipt = stage_replica(&mut source_viewer, &returning, "viewer-next");
+            next_viewer_receipt.installed_at = 2399;
+            let source_viewer_before = crate::describe_normalized_checkpoint_export_v2(&source_viewer).unwrap();
+            source_viewer.execute("UPDATE library_local_handoff SET canonical_authorization=x'7b7d';", []).unwrap();
+            assert!(crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut source_viewer, "viewer-next", &next_viewer_receipt,
+            ).is_err());
+            assert_eq!(crate::describe_normalized_checkpoint_export_v2(&source_viewer).unwrap(), source_viewer_before);
+            source_viewer.execute("UPDATE library_local_handoff SET canonical_authorization=?1;", [&source_consent.0]).unwrap();
+            crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut source_viewer, "viewer-next", &next_viewer_receipt,
+            ).unwrap();
+            // A late archive failure must restore the original source fence and
+            // avoid a partial history copy, even though the new checkpoint is selected.
+            source_viewer.execute_batch("CREATE TEMP TRIGGER fail_viewer_archive BEFORE INSERT ON library_local_recovery_archives BEGIN SELECT RAISE(ABORT,'viewer archive failure'); END;").unwrap();
+            assert!(crate::archive_consumer_epoch_recovery_v1(
+                &mut source_viewer, &source_viewer_actor_store, 2400,
+            ).unwrap_err().contains("viewer archive failure"));
+            assert_eq!(source_viewer.query_row("SELECT count(*) FROM library_local_source_demotions;", [], |r|r.get::<_,u32>(0)).unwrap(), 0);
+            assert_eq!(source_viewer.query_row("SELECT phase FROM library_local_handoff;", [], |r|r.get::<_,String>(0)).unwrap(), "demoted");
+            source_viewer.execute_batch("DROP TRIGGER fail_viewer_archive;").unwrap();
+            drop(source_viewer);
+            let mut source_viewer = open_normalized_sqlite_database_v1(&source_viewer_path, false).unwrap();
+            let source_viewer_archive = crate::archive_consumer_epoch_recovery_v1(
+                &mut source_viewer, &source_viewer_actor_store, 2400,
+            ).unwrap();
+            assert_eq!(source_viewer.query_row(
+                "SELECT canonical_authorization,canonical_adoption FROM library_local_source_demotions WHERE handoff_id=?1;",
+                [id], |r| Ok((r.get::<_,Vec<u8>>(0)?, r.get::<_,Vec<u8>>(1)?)),
+            ).unwrap(), source_consent);
+            let source_viewer_request = crate::prepare_consumer_epoch_reenrollment_v1(
+                &mut source_viewer, &source_viewer_archive, &installation_witness, &source_viewer_actor_store, 2402,
+            ).unwrap();
+            for now in [2404,2405] {
+                assert_eq!(crate::commit_consumer_epoch_reenrollment_v1(
+                    &mut source_viewer, &source_viewer_archive, &installation_witness, &source_viewer_actor_store, now,
+                ).unwrap(), source_viewer_request);
+                assert!(crate::normalized_library_is_read_only_v1(&source_viewer).unwrap());
+                assert!(crate::normalized_handoff::require_handoff_follower_edit_admission_v1(&source_viewer).is_err());
+                assert!(crate::require_normalized_provider_handoff_admission_v2(&source_viewer).is_err());
+            }
+
             // A third installation follows this real second transfer through the
             // complete checkpoint importer, preserving its completed first archive.
             let mut repeated = open_normalized_sqlite_database_v1(
@@ -7888,6 +8017,46 @@ mod tests {
                 &next_certificate,
                 (&returning, &retained_old_authority),
             );
+            // Synthetic persistence fixture: real viewer adoption is tested above.
+            // This independent copy probes subsequent epoch/checkpoint recovery.
+            let viewer_path = directory.path().join("viewer-later-successor.sqlite");
+            let mut viewer_recovery = rusqlite::Connection::open(&viewer_path).unwrap();
+            rusqlite::backup::Backup::new(&repeated, &mut viewer_recovery).unwrap()
+                .run_to_completion(64, std::time::Duration::ZERO, None).unwrap();
+            viewer_recovery.execute_batch("PRAGMA synchronous=FULL;").unwrap();
+            crate::normalized_local_annotations::open_owned(&mut viewer_recovery).unwrap();
+            {
+                let tx = viewer_recovery.transaction().unwrap();
+                tx.execute_batch(crate::sqlite_contract_generated::VIEWER_SCHEMA_EXTENSION_SQL).unwrap();
+                tx.execute("INSERT INTO library_local_viewer_policy SELECT 1,library_id,?1,0 FROM library_meta;", [id]).unwrap();
+                tx.execute("UPDATE library_storage_meta SET schema_version=6,schema_sha256=?1;", [crate::sqlite_contract_generated::VIEWER_SCHEMA_SHA256]).unwrap();
+                tx.pragma_update(None, "user_version", 6).unwrap();
+                tx.commit().unwrap();
+            }
+            crate::normalized_sqlite::install_normalized_schema_v1(&viewer_recovery).unwrap();
+            crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut viewer_recovery, "roundtrip-successor", &next_receipt,
+            ).unwrap();
+            let viewer_refresh = stage_replica(&mut viewer_recovery, &returning, "viewer-refresh");
+            crate::replace_with_normalized_follower_checkpoint_stage_v2(
+                &mut viewer_recovery, "viewer-refresh", &viewer_refresh,
+            ).unwrap();
+            drop(viewer_recovery);
+            let mut viewer_recovery = open_normalized_sqlite_database_v1(&viewer_path, false).unwrap();
+            assert!(crate::normalized_library_is_read_only_v1(&viewer_recovery).unwrap());
+            let viewer_archive = crate::archive_consumer_epoch_recovery_v1(
+                &mut viewer_recovery, &actor_store, 2400,
+            ).unwrap();
+            let viewer_request = crate::prepare_consumer_epoch_reenrollment_v1(
+                &mut viewer_recovery, &viewer_archive, &installation_witness, &actor_store, 2402,
+            ).unwrap();
+            for now in [2404, 2405] {
+                assert_eq!(crate::commit_consumer_epoch_reenrollment_v1(
+                    &mut viewer_recovery, &viewer_archive, &installation_witness, &actor_store, now,
+                ).unwrap(), viewer_request);
+                assert!(crate::normalized_viewer::require_editable(&viewer_recovery).is_err());
+            }
+            assert_eq!(archive_bytes(&viewer_recovery), prior_archive);
             repeated.execute_batch("CREATE TEMP TRIGGER refuse_second_successor AFTER INSERT ON library_follower_checkpoint_receipt BEGIN SELECT RAISE(ABORT,'injected second successor failure'); END;").unwrap();
             let error =
                 crate::normalized_import::replace_with_normalized_follower_checkpoint_stage_v2(
@@ -8008,6 +8177,45 @@ mod tests {
                     .actor_id,
                 next_recovery.actor_id
             );
+            let viewer_archives = crate::normalized_query::query_normalized_json_v1(
+                &mut viewer_recovery,
+                json!({"queryId":"recovery_archive_page_v1","schemaVersion":1,"limit":64,
+                    "cursor":null,"cancellationId":"viewer-archives","readerSessionId":"viewer-reader"}),
+            ).unwrap();
+            assert!(viewer_archives["rows"].as_array().unwrap().iter().any(|row| row["recoveryId"] == next_archive));
+            let viewer_page = crate::normalized_query::query_normalized_json_v1(
+                &mut viewer_recovery,
+                json!({"queryId":"recovery_intent_page_v1","schemaVersion":1,"recoveryId":next_archive,
+                    "limit":64,"cursor":null,"cancellationId":"viewer-intents","readerSessionId":"viewer-reader"}),
+            ).unwrap();
+            assert!(!viewer_page["rows"].as_array().unwrap().is_empty());
+            let viewer_review = crate::normalized_query::query_normalized_json_v1(
+                &mut viewer_recovery,
+                json!({"queryId":"recovery_intent_review_v1","schemaVersion":1,"recoveryId":next_archive,
+                    "transactionId":viewer_page["rows"][0]["transactionId"],"limit":16,"cursor":null,
+                    "cancellationId":"viewer-review","readerSessionId":"viewer-reader"}),
+            ).unwrap();
+            assert_eq!(viewer_review["recoveryId"], next_archive);
+            assert!(crate::normalized_handoff::require_handoff_follower_edit_admission_v1(&viewer_recovery).is_err());
+            assert_eq!(viewer_request, next_recovery);
+            crate::install_normalized_follower_actor_enrollment_v2(
+                &mut viewer_recovery, enrolled_again.canonical_enrollment_certificate_json.as_bytes(),
+            ).unwrap();
+            assert!(crate::normalized_library_is_read_only_v1(&viewer_recovery).unwrap());
+            assert!(crate::normalized_handoff::require_handoff_follower_edit_admission_v1(&viewer_recovery).is_err());
+            assert!(crate::normalized_primary_mutation_context_v1(&viewer_recovery).is_err());
+            assert!(crate::require_normalized_provider_handoff_admission_v2(&viewer_recovery).is_err());
+            assert_eq!(viewer_recovery.query_row("SELECT source_handoff_id FROM library_local_viewer_policy;", [], |r|r.get::<_,String>(0)).unwrap(), *id);
+            let source_viewer_enrollment = crate::countersign_normalized_follower_actor_request_v2(
+                &mut reenrolling_primary, source_viewer_request.canonical_enrollment_request_json.as_bytes(),
+                &retained_old_authority, 2406,
+            ).unwrap();
+            crate::install_normalized_follower_actor_enrollment_v2(
+                &mut source_viewer, source_viewer_enrollment.canonical_enrollment_certificate_json.as_bytes(),
+            ).unwrap();
+            assert_eq!(crate::normalized_follower_mutation_context_v1(&source_viewer).unwrap().actor_id, source_viewer_request.actor_id);
+            assert!(crate::normalized_handoff::require_handoff_follower_edit_admission_v1(&source_viewer).is_err());
+            assert!(crate::require_normalized_provider_handoff_admission_v2(&source_viewer).is_err());
             assert_ne!(next_recovery.actor_id, next_request.actor_id);
             assert_eq!(archive_bytes(&repeated), prior_archive);
             assert!(crate::normalized_primary_mutation_context_v1(&repeated).is_err());

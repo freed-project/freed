@@ -13,6 +13,7 @@ import {
 import type { MapMode, SampleAvatarFocalPoint } from "@freed/shared";
 import type { ThemeId } from "@freed/shared/themes";
 import { type LibraryCoreNormalizedQueryExecutor } from "@freed/shared/library-core";
+import { useActionOwnershipFence } from "../../hooks/useActionOwnershipFence.js";
 import { useLibraryPersonPicker } from "../../hooks/useLibraryPersonPicker.js";
 import {
   friendsGalaxyGraphDescription,
@@ -43,7 +44,7 @@ import type {
   FriendsGalaxyTransform,
   FriendsGalaxyViewportGeometry,
 } from "../../lib/friends-galaxy-viewport.js";
-import { FriendsGalaxySourceScheduler } from "../../lib/friends-galaxy-source-scheduler.js";
+import { FriendsGalaxySourceScheduler, friendsGalaxySourceControls } from "../../lib/friends-galaxy-source-scheduler.js";
 import {
   EMPTY_IDENTITY_GRAPH_ACTIVITY_SUMMARIES,
   type IdentityGraphActivitySummaries,
@@ -418,12 +419,13 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       string | null
     >(null);
     const [linkPickerQuery, setLinkPickerQuery] = useState("");
-    const { rows: personPickerOptions } = useLibraryPersonPicker({
+    const { rows: personPickerOptions, resultsCurrent: pickerResultsCurrent } = useLibraryPersonPicker({
       enabled: linkPickerAccountId !== null,
       query: sqliteGraphQuery,
       search: linkPickerQuery,
       sourceVersion,
     });
+    const pickerActionCurrent = useActionOwnershipFence([linkPickerAccountId, linkPickerQuery, sourceVersion, sqliteGraphQuery, onLinkAccountToPerson, personPickerOptions], linkPickerAccountId !== null && pickerResultsCurrent);
     const [reducedMotion, setReducedMotion] = useState(false);
     const [announcement, setAnnouncement] = useState("");
     const copyDiagnosticsRequestId = useCommandSurfaceStore(
@@ -1022,13 +1024,8 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       const sourceRevision = sourceRevisionRef.current;
       const baseline = latestActivityRef.current ?? activitySummaries;
       const geometry = controller.geometry;
-      const controlSignature = [
-        mode,
-        backgroundStarCount,
-        proceduralBackgroundStarCount,
-        sourceVersion,
-        sourceRetry,
-      ].join(":");
+      const controls = friendsGalaxySourceControls({ mode, backgroundStarCount, proceduralBackgroundStarCount, sourceVersion, sourceRetry });
+      const controlSignature = controls.key;
       const controlsChanged =
         sourceControlSignatureRef.current !== null &&
         sourceControlSignatureRef.current !== controlSignature;
@@ -1038,7 +1035,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
       scheduler.request(
         {
           fallbackBaseline: baseline,
-          backgroundSeed: `freed-friends-${mode}-${sourceRevision.toLocaleString()}`,
+          backgroundSeed: controls.backgroundSeed,
           backgroundStarCount,
           mode,
           proceduralBackgroundStarCount,
@@ -1244,12 +1241,12 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
 
     const handleLinkAccountToPickerPerson = useCallback(
       async (personId: string) => {
-        if (!linkPickerAccountId || !onLinkAccountToPerson) return;
+        if (!pickerActionCurrent() || !linkPickerAccountId || !onLinkAccountToPerson || !personPickerOptions.some(person => person.id === personId)) return;
         nextSourceImmediateRef.current = true;
         await onLinkAccountToPerson(linkPickerAccountId, personId);
-        closeContextMenu();
+        if (pickerActionCurrent()) closeContextMenu();
       },
-      [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson],
+      [closeContextMenu, linkPickerAccountId, onLinkAccountToPerson, pickerActionCurrent, personPickerOptions],
     );
 
     const contextMenuStyle = contextMenu
@@ -1358,6 +1355,7 @@ export const FriendGraph = forwardRef<FriendGraphHandle, FriendGraphProps>(
                     <button
                       key={person.id}
                       type="button"
+                      disabled={!pickerResultsCurrent}
                       className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[color:var(--theme-bg-card-hover)]"
                       onClick={() =>
                         void handleLinkAccountToPickerPerson(person.id)

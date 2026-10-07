@@ -638,6 +638,7 @@ pub struct NormalizedRecoveryIntentReviewResponseV1 {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NormalizedQueryRequestV1 {
+    AnnotationText(crate::annotation_text::AnnotationTextRequest),
     RecoveryIntentReview(NormalizedRecoveryIntentReviewRequestV1),
     RecoveryArchivePage(NormalizedRecoveryArchivePageRequestV1),
     RecoveryIntentPage(NormalizedRecoveryIntentPageRequestV1),
@@ -658,6 +659,7 @@ pub enum NormalizedQueryRequestV1 {
     FriendsDirectoryPage(NormalizedFriendsDirectoryPageRequestV1),
     ItemDetail(NormalizedItemDetailRequestV1),
     ItemAnnotations(NormalizedItemDetailRequestV1),
+    AnnotationEditState(NormalizedItemDetailRequestV1),
     RssItemSummary(NormalizedFacetSummaryRequestV1),
     ItemReaderBody(NormalizedItemReaderBodyRequestV1),
     ItemScan(NormalizedItemScanRequestV1),
@@ -715,6 +717,7 @@ pub struct NormalizedFeedCardV1 {
     pub liked_at: Option<i64>,
     pub liked_synced_at: Option<i64>,
     pub link_preview_title: Option<String>,
+    pub link_preview_url: Option<String>,
     pub location_name: Option<String>,
     pub media_types: Vec<String>,
     pub media_urls: Vec<String>,
@@ -946,6 +949,7 @@ pub struct NormalizedItemScanRowV1 {
     #[serde(flatten)]
     pub card: NormalizedFeedCardV1,
     pub hidden: bool,
+    pub seen_synced_at: Option<i64>,
     pub ranking_care_level: Option<i64>,
     pub ranking_engagement_reposts: Option<i64>,
     pub ranking_engagement_views: Option<i64>,
@@ -1183,6 +1187,7 @@ pub struct NormalizedItemBodyLocatorV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NormalizedItemDetailV1 {
+    pub seen_synced_at: Option<i64>,
     pub card: NormalizedFeedCardV1,
     pub content_body: NormalizedItemBodyLocatorV1,
     pub media_blob_digests: Vec<Option<String>>,
@@ -1620,6 +1625,7 @@ pub struct NormalizedFriendCandidateReviewResponseV1 {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum NormalizedQueryResponseV1 {
+    AnnotationText(crate::annotation_text::AnnotationTextResponse),
     RecoveryIntentReview(NormalizedRecoveryIntentReviewResponseV1),
     RecoveryArchivePage(NormalizedRecoveryArchivePageResponseV1),
     RecoveryIntentPage(NormalizedRecoveryIntentPageResponseV1),
@@ -1640,6 +1646,7 @@ pub enum NormalizedQueryResponseV1 {
     FriendsDirectoryPage(NormalizedFriendsDirectoryPageResponseV1),
     ItemDetail(Box<NormalizedItemDetailResponseV1>),
     ItemAnnotations(NormalizedItemAnnotationsResponseV1),
+    AnnotationEditState(NormalizedAnnotationEditStateResponseV1),
     RssItemSummary(NormalizedRssItemSummaryResponseV1),
     ItemReaderBody(NormalizedItemReaderBodyResponseV1),
     ItemScan(NormalizedItemScanResponseV1),
@@ -2415,6 +2422,7 @@ fn feed_card(row: &Row<'_>) -> rusqlite::Result<NormalizedFeedCardV1> {
         liked_at: row.get("likedAt")?,
         liked_synced_at: row.get("likedSyncedAt")?,
         link_preview_title: row.get("linkPreviewTitle")?,
+        link_preview_url: row.get("linkPreviewUrl")?,
         location_name: row.get("locationName")?,
         media_types: string_array(row, "mediaTypesJson", 8, 64)?,
         media_urls: string_array(row, "mediaUrlsJson", 8, 8_192)?,
@@ -2426,6 +2434,14 @@ fn feed_card(row: &Row<'_>) -> rusqlite::Result<NormalizedFeedCardV1> {
         source_url: row.get("sourceUrl")?,
         tags: string_array(row, "tagsJson", 32, 1_024)?,
     })
+}
+
+fn seen_confirmation(row: &Row<'_>) -> rusqlite::Result<Option<i64>> {
+    let value: Option<i64> = row.get("seenSyncedAt")?;
+    if value.is_some_and(|stamp| stamp != -1 && !valid_safe_integer(stamp)) {
+        return Err(rusqlite::Error::InvalidQuery);
+    }
+    Ok(value)
 }
 
 fn background_item_row(row: &Row<'_>) -> rusqlite::Result<NormalizedItemScanRowV1> {
@@ -2476,6 +2492,7 @@ fn background_item_row(row: &Row<'_>) -> rusqlite::Result<NormalizedItemScanRowV
     Ok(NormalizedItemScanRowV1 {
         card: feed_card(row)?,
         hidden,
+        seen_synced_at: seen_confirmation(row)?,
         ranking_care_level,
         ranking_engagement_reposts,
         ranking_engagement_views,
@@ -2789,7 +2806,7 @@ fn query_recovery_archive_page(
         return Err(invalid("recovery archive page request is invalid"));
     }
     let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5 | 6) {
         return Err(invalid(
             "recovery archives are unavailable in this storage version",
         ));
@@ -2799,6 +2816,9 @@ fn query_recovery_archive_page(
         .find(|p| p.query_id == QUERY)
         .ok_or(invalid("recovery archive query program is missing"))?;
     let tx = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    if version == crate::sqlite_contract_generated::VIEWER_STORAGE_SCHEMA_VERSION {
+        crate::normalized_viewer::verify_policy(&tx)?;
+    }
     let (generation_id, revision) = query_source(&tx)?;
     let handoff_id: String = tx.query_row(program.count_sql, [], |r| r.get(0))?;
     if !valid_lower_hex_64(&handoff_id) {
@@ -2902,7 +2922,7 @@ fn query_recovery_intent_page(
         return Err(invalid("recovery intent page request is invalid"));
     }
     let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5 | 6) {
         return Err(invalid(
             "recovery archives are unavailable in this storage version",
         ));
@@ -2912,6 +2932,9 @@ fn query_recovery_intent_page(
         .find(|p| p.query_id == QUERY)
         .ok_or(invalid("recovery intent query program is missing"))?;
     let tx = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    if version == crate::sqlite_contract_generated::VIEWER_STORAGE_SCHEMA_VERSION {
+        crate::normalized_viewer::verify_policy(&tx)?;
+    }
     let (generation_id, source_revision) = query_source(&tx)?;
     let archive_digest: String =
         tx.query_row(program.count_sql, [&request.recovery_id], |r| r.get(0))?;
@@ -2988,7 +3011,10 @@ fn query_recovery_intent_page(
     Ok(response)
 }
 
-fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqliteError> {
+pub(crate) fn query_source(
+    connection: &Connection,
+) -> Result<(String, i64), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let source: (String, i64, i64) = connection.query_row(
         "SELECT generation.generation_id, meta.source_revision, changes.revision
          FROM library_materialization_generation AS generation
@@ -3002,6 +3028,42 @@ fn query_source(connection: &Connection) -> Result<(String, i64), NormalizedSqli
         return Err(invalid("normalized query source identity is invalid"));
     }
     Ok((source.0, source.1))
+}
+
+/// Closed optional IPC field: omission is allowed; explicit null and malformed tuples are not.
+pub fn deserialize_local_admission_source<'de, D>(
+    deserializer: D,
+) -> Result<Option<NormalizedFeedPageSourceV1>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let source = NormalizedFeedPageSourceV1::deserialize(deserializer)?;
+    if !valid_lower_hex_64(&source.generation_id)
+        || !valid_safe_integer(source.projection_revision)
+        || !valid_safe_integer(source.transition_sequence)
+    {
+        return Err(serde::de::Error::custom(
+            "local admission source is invalid",
+        ));
+    }
+    Ok(Some(source))
+}
+
+/// Local compare-and-admit guard. It grants no authority and is never replicated.
+pub(crate) fn require_local_admission_source(
+    connection: &Connection,
+    expected: Option<&NormalizedFeedPageSourceV1>,
+) -> Result<(), NormalizedSqliteError> {
+    if let Some(expected) = expected {
+        let (generation, revision) = query_source(connection)?;
+        if generation != expected.generation_id
+            || revision != expected.projection_revision
+            || revision != expected.transition_sequence
+        {
+            return Err(invalid("LOCAL_ADMISSION_SOURCE_STALE"));
+        }
+    }
+    Ok(())
 }
 
 fn query_graph_layout_revision(connection: &Connection) -> Result<i64, NormalizedSqliteError> {
@@ -7732,6 +7794,57 @@ fn query_rss_item_summary(
     })
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedAnnotationEditStateResponseV1 {
+    pub global_id: String,
+    pub query_id: String,
+    pub schema_version: u32,
+    pub source: NormalizedFeedPageSourceV1,
+    pub local_sequence: i64,
+    pub pending: bool,
+}
+
+fn query_annotation_edit_state(
+    connection: &mut Connection,
+    request: NormalizedItemDetailRequestV1,
+) -> Result<NormalizedAnnotationEditStateResponseV1, NormalizedSqliteError> {
+    const QUERY: &str = "item_annotation_edit_state_v1";
+    if request.schema_version != 1 || request.global_id.is_empty() || request.global_id.len() > 2048
+    {
+        return Err(invalid("annotation edit state identity is invalid"));
+    }
+    let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    crate::normalized_local_annotations::require_ready(&transaction)?;
+    let (generation_id, revision) = query_source(&transaction)?;
+    let program = SQLITE_QUERY_PROGRAMS
+        .iter()
+        .find(|program| program.query_id == QUERY)
+        .ok_or(invalid("annotation edit state program is missing"))?;
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct State {
+        local_sequence: i64,
+        pending: bool,
+    }
+    let state: State = transaction.query_row(program.sql, [&request.global_id], |row| {
+        decode_generated_query_row(row, QUERY)
+    })?;
+    transaction.commit()?;
+    Ok(NormalizedAnnotationEditStateResponseV1 {
+        global_id: request.global_id,
+        query_id: QUERY.to_owned(),
+        schema_version: 1,
+        source: NormalizedFeedPageSourceV1 {
+            generation_id,
+            projection_revision: revision,
+            transition_sequence: revision,
+        },
+        local_sequence: state.local_sequence,
+        pending: state.pending,
+    })
+}
+
 fn query_item_annotations(
     connection: &mut Connection,
     request: NormalizedItemDetailRequestV1,
@@ -7748,13 +7861,39 @@ fn query_item_annotations(
         .ok_or(invalid("normalized item annotations program is missing"))?;
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
     let (generation_id, source_revision) = query_source(&transaction)?;
+    // SQLite text substr stops at NUL. Read bounded blobs and decode exact UTF-8.
+    fn utf8(bytes: Vec<u8>, maximum: usize) -> rusqlite::Result<String> {
+        if bytes.len() > maximum {
+            return Err(rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Blob,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "annotation text exceeds its byte bound",
+                )),
+            ));
+        }
+        String::from_utf8(bytes).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                0,
+                rusqlite::types::Type::Blob,
+                Box::new(error),
+            )
+        })
+    }
     let highlights = transaction
         .prepare(program.sql)?
         .query_map(params![request.global_id], |row| {
             Ok(NormalizedItemAnnotationV1 {
                 created_at: row.get("createdAt")?,
-                note: row.get("note")?,
-                text: row.get("text")?,
+                note: row
+                    .get::<_, Option<Vec<u8>>>("note")?
+                    .map(|bytes| utf8(bytes, 8192))
+                    .transpose()?,
+                text: row
+                    .get::<_, Option<Vec<u8>>>("text")?
+                    .map(|bytes| utf8(bytes, 65536))
+                    .transpose()?,
                 text_blob_digest: row.get("textBlobDigest")?,
             })
         })?
@@ -7768,11 +7907,13 @@ fn query_item_annotations(
         ))?;
     let tags = transaction
         .prepare(tags_program.sql)?
-        .query_map(params![request.global_id], |row| row.get::<_, String>(0))?
+        .query_map(params![request.global_id], |row| {
+            utf8(row.get::<_, Vec<u8>>(0)?, 512)
+        })?
         .collect::<Result<Vec<_>, _>>()?;
     if highlights.len() > 64
         || tags.len() > 64
-        || tags.iter().any(|tag| tag.is_empty() || tag.len() > 1_024)
+        || tags.iter().any(|tag| tag.is_empty() || tag.len() > 512)
         || highlights.iter().any(|highlight| {
             !valid_safe_integer(highlight.created_at)
                 || highlight
@@ -7843,6 +7984,7 @@ fn query_item_detail(
             return Err(rusqlite::Error::InvalidQuery);
         }
         Ok(NormalizedItemDetailV1 {
+            seen_synced_at: seen_confirmation(row)?,
             card,
             content_body: body_locator(row, "contentBodyStorage", "contentBodyBlobDigest")?,
             media_blob_digests,
@@ -8044,7 +8186,13 @@ pub fn query_normalized_v1(
     connection: &mut Connection,
     request: NormalizedQueryRequestV1,
 ) -> Result<NormalizedQueryResponseV1, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     match request {
+        NormalizedQueryRequestV1::AnnotationText(request) => {
+            Ok(NormalizedQueryResponseV1::AnnotationText(
+                crate::annotation_text::query(connection, request, None)?,
+            ))
+        }
         NormalizedQueryRequestV1::RecoveryIntentReview(request) => {
             Ok(NormalizedQueryResponseV1::RecoveryIntentReview(
                 query_recovery_intent_review(connection, request)?,
@@ -8120,6 +8268,11 @@ pub fn query_normalized_v1(
         NormalizedQueryRequestV1::ItemDetail(request) => Ok(NormalizedQueryResponseV1::ItemDetail(
             Box::new(query_item_detail(connection, request)?),
         )),
+        NormalizedQueryRequestV1::AnnotationEditState(request) => {
+            Ok(NormalizedQueryResponseV1::AnnotationEditState(
+                query_annotation_edit_state(connection, request)?,
+            ))
+        }
         NormalizedQueryRequestV1::ItemAnnotations(request) => {
             Ok(NormalizedQueryResponseV1::ItemAnnotations(
                 query_item_annotations(connection, request)?,
@@ -8267,6 +8420,16 @@ pub fn query_normalized_json_v1(
     connection: &mut Connection,
     request: serde_json::Value,
 ) -> Result<serde_json::Value, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
+    query_normalized_json_with_content(connection, request, None)
+}
+
+pub(crate) fn query_normalized_json_with_content(
+    connection: &mut Connection,
+    request: serde_json::Value,
+    read: Option<&crate::annotation_text::RangeReader<'_>>,
+) -> Result<serde_json::Value, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let serde_json::Value::Object(mut fields) = request else {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized query request must be an object",
@@ -8289,6 +8452,10 @@ pub fn query_normalized_json_v1(
     }
 
     let request = match query_id.as_str() {
+        "item_annotation_text_range_v1" => decode_request!(
+            crate::annotation_text::AnnotationTextRequest,
+            AnnotationText
+        ),
         "recovery_intent_review_v1" => decode_request!(
             NormalizedRecoveryIntentReviewRequestV1,
             RecoveryIntentReview
@@ -8342,6 +8509,9 @@ pub fn query_normalized_json_v1(
             )
         }
         "item_detail_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemDetail),
+        "item_annotation_edit_state_v1" => {
+            decode_request!(NormalizedItemDetailRequestV1, AnnotationEditState)
+        }
         "item_annotations_v1" => decode_request!(NormalizedItemDetailRequestV1, ItemAnnotations),
         "rss_item_summary_v1" => decode_request!(NormalizedFacetSummaryRequestV1, RssItemSummary),
         "item_reader_body_v1" => {
@@ -8418,7 +8588,14 @@ pub fn query_normalized_json_v1(
             ));
         }
     };
-    let response = query_normalized_v1(connection, request)?;
+    let response = match request {
+        NormalizedQueryRequestV1::AnnotationText(request) => {
+            NormalizedQueryResponseV1::AnnotationText(crate::annotation_text::query(
+                connection, request, read,
+            )?)
+        }
+        request => query_normalized_v1(connection, request)?,
+    };
 
     macro_rules! encode_response {
         ($response:expr) => {
@@ -8431,6 +8608,7 @@ pub fn query_normalized_json_v1(
     }
 
     match response {
+        NormalizedQueryResponseV1::AnnotationText(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountGraphPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::AccountLinkCandidates(response) => encode_response!(response),
@@ -8451,6 +8629,7 @@ pub fn query_normalized_json_v1(
         NormalizedQueryResponseV1::FriendsDirectoryPage(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemDetail(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemAnnotations(response) => encode_response!(response),
+        NormalizedQueryResponseV1::AnnotationEditState(response) => encode_response!(response),
         NormalizedQueryResponseV1::RssItemSummary(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemReaderBody(response) => encode_response!(response),
         NormalizedQueryResponseV1::ItemScan(response) => encode_response!(response),
@@ -8481,6 +8660,40 @@ pub fn query_normalized_json_v1(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn local_admission_wire_source_is_optional_but_closed() {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase", deny_unknown_fields)]
+        struct Request {
+            #[serde(
+                default,
+                deserialize_with = "super::deserialize_local_admission_source"
+            )]
+            expected_source: Option<super::NormalizedFeedPageSourceV1>,
+        }
+        assert!(serde_json::from_value::<Request>(serde_json::json!({}))
+            .unwrap()
+            .expected_source
+            .is_none());
+        let source = serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":0,"transitionSequence":0});
+        assert!(
+            serde_json::from_value::<Request>(serde_json::json!({"expectedSource":source}))
+                .unwrap()
+                .expected_source
+                .is_some()
+        );
+        for source in [
+            serde_json::Value::Null,
+            serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":-1,"transitionSequence":0}),
+            serde_json::json!({"generationId":"a".repeat(64),"projectionRevision":0,"transitionSequence":0,"extra":true}),
+        ] {
+            assert!(serde_json::from_value::<Request>(
+                serde_json::json!({"expectedSource":source})
+            )
+            .is_err());
+        }
+    }
+
     use super::*;
     use crate::normalized_sqlite::install_normalized_schema_v1;
     use crate::sqlite_contract_generated::QUERY_IDS;
@@ -9655,6 +9868,35 @@ mod tests {
                 "a".repeat(64)
             ))
             .expect("fixture");
+        connection
+            .execute_batch(
+                "UPDATE library_feed_items SET source_url='https://social.test/post/' || global_id,
+            link_url='https://article.test/' || global_id, link_title='Article ' || global_id
+            WHERE global_id IN ('item-1','item-2');",
+            )
+            .expect("link provenance fixture");
+        for id in ["item-1", "item-2"] {
+            let NormalizedQueryResponseV1::ItemDetail(detail) = query_normalized_v1(
+                &mut connection,
+                NormalizedQueryRequestV1::ItemDetail(NormalizedItemDetailRequestV1 {
+                    global_id: id.to_owned(),
+                    schema_version: 1,
+                }),
+            )
+            .expect("linked item detail") else {
+                panic!("detail response");
+            };
+            let card = detail.item.expect("item").card;
+            assert_eq!(
+                card.link_preview_url,
+                Some(format!("https://article.test/{id}"))
+            );
+            assert_eq!(
+                card.source_url,
+                Some(format!("https://social.test/post/{id}"))
+            );
+            assert_eq!(card.link_preview_title, Some(format!("Article {id}")));
+        }
         let request = NormalizedFeedPageRequestV1 {
             cancellation_id: "cancel-1".to_owned(),
             cursor: None,
@@ -9671,6 +9913,14 @@ mod tests {
         };
         assert_eq!(first.total_count, 2);
         assert_eq!(first.rows[0].global_id, "item-2");
+        assert_eq!(
+            first.rows[0].link_preview_url.as_deref(),
+            Some("https://article.test/item-2")
+        );
+        assert_eq!(
+            first.rows[0].source_url.as_deref(),
+            Some("https://social.test/post/item-2")
+        );
         assert_eq!(first.rows[0].tags, ["favorite"]);
         let cursor = first.next_cursor.expect("cursor");
         assert_eq!(
@@ -9688,6 +9938,10 @@ mod tests {
             panic!("feed page response");
         };
         assert_eq!(second.rows[0].global_id, "item-1");
+        assert_eq!(
+            second.rows[0].link_preview_url.as_deref(),
+            Some("https://article.test/item-1")
+        );
         assert!(second.next_cursor.is_none());
         connection
             .execute_batch(
@@ -10613,6 +10867,61 @@ mod tests {
         assert_eq!(response.rows[0].integer_value, Some(3));
         assert_eq!(response.rows[2].real_value, Some(0.5));
         assert_eq!(response.rows[3].text_value.as_deref(), Some("neon"));
+    }
+
+    // Tier 1: provider confirmation survives every background and changed-item read.
+    #[test]
+    fn seen_confirmation_survives_all_normalized_query_paths() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        install_normalized_schema_v1(&connection).unwrap();
+        connection.execute_batch(&format!("INSERT INTO library_meta VALUES (1, '{}', 1, 'epoch-1', 0, 1);
+            INSERT INTO library_materialization_generation VALUES (1, '{}');
+            INSERT INTO library_feed_items (global_id, platform, content_type, captured_at, published_at, read_at, updated_at, author_id, author_handle, author_display_name, hidden, saved, archived)
+            VALUES ('x:synthetic', 'x', 'post', 1, 1, 70, 1, 'author', 'author', 'Author', 0, 0, 0);", "a".repeat(64), "b".repeat(64))).unwrap();
+        for stamp in [None, Some(-1), Some(0), Some(1000)] {
+            connection
+                .execute("UPDATE library_feed_items SET seen_synced_at=?1", [stamp])
+                .unwrap();
+            for priority in [serde_json::Value::Null, serde_json::json!(1001)] {
+                let result = query_normalized_json_v1(&mut connection, serde_json::json!({
+                    "queryId":"background_item_page_v1", "schemaVersion":1, "analysisVersion":null,
+                    "cancellationId":"cancel-seen", "readerSessionId":"reader-seen", "cursor":null,
+                    "limit":64, "priorityComputedBeforeMs":priority
+                })).unwrap();
+                let value = serde_json::to_value(result).unwrap();
+                assert_eq!(value["rows"][0]["seenSyncedAt"], serde_json::json!(stamp));
+            }
+            let result = query_normalized_json_v1(&mut connection, serde_json::json!({
+                "queryId":"priority_time_page_v1", "schemaVersion":1, "cancellationId":"cancel-time",
+                "readerSessionId":"reader-time", "limit":64, "priorityComputedBeforeMs":1001,
+                "generationId":"b".repeat(64), "sourceRevision":0
+            })).unwrap();
+            assert_eq!(
+                serde_json::to_value(result).unwrap()["rows"][0]["seenSyncedAt"],
+                serde_json::json!(stamp)
+            );
+            let result = query_normalized_json_v1(
+                &mut connection,
+                serde_json::json!({
+                    "queryId":"item_detail_v1", "schemaVersion":1, "globalId":"x:synthetic"
+                }),
+            )
+            .unwrap();
+            assert_eq!(
+                serde_json::to_value(result).unwrap()["item"]["seenSyncedAt"],
+                serde_json::json!(stamp)
+            );
+        }
+        connection
+            .execute("UPDATE library_feed_items SET seen_synced_at=-2", [])
+            .unwrap();
+        assert!(query_normalized_json_v1(
+            &mut connection,
+            serde_json::json!({
+                "queryId":"item_detail_v1", "schemaVersion":1, "globalId":"x:synthetic"
+            })
+        )
+        .is_err());
     }
 
     #[test]
@@ -12311,4 +12620,81 @@ mod tests {
             .collect::<Vec<_>>());
         assert!(query_normalized_json_v1(&mut connection, request).is_err());
     }
+    // Tier 1: real registered search SQL over a two-row synthetic generation.
+    fn native_search_fixture() -> Connection {
+        let connection = Connection::open_in_memory().expect("synthetic database");
+        install_normalized_schema_v1(&connection).expect("schema");
+        connection.execute_batch(&format!(
+            "INSERT INTO library_meta
+               (singleton_id, library_id, schema_version, authority_epoch, source_revision, updated_at)
+               VALUES (1, '{}', 1, 'epoch-fixture', 7, 1);
+             INSERT INTO library_materialization_generation SELECT 1, library_id FROM library_meta;
+             UPDATE library_change_state SET revision = 7 WHERE singleton_id = 1;
+             INSERT INTO library_feed_items
+               (global_id, platform, content_type, captured_at, published_at, author_id,
+                author_handle, author_display_name, content_text, priority, hidden, saved, archived, updated_at)
+               VALUES ('rss:apple', 'rss', 'article', 1, 1, 'author-fixture', 'fixture', 'Fixture', 'apple orchard', 42, 0, 0, 0, 1),
+                      ('rss:rocket', 'rss', 'article', 2, 2, 'author-fixture', 'fixture', 'Fixture', 'rocket launch', 21, 0, 0, 0, 2);",
+            "a".repeat(64)
+        )).expect("source and row fixture");
+        connection
+    }
+
+    fn native_search_request(query: &str) -> serde_json::Value {
+        serde_json::json!({
+            "cancellationId": "cancel-search-fixture", "cursor": null,
+            "filter": {"archivedOnly": false, "authorId": null, "feedUrl": null,
+                "platform": null, "savedOnly": false, "schemaVersion": 1,
+                "showHidden": false, "signals": [], "socialContentFilter": "all", "tags": []},
+            "friendsPredicateSchemaVersion": 1, "identityMode": "all_content", "limit": 32,
+            "query": query, "queryId": "search_page_v1", "readerSessionId": "reader-search-fixture",
+            "recommendationOrderSchemaVersion": 1, "schemaVersion": 1
+        })
+    }
+
+    #[test]
+    fn native_search_terms_and_zero_match_use_registered_sql() {
+        let mut connection = native_search_fixture();
+        for (term, id) in [("apple", "rss:apple"), ("rocket", "rss:rocket"), ("orchard", "rss:apple")] {
+            let result = query_normalized_json_v1(&mut connection, native_search_request(term)).expect("valid search");
+            assert_eq!(result["rows"].as_array().map(Vec::len), Some(1), "{term}");
+            assert_eq!(result["rows"][0]["card"]["globalId"], id);
+            assert_eq!(result["source"]["projectionRevision"], 7);
+            assert_eq!(result["scannedRows"], 2);
+            assert!(result["nextCursor"].is_null());
+        }
+        let zero = query_normalized_json_v1(&mut connection, native_search_request("zzzzzzzz")).expect("admitted zero");
+        assert_eq!(zero["rows"].as_array().map(Vec::len), Some(0));
+        assert_eq!(zero["scannedRows"], 2);
+        assert_eq!(zero["source"]["projectionRevision"], 7);
+        assert!(zero["nextCursor"].is_null());
+    }
+
+    #[test]
+    fn native_search_refuses_missing_source_and_changed_cursor() {
+        let mut absent = Connection::open_in_memory().expect("database");
+        install_normalized_schema_v1(&absent).expect("schema");
+        assert!(matches!(query_normalized_json_v1(&mut absent, native_search_request("apple")), Err(NormalizedSqliteError::Sqlite(_))));
+        let mut connection = native_search_fixture();
+        let mut request = native_search_request("apple");
+        request["limit"] = 1.into();
+        let first = query_normalized_json_v1(&mut connection, request.clone()).expect("first page");
+        assert!(first["nextCursor"].is_string());
+        request["cursor"] = first["nextCursor"].clone();
+        connection.execute_batch("UPDATE library_meta SET source_revision=8; UPDATE library_change_state SET revision=8;").expect("advance synthetic source");
+        assert!(matches!(query_normalized_json_v1(&mut connection, request), Err(NormalizedSqliteError::InvalidRequest("normalized search cursor is stale or mismatched"))));
+        connection.execute_batch("UPDATE library_change_state SET revision=9;").expect("inconsistent synthetic source");
+        assert!(matches!(query_normalized_json_v1(&mut connection, native_search_request("apple")), Err(NormalizedSqliteError::InvalidRequest("normalized query source identity is invalid"))));
+    }
+
+    #[test]
+    fn native_search_sql_and_row_errors_never_become_empty_success() {
+        let mut missing_table = native_search_fixture();
+        missing_table.execute_batch("DROP TABLE library_feed_item_tags;").expect("inject SQL failure");
+        assert!(matches!(query_normalized_json_v1(&mut missing_table, native_search_request("apple")), Err(NormalizedSqliteError::Sqlite(_))));
+        let mut invalid_row = native_search_fixture();
+        invalid_row.execute("INSERT INTO library_feed_item_tags (global_id, tag) VALUES ('rss:apple', ?1)", ["x".repeat(1025)]).expect("inject oversized row value");
+        assert!(matches!(query_normalized_json_v1(&mut invalid_row, native_search_request("apple")), Err(NormalizedSqliteError::Sqlite(_))));
+    }
+
 }

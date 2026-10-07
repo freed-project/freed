@@ -105,6 +105,39 @@ pub(crate) fn verify_completed_consumer_successor_checkpoint(
     Ok(true)
 }
 
+/// A demoted viewer may follow a later successor without discarding its source
+/// consent. The old enrollment must belong to the originally adopted epoch.
+/// The original consent and complete later successor chain remain independent proofs.
+pub(crate) fn verify_demoted_viewer_successor_checkpoint(
+    connection: &Connection,
+) -> Result<bool, String> {
+    if !crate::normalized_viewer::normalized_library_is_read_only_v1(connection)
+        .map_err(|e| e.to_string())? {
+        return Ok(false);
+    }
+    let selected: Option<(String, String, String)> = connection.query_row(
+        "SELECT handoff.library_id, handoff.successor_epoch_id, receipt.writer_actor_id
+         FROM library_local_handoff AS handoff
+         JOIN library_meta AS meta ON meta.singleton_id=1 AND meta.library_id=handoff.library_id
+          AND meta.authority_epoch!=handoff.successor_epoch_id
+         JOIN library_follower_actor_request AS request ON request.singleton_id=1
+          AND request.library_id=handoff.library_id AND request.authority_epoch_id=handoff.successor_epoch_id
+         JOIN library_follower_checkpoint_receipt AS receipt ON receipt.singleton_id=1
+          AND receipt.library_id=meta.library_id AND receipt.authority_epoch_id=meta.authority_epoch
+         JOIN library_local_viewer_policy AS policy ON policy.singleton_id=1
+          AND policy.library_id=handoff.library_id AND policy.source_handoff_id=handoff.handoff_id
+         WHERE handoff.singleton_id=1 AND handoff.installation_role='source' AND handoff.phase='demoted';",
+        [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    ).optional().map_err(|e| e.to_string())?;
+    let Some((library, adopted_epoch, writer)) = selected else { return Ok(false); };
+    crate::normalized_source_handoff::verify_demoted_source_consent(connection)?;
+    let certificate = verify_selected_consumer_successor(connection, &library, &adopted_epoch)?;
+    if certificate.certificate_body.target_writer_id != writer {
+        return Err("viewer successor checkpoint writer changed".into());
+    }
+    Ok(true)
+}
+
 /// Persist an exact archive and the consumer lifecycle in one FULL transaction.
 /// Active local rows remain intact until a later explicit recovery commit.
 /// Returning an archive ID is not permission to replay its old signed intents.
@@ -124,9 +157,16 @@ pub fn archive_consumer_epoch_recovery_v1(
             let version: u32 = db
                 .pragma_query_value(None, "user_version", |r| r.get(0))
                 .map_err(|e| e.to_string())?;
-            Ok(version == crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION)
+            Ok(matches!(version, 2 | 5 | 6))
         },
         |db| {
+            // A viewer already contains the recovery catalog. Do not run a
+            // handoff migration or alter its durable installation-local policy.
+            if crate::normalized_viewer::normalized_library_is_read_only_v1(db)
+                .map_err(|e| e.to_string())? {
+                return crate::normalized_sqlite::install_normalized_schema_v1(db)
+                    .map_err(|e| e.to_string());
+            }
             crate::normalized_sqlite::migrate_native_handoff_schema_v2(db)
                 .map_err(|e| e.to_string())
         },
@@ -205,6 +245,16 @@ pub(crate) fn archive_consumer_recovery_with_admission(
             if removed != 1 {
                 return Err("canceled target changed before archival".into());
             }
+        } else if verify_demoted_viewer_successor_checkpoint(&tx)? {
+            crate::normalized_source_handoff::retain_demoted_viewer_for_recovery(&tx, created_at)?;
+            let removed = tx.execute(
+                "DELETE FROM library_local_handoff WHERE singleton_id=1 AND installation_role='source'
+                 AND phase='demoted' AND library_id=?1 AND successor_epoch_id=?2 AND updated_at<=?3;",
+                params![library, old_epoch, created_at],
+            ).map_err(|e| e.to_string())?;
+            if removed != 1 {
+                return Err("viewer source lifecycle changed before archival".into());
+            }
         } else {
             let previous = completed_consumer_cycle_before_current(&tx)?
                 .ok_or("consumer recovery cannot replace another lifecycle fence")?;
@@ -260,7 +310,9 @@ fn archive_live_follower_rows(
     let mut digest = Sha256::new();
     let mut total = 0u64;
     let mut intent_counts = [0u64; 2];
-    for table in crate::normalized_import::RETAINED_FOLLOWER_TABLES {
+    for table in
+        crate::normalized_import::retained_follower_tables(tx).map_err(|e| e.to_string())?
+    {
         let mut metadata = tx
             .prepare(&format!("PRAGMA table_info({table});"))
             .map_err(|e| e.to_string())?;
@@ -294,7 +346,7 @@ fn archive_live_follower_rows(
         let mut rows = statement.query([]).map_err(|e| e.to_string())?;
         let mut ordinal = 0u64;
         while let Some(row) = rows.next().map_err(|e| e.to_string())? {
-            if *table == "library_intent_transactions" {
+            if table == "library_intent_transactions" {
                 let state_index = columns
                     .iter()
                     .position(|(name, _)| name == "state")
@@ -382,7 +434,8 @@ pub(crate) fn archive_promoted_consumer_in_transaction(
             crate::sqlite_contract_generated::NORMALIZED_SCHEMA_SHA256, "0".repeat(64), created_at],
     ).map_err(|e| e.to_string())?;
     archive_live_follower_rows(tx, handoff_id)?;
-    for table in crate::normalized_import::RETAINED_FOLLOWER_TABLES
+    for table in crate::normalized_import::retained_follower_tables(tx)
+        .map_err(|e| e.to_string())?
         .iter()
         .rev()
     {
@@ -583,7 +636,7 @@ pub fn commit_consumer_epoch_reenrollment_v1(
         committed_at,
         |db| crate::normalized_sqlite::install_normalized_schema_v1(db).map_err(|e| e.to_string()),
         |db, _| {
-            crate::normalized_handoff::require_handoff_follower_edit_admission_v1(db)
+            crate::normalized_handoff::require_handoff_follower_lifecycle_admission_v1(db)
                 .map_err(|e| e.to_string())
         },
     )
@@ -927,10 +980,12 @@ pub fn read_consumer_recovery_summary_v1(
     let version: u32 = connection
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version == crate::sqlite_contract_generated::SQLITE_SCHEMA_VERSION {
+    crate::normalized_local_annotations::reject_building(connection)
+        .map_err(|error| error.to_string())?;
+    if matches!(version, 1 | 4) {
         return Ok(None);
     }
-    if version != crate::sqlite_contract_generated::NATIVE_STORAGE_SCHEMA_VERSION {
+    if !matches!(version, 2 | 5 | 6) {
         return Err("consumer recovery summary requires recognized native storage".into());
     }
     crate::normalized_sqlite::install_normalized_schema_v1(connection)
@@ -1017,7 +1072,9 @@ fn verify_archive_contents(
     let mut intent_counts = [0u64; 2];
     let mut digest = Sha256::new();
     let mut count = 0u64;
-    for table in crate::normalized_import::RETAINED_FOLLOWER_TABLES {
+    for table in
+        crate::normalized_import::retained_follower_tables(connection).map_err(|e| e.to_string())?
+    {
         let mut metadata = connection
             .prepare(&format!("PRAGMA table_info({table});"))
             .map_err(|e| e.to_string())?;
@@ -1060,7 +1117,7 @@ fn verify_archive_contents(
             if stored_ordinal != ordinal || lower_hex(&Sha256::digest(&bytes)) != row_digest {
                 return Err("consumer recovery archive row changed".into());
             }
-            if *table == "library_intent_transactions" {
+            if table == "library_intent_transactions" {
                 let state_index = layout
                     .iter()
                     .position(|(name, _)| name == "state")

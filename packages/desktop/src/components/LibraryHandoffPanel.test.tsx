@@ -25,6 +25,22 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 async function render() { await act(async () => root.render(<LibraryHandoffPanel />)); }
 function buttons() { return Array.from(container.querySelectorAll("button")); }
+it("offers an explicit viewer adoption and retries the native viewer mode after demotion", async () => {
+  mocks.refresh.mockResolvedValue({ role: null, state: "fenced" });
+  await render();
+  await act(async () => buttons().find(b => b.textContent === "Verify successor and continue as read-only viewer")!.click());
+  expect(mocks.adopt).toHaveBeenCalledWith(expect.objectContaining({ readOnly: true, accessToken: "token" }));
+  mocks.status.phase = "demoted";
+  mocks.refresh.mockResolvedValue({ role: "follower", state: "read_only_consumer" });
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await render();
+  mocks.token.mockClear();
+  await act(async () => buttons().find(b => b.textContent === "Verify successor and continue as read-only viewer")!.click());
+  expect(mocks.adopt).toHaveBeenLastCalledWith(expect.objectContaining({ readOnly: true, accessToken: "" }));
+  expect(mocks.token).not.toHaveBeenCalled();
+  expect(buttons().some(b => b.textContent === "Prepare this device as the new Primary")).toBe(false);
+});
 it("resumes an authorized source without exposing cancellation or legacy takeover", async () => {
   await render();
   expect(container.textContent).toContain("Move authorized");

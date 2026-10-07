@@ -31,6 +31,7 @@ jobs:
       applicable: ${{ steps.plan.outputs.applicable }}
       job-count: ${{ steps.plan.outputs.job-count }}
       native: ${{ steps.plan.outputs.native }}
+      preview-native: ${{ steps.plan.outputs.preview-native }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
       - name: Checkout
@@ -76,6 +77,7 @@ jobs:
             echo "- jobs: ${{ steps.plan.outputs.job-count }} (cap 16, was a fixed 32)"
             echo "- reason: ${{ steps.plan.outputs.reason }}"
             echo "- native acceptance lane: ${{ steps.plan.outputs.native }}"
+            echo "- preview process acceptance: ${{ steps.plan.outputs.preview-native }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
   tooling-smoke-shards:
@@ -141,50 +143,62 @@ jobs:
   # said they were required. A not-applicable plan is the only path to a green
   # gate without shard execution.
   #
-  # !cancelled() rather than always(), because always() also runs during a
-  # cancelled run. That is what made a superseded or manually cancelled run
-  # report a hard red gate while every shard it managed to finish had passed:
-  # cancellation is the absence of a verdict, not a failing one, and reporting
-  # it as failure taught everyone to read a red gate as noise. A cancelled run
-  # now skips the gate instead, which leaves no verdict rather than a wrong one.
+  # Evaluate required dependency results even when a dependency is cancelled.
+  # This bounded status-only gate does not establish whole-workflow cancellation:
+  # after accepted dependencies, an always() job can still pass a cancelled run.
+  # The hosted negative proof in issue #2121 leaves that separate gap open.
   tooling-smoke:
     name: Tooling smoke
-    if: ${{ !cancelled() }}
-    needs: [tooling-smoke-plan, tooling-smoke-shards, native-acceptance]
+    if: ${{ always() }}
+    needs: [tooling-smoke-plan, tooling-smoke-shards, native-acceptance, preview-process-acceptance, feature, pwa-opfs-acceptance]
+    timeout-minutes: 2
     runs-on: ubuntu-latest
     steps:
       - name: Require the planned tooling smoke result
+        if: ${{ always() }}
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          REF: ${{ github.ref }}
+          FEATURE_RESULT: ${{ needs.feature.result }}
+          OPFS_REQUIRED: ${{ needs.feature.outputs.needs-webkit }}
+          OPFS_RESULT: ${{ needs.pwa-opfs-acceptance.result }}
           PLAN_RESULT: ${{ needs.tooling-smoke-plan.result }}
           SHARD_RESULT: ${{ needs.tooling-smoke-shards.result }}
           NATIVE_RESULT: ${{ needs.native-acceptance.result }}
           APPLICABLE: ${{ needs.tooling-smoke-plan.outputs.applicable }}
           NATIVE_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.native }}
+          PREVIEW_REQUIRED: ${{ needs.tooling-smoke-plan.outputs.preview-native }}
+          PREVIEW_RESULT: ${{ needs.preview-process-acceptance.result }}
           JOB_COUNT: ${{ needs.tooling-smoke-plan.outputs.job-count }}
         run: |
-          # A cancelled dependency can still reach here when individual jobs were
-          # cancelled without the whole run being cancelled. Name it for what it
-          # is: "result was cancelled" next to a pile of green shards is the most
-          # misread signal in this lane, and no diff change fixes it.
-          #
-          # Two different things produce it, and they want opposite responses, so
-          # do not guess between them here. A superseded run just needs running
-          # again. A shard killed by timeout-minutes also reports cancelled, and
-          # re-running that only burns the same ninety minutes a second time; it
-          # needs more shards or a longer budget. Point at both.
-          if [ "$PLAN_RESULT" = "cancelled" ] || [ "$SHARD_RESULT" = "cancelled" ]; then
-            echo "Tooling smoke was cancelled, not failed. No verdict was produced."
-            echo "  planner: $PLAN_RESULT, shards: $SHARD_RESULT"
-            echo ""
-            echo "Check the shard durations before re-running:"
-            echo "  - Any shard sitting at exactly the job timeout was killed, not"
-            echo "    cancelled by a newer run. Re-running reproduces it. That suite"
-            echo "    needs more shards, which means fixing its entry in"
-            echo "    scripts/tooling-smoke-durations.json or raising the job budget."
-            echo "  - Otherwise a newer run superseded this one and re-running is"
-            echo "    the whole fix. Nothing in the diff needs changing."
-            exit 1
-          fi
+          # Feature planning only runs for dev PRs. Never interpret a missing
+          # selection as permission to omit the mandatory native proof.
+          case "$EVENT_NAME/$BASE_REF/$REF" in
+            pull_request/dev/*)
+              if [ "$FEATURE_RESULT" != "success" ]; then
+                echo "Feature validation did not succeed: $FEATURE_RESULT"
+                exit 1
+              fi
+              case "$OPFS_REQUIRED/$OPFS_RESULT" in
+                true/success|false/skipped) ;;
+                *) echo "Invalid OPFS plan/result: $OPFS_REQUIRED/$OPFS_RESULT"; exit 1 ;;
+              esac
+              ;;
+            push//refs/heads/dev)
+              if [ "$FEATURE_RESULT" != "skipped" ] || [ "$OPFS_RESULT" != "success" ]; then
+                echo "Dev push requires OPFS success and skipped PR feature validation."
+                exit 1
+              fi
+              ;;
+            pull_request/main/*)
+              if [ "$FEATURE_RESULT" != "skipped" ] || [ "$OPFS_RESULT" != "skipped" ]; then
+                echo "Main PR deliberately skips feature and OPFS validation."
+                exit 1
+              fi
+              ;;
+            *) echo "Unexpected validation event: $EVENT_NAME/$BASE_REF/$REF"; exit 1 ;;
+          esac
 
           if [ "$PLAN_RESULT" != "success" ]; then
             echo "Tooling smoke planner did not succeed: $PLAN_RESULT"
@@ -203,6 +217,18 @@ jobs:
               exit 1
             fi
             echo "No changed path reaches the tooling smoke lane."
+          fi
+
+          # Cleanup can terminate processes and remove a worktree. Its native
+          # proof is mandatory whenever selected, including skipped/cancelled jobs.
+          if [ "$PREVIEW_REQUIRED" = "true" ]; then
+            if [ "$PREVIEW_RESULT" != "success" ]; then
+              echo "Preview process acceptance did not pass: $PREVIEW_RESULT"
+              exit 1
+            fi
+          elif [ "$PREVIEW_REQUIRED" != "false" ] || [ "$PREVIEW_RESULT" != "skipped" ]; then
+            echo "Invalid preview acceptance plan/result: $PREVIEW_REQUIRED/$PREVIEW_RESULT"
+            exit 1
           fi
 
           # Observe-only for now, deliberately.
@@ -253,6 +279,28 @@ jobs:
 
       - name: Run native acceptance tests
         run: node scripts/run-native-acceptance.mjs
+
+  # These builtin-only fixtures exercise the real libproc generation boundary.
+  # Keep them separate from actor provisioning and Windows product compilation.
+  preview-process-acceptance:
+    name: Preview process acceptance (macOS)
+    needs: tooling-smoke-plan
+    if: needs.tooling-smoke-plan.outputs.preview-native == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: ".nvmrc"
+
+      - name: Verify platform and preview process contracts
+        run: |
+          node -e 'if (process.platform !== "darwin") process.exit(1)'
+          node --test --test-timeout=30000 scripts/worktree-preview.test.mjs scripts/task-decisions.test.mjs
 
   main-pr-guard:
     name: Main PR guard
@@ -351,6 +399,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            dbus \
+            gnome-keyring \
             clang \
             cmake \
             file \
@@ -506,6 +556,31 @@ jobs:
         working-directory: packages/desktop/src-tauri
         run: cargo check --target x86_64-pc-windows-msvc --all-features
 
+
+      - name: Execute Windows annotation startup and ownership regressions
+        shell: pwsh
+        run: |
+          function Test-NativeFilter([string]$Manifest, [string]$Target, [string]$Filter, [int]$Minimum, [switch]$Exact) {
+            $arguments = @('test', '--locked', '--manifest-path', $Manifest)
+            if ($Target -eq 'core') { $arguments += '--lib' }
+            else { $arguments += @('--bin', 'freed-desktop') }
+            $arguments += @($Filter, '--', '--nocapture')
+            if ($Exact) { $arguments += '--exact' }
+            & cargo @arguments 2>&1 | Tee-Object -Variable receipt
+            if ($LASTEXITCODE -ne 0) { throw "Native regression failed: $Filter" }
+            $text = $receipt -join "`n"
+            $results = [regex]::Matches($text, 'test result: ok\. (\d+) passed; 0 failed;')
+            $passed = 0
+            foreach ($result in $results) { $passed += [int]$result.Groups[1].Value }
+            if ($passed -lt $Minimum) { throw "Expected at least $Minimum executed tests for $Filter, got $passed" }
+          }
+          $core = 'packages/library-core-native/Cargo.toml'
+          Test-NativeFilter $core core 'normalized_local_annotations::tests::annotation_path_owner_upgrades_both_sources_and_keeps_absent_storage_absent' 1 -Exact
+          Test-NativeFilter $core core 'normalized_local_annotations::tests::annotation_ordinary_path_open_refuses_building_without_advancing' 1 -Exact
+          Test-NativeFilter $core core 'annotation_maintenance_owner::tests::' 3
+          Test-NativeFilter $core core 'library_core_process_lease::tests::' 1
+          Test-NativeFilter 'packages/desktop/src-tauri/Cargo.toml' desktop 'library_core_process_lease::tests::' 4
+
   dev:
     name: Dev integration
     if: github.event_name == 'push'
@@ -546,6 +621,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
+            dbus \
+            gnome-keyring \
             clang \
             cmake \
             file \

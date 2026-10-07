@@ -35,6 +35,7 @@ function row(
     likedAt: null,
     likedSyncedAt: null,
     linkPreviewTitle: null,
+    linkPreviewUrl: null,
     linkUrl: null,
     locationName: null,
     mediaTypes: [],

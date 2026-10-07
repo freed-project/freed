@@ -6,6 +6,7 @@ mod avatar_cache;
 mod gliclass;
 mod jev;
 mod jev_budget;
+mod kev;
 mod library_core_actor_key_store;
 mod library_core_authority_key_store;
 mod library_core_desktop_runtime;
@@ -13309,6 +13310,7 @@ pub fn run() {
                 );
                 let _ = open_or_focus_recovery_window(&app_handle)?;
             } else {
+                library_core_desktop_runtime::start_annotation_continuation(&app_handle);
                 let _ = start_main_window_quietly(&app_handle)?;
                 let dev_sync_result_data_dir = data_dir.clone();
                 app.listen("dev-sync-trigger-native-result", move |event| {
@@ -14468,6 +14470,9 @@ pub fn run() {
             jev::set_jev_api_key,
             jev::clear_jev_api_key,
             jev::request_jev,
+            kev::request_kev,
+            kev::cancel_kev_request,
+            kev::get_kev_models,
             jev::get_jev_budget,
             jev::set_jev_budget,
             jev::cancel_jev_request,
@@ -14623,6 +14628,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Freed")
         .run(|app, event| {
+            if matches!(&event,tauri::RunEvent::Exit) {
+                library_core_desktop_runtime::stop_annotation_continuation();
+            }
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen {
                 has_visible_windows,

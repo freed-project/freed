@@ -1,3 +1,6 @@
+import type { LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
+import type { LibraryCountResource } from "./library-count-resource.js";
+export type { LibraryCountResource, LibraryCountResourceState, LibraryCountSnapshot, LibraryCountSelectionIdentity } from "./library-count-resource.js";
 /**
  * PlatformContext — dependency injection for platform-specific behavior
  *
@@ -84,7 +87,7 @@ interface AppStoreHook {
  * are represented by `null` (no active download).
  */
 export type UpdateDownloadProgress =
-  | { phase: "backing-up" }
+  | { phase: "backing-up"; startedAtMonotonicMs?: number }
   | { phase: "downloading"; percent: number }
   | { phase: "error"; message: string };
 
@@ -449,6 +452,7 @@ export interface SaveUrlOptions {
 }
 
 export interface UpdateSavedContentInput {
+  annotationSnapshot?: LibraryCoreHydratedAnnotations;
   notes: string;
   preview?: SaveUrlPreview;
   url: string;
@@ -499,6 +503,8 @@ export interface PlatformConfig {
 
   /** Removes durable editing and connection surfaces for a public showcase. */
   interactionMode?: "full" | "read-only";
+  /** Native-enforced Library policy; browsing and local caches remain available. */
+  libraryAccess?: "editable" | "read-only";
   /** Optional session-only read acknowledgement for a non-editable demo. */
   onReadOnlyItemOpened?: (item: FeedItem) => void;
   /** Session-only demo care simulation. Does not grant other Library mutations. */
@@ -516,10 +522,10 @@ export interface PlatformConfig {
   geographicMapMode?: "online" | "local-showcase";
 
   /**
-   * Controls whether feed cards eagerly render remote media previews.
-   * Desktop can force reader-only mode to reduce WebKit renderer pressure.
+   * Controls feed media previews. Lazy thumbnails allow images without video
+   * metadata loads; every mode keeps the renderer memory-pressure safeguards.
    */
-  feedMediaPreviews?: "inline" | "reader-only";
+  feedMediaPreviews?: "inline" | "lazy-thumbnails" | "reader-only";
   /** Feature previews can display the original media for sample records. */
   sampleMediaPreviews?: "inline";
 
@@ -737,10 +743,13 @@ export interface PlatformConfig {
   readFeedSignalCounts?: ReadFeedSignalCounts;
 
   /** Exact corpus-wide counts and tags computed inside the local row store. */
+  /** Runtime-owned native-source-fenced navigation snapshot; UI does not requery it. */
+  libraryCountResource?: LibraryCountResource;
+
   readLibraryFacetSummary?: () => Promise<LibraryFacetSummary>;
 
   /** One exact source-fenced item row from platform-local Library storage. */
-  readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | null>;
+  readLibraryItemDetail?: (globalId: string) => Promise<FeedItem | Readonly<{ item: FeedItem; annotations: LibraryCoreHydratedAnnotations | null }> | null>;
 
   /** One bounded Map candidate set with author identity joined inside SQLite. */
   readLibraryMapCandidates?: () => Promise<
@@ -1027,19 +1036,20 @@ export function useAppStore<T>(selector: (state: BaseAppState) => T): T {
 /** One capability policy for demo controls and their alternate entry points. */
 export function getPlatformCapabilities(platform: Partial<PlatformConfig>) {
   const demo = platform.interactionMode === "read-only";
+  const readOnly = demo || platform.libraryAccess === "read-only";
   return {
     demo,
-    libraryEdits: !demo,
-    createPerson: !demo && !!platform.replaceLibraryFriend,
-    linkAccounts: !demo && !!platform.assignLibraryAccountToPerson,
-    changeCare: demo ? !!platform.onReadOnlyPersonCareChange : !!platform.upsertLibraryPerson,
+    libraryEdits: !readOnly,
+    createPerson: !readOnly && !!platform.replaceLibraryFriend,
+    linkAccounts: !readOnly && !!platform.assignLibraryAccountToPerson,
+    changeCare: demo ? !!platform.onReadOnlyPersonCareChange : !readOnly && !!platform.upsertLibraryPerson,
     pinGraph: !!platform.mutateDeviceGraphLayout,
     externalLinks: !demo,
     liveVideo: !demo,
-    maintenance: !demo,
+    maintenance: !readOnly,
     diagnostics: !demo,
-    publishStoryWall: !demo && !!platform.publishStoryWall,
-    importStoryWall: !demo && !!platform.importInstagramStoryWallArchive,
+    publishStoryWall: !readOnly && !!platform.publishStoryWall,
+    importStoryWall: !readOnly && !!platform.importInstagramStoryWallArchive,
   };
 }
 

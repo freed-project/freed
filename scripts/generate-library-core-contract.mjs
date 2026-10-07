@@ -67,6 +67,7 @@ function assertContract(contract) {
   const expectedKeys = [
     "agentQueryProfile",
     "agentQueryProtocol",
+    "annotationStorageSchemaVersions",
     "applicationId",
     "capabilityProfiles",
     "checkpointDatasetSchemaId",
@@ -102,6 +103,7 @@ function assertContract(contract) {
     "queryRowModels",
     "schemaVersion",
     "scopeActionPrograms",
+    "viewerStorageSchemaVersion",
   ];
   const keys = Object.keys(contract).sort();
   if (
@@ -161,6 +163,8 @@ function assertContract(contract) {
     contract.contractVersion !== 1 ||
     contract.schemaVersion !== 1 ||
     contract.nativeStorageSchemaVersion !== 2 ||
+    contract.viewerStorageSchemaVersion !== 6 ||
+    JSON.stringify(contract.annotationStorageSchemaVersions) !== "[4,5]" ||
     contract.pendingPreferenceStorageSchemaVersion !== 3 ||
     contract.protocolVersion !== 2 ||
     contract.nativeCommandProtocolVersion !== 1 ||
@@ -816,7 +820,7 @@ function localSchemaCatalog(sqlText) {
   });
 }
 
-function typescriptSource(contract, schemaSql, schemaDigest, localSql, localDigest, preferenceSql, preferenceDigest) {
+function typescriptSource(contract, schemaSql, schemaDigest, localSql, localDigest, preferenceSql, preferenceDigest, annotationSql, annotationDigests, annotationCoverageSql) {
   const entries = JSON.stringify(contract.checkpointRecords, null, 2)
     .replaceAll('"registryKey"', "registryKey")
     .replaceAll('"primaryKey"', "primaryKey")
@@ -875,6 +879,8 @@ export const LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES = ${contract.limits
 export const LIBRARY_CORE_FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS = ${contract.limits.followerIntentPageRecords} as const;
 export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_MEMBERS = ${contract.limits.operationTransactionMembers} as const;
 export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_BYTES = ${contract.limits.operationTransactionBytes} as const;
+/** Native-only viewer catalog; definition does not activate migration. */
+export const LIBRARY_CORE_VIEWER_STORAGE_SCHEMA_VERSION = ${contract.viewerStorageSchemaVersion} as const;
 export const LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION = ${contract.nativeStorageSchemaVersion} as const;
 export const LIBRARY_CORE_LOCAL_SCHEMA_SHA256 = ${JSON.stringify(localDigest)} as const;
 export const LIBRARY_CORE_LOCAL_SCHEMA_SQL = ${JSON.stringify(localSql)} as const;
@@ -884,6 +890,11 @@ export const LIBRARY_CORE_PENDING_PREFERENCE_STORAGE_SCHEMA_VERSION = ${contract
 export const LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SHA256 = ${JSON.stringify(preferenceDigest)} as const;
 export const LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SQL = ${JSON.stringify(preferenceSql)} as const;
 export const LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_CATALOG = ${JSON.stringify(localSchemaCatalog(preferenceSql), null, 2)} as const;
+export const LIBRARY_CORE_ANNOTATION_STORAGE_SCHEMA_VERSIONS = ${JSON.stringify(contract.annotationStorageSchemaVersions)} as const;
+export const LIBRARY_CORE_ANNOTATION_SCHEMA_SHA256 = ${JSON.stringify(annotationDigests)} as const;
+export const LIBRARY_CORE_ANNOTATION_COVERAGE_SQL = ${JSON.stringify(annotationCoverageSql)} as const;
+export const LIBRARY_CORE_ANNOTATION_SCHEMA_SQL = ${JSON.stringify(annotationSql)} as const;
+export const LIBRARY_CORE_ANNOTATION_SCHEMA_CATALOG = ${JSON.stringify(localSchemaCatalog(annotationSql), null, 2)} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = ${JSON.stringify(schemaDigest)} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = ${JSON.stringify(schemaSql)} as const;
 export const LIBRARY_CORE_PREFERENCE_WRITE_POLICIES = ${JSON.stringify(contract.preferenceWritePolicies, null, 2)} as const;
@@ -1114,7 +1125,7 @@ function rustVariant(value) {
     .join("");
 }
 
-function rustSource(contract, schemaDigest, nativeSchemaDigest, preferenceSchemaDigest) {
+function rustSource(contract, schemaDigest, nativeSchemaDigest, preferenceSchemaDigest, annotationDigests, viewerSchemaDigest) {
   const rustString = (value) =>
     JSON.stringify(value).replaceAll("\\u0000", "\\0");
   const recordVariants = contract.checkpointRecords
@@ -1284,6 +1295,15 @@ pub const PENDING_PREFERENCE_SCHEMA_SHA256: &str =
     ${JSON.stringify(preferenceSchemaDigest)};
 pub const PENDING_PREFERENCE_SCHEMA_EXTENSION_SQL: &str =
     include_str!("normalized_local_preferences_schema_v3.sql");
+pub const VIEWER_STORAGE_SCHEMA_VERSION: u32 = ${contract.viewerStorageSchemaVersion};
+pub const VIEWER_SCHEMA_SHA256: &str = ${JSON.stringify(viewerSchemaDigest)};
+pub const VIEWER_SCHEMA_EXTENSION_SQL: &str = include_str!("normalized_viewer_schema_v6.sql");
+pub const ANNOTATION_STORAGE_SCHEMA_VERSION: u32 = 4;
+pub const ANNOTATION_RECOVERY_STORAGE_SCHEMA_VERSION: u32 = 5;
+pub const ANNOTATION_SCHEMA_SHA256: &str = ${JSON.stringify(annotationDigests[0])};
+pub const ANNOTATION_RECOVERY_SCHEMA_SHA256: &str = ${JSON.stringify(annotationDigests[1])};
+pub const ANNOTATION_COVERAGE_SQL: &str = include_str!("normalized_local_annotation_coverage.sql");
+pub const ANNOTATION_SCHEMA_EXTENSION_SQL: &str = include_str!("normalized_local_annotations_schema_v4.sql");
 pub const NORMALIZED_SCHEMA_SHA256: &str =
     ${JSON.stringify(schemaDigest)};
 pub const NORMALIZED_SCHEMA_SQL: &str =
@@ -1542,10 +1562,23 @@ const preferenceSchemaExtension = await readFile(resolve(root,
   "packages/library-core-native/src/normalized_local_preferences_schema_v3.sql"), "utf8");
 const preferenceSchemaDigest = createHash("sha256")
   .update(schemaSql).update(nativeSchemaExtension).update(preferenceSchemaExtension).digest("hex");
+const annotationSql = await readFile(resolve(root,
+  "packages/library-core-native/src/normalized_local_annotations_schema_v4.sql"), "utf8");
+const annotationCoverageSql = await readFile(resolve(root,
+  "packages/library-core-native/src/normalized_local_annotation_coverage.sql"), "utf8");
+const annotationDigests = [
+  createHash("sha256").update(schemaSql).update(annotationSql).digest("hex"),
+  createHash("sha256").update(schemaSql).update(nativeSchemaExtension).update(annotationSql).digest("hex"),
+];
+const viewerSql = await readFile(resolve(root,
+  "packages/library-core-native/src/normalized_viewer_schema_v6.sql"), "utf8");
+// Extend catalog 5 without changing any predecessor's catalog bytes or digest.
+const viewerSchemaDigest = createHash("sha256")
+  .update(schemaSql).update(nativeSchemaExtension).update(annotationSql).update(viewerSql).digest("hex");
 assertContract(contract);
 await update(
   typescriptPath,
-  typescriptSource(contract, schemaSql, schemaDigest, nativeSchemaExtension, nativeSchemaDigest, preferenceSchemaExtension, preferenceSchemaDigest),
+  typescriptSource(contract, schemaSql, schemaDigest, nativeSchemaExtension, nativeSchemaDigest, preferenceSchemaExtension, preferenceSchemaDigest, annotationSql, annotationDigests, annotationCoverageSql),
 );
-await update(rustPath, rustSource(contract, schemaDigest, nativeSchemaDigest, preferenceSchemaDigest));
+await update(rustPath, rustSource(contract, schemaDigest, nativeSchemaDigest, preferenceSchemaDigest, annotationDigests, viewerSchemaDigest));
 await update(libraryServicePath, libraryServiceSource(contract, schemaDigest));

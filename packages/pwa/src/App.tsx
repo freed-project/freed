@@ -697,7 +697,7 @@ function App() {
             const item = await readPwaLibraryCoreItemDetail(id);
             return item ? projectDemoItemRead(item) : null;
           }
-        : readPwaLibraryCoreItemDetail,
+        : (id) => readPwaLibraryCoreItemDetail(id, true),
       bugReporting: pwaBugReporting,
     }),
     [canQueryLibrary, checkForUpdates, handleFactoryReset, releaseChannel, setReleaseChannel],

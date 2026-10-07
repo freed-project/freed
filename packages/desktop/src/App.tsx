@@ -1,3 +1,4 @@
+import { desktopLibraryCountResource } from "./lib/library-count-resource";
 import { DesktopLibrarySetup } from "./components/DesktopLibrarySetup";
 import { subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, refreshLibraryCoreDesktopRole, type DesktopLibraryInstallationStatus } from "./lib/library-core-desktop-role";
 import { useEffect, useMemo, useCallback, useRef, useState, useSyncExternalStore, Profiler, type ProfilerOnRenderCallback } from "react";
@@ -561,7 +562,7 @@ function App() {
   }), []);
   const [installationError, setInstallationError] = useState<string | null>(null);
   const handoffPaused = useSyncExternalStore(subscribeDesktopHandoffPause, isDesktopHandoffPaused);
-  const installationReady = installation !== null && ["standalone_primary", "shared_primary", "awaiting_enrollment", "editable_consumer"].includes(installation.state);
+  const installationReady = installation !== null && ["standalone_primary", "shared_primary", "awaiting_enrollment", "editable_consumer", "read_only_consumer"].includes(installation.state);
 
   useEffect(() => {
     if (!legalAccepted || lockedStartupState !== "ready") return;
@@ -1110,12 +1111,13 @@ function App() {
       source: "desktop-download",
       message: "Preparing Freed Desktop update.",
     });
-    setUpdateState({ phase: "backing-up" });
+    const backupStartedAt = performance.now();
+    setUpdateState({ phase: "backing-up", startedAtMonotonicMs: backupStartedAt });
 
     try {
       const version = await installPendingDesktopUpdate(pending, (progress) => {
         if (progress.phase === "backing-up") {
-          setUpdateState(progress);
+          setUpdateState({ phase: "backing-up", startedAtMonotonicMs: backupStartedAt });
           updateBackgroundActivity(activityId, { message: "Saving Library backup before updating." });
           return;
         }
@@ -1212,83 +1214,88 @@ function App() {
   );
 
   const handleFactoryReset = useCallback(async (deleteFromCloud: boolean) => {
-    await runFactoryResetWithRecovery({
-      reset: async () => {
-        beginFactoryResetBoundary();
-        stopRssPoller();
-        stopProviderSyncScheduler();
-        stopSync();
-        stopAllCloudSyncs();
-        stopSnapshotManager();
-        stopContentFetcher();
-        stopPriorityIndexer();
-        stopSemanticClassifier();
-        await runFactoryResetOperations({
-          phaseTimeoutMs: 255_000,
-          trackedWorkDrainTimeoutMs: 240_000,
-          quiesceLocalWriters: [
-            quiesceDesktopProviderAuthForFactoryReset,
-            quiesceDesktopOAuthForFactoryReset,
-            quiesceDesktopStoreForFactoryReset,
-            stopRssPollerAndDrain,
-            stopProviderSyncSchedulerAndDrain,
-            stopAndDrainContentFetcher,
-            stopAndDrainPriorityIndexer,
-            stopAndDrainSemanticClassifier,
-          ],
-          clearDeviceStores: () => [
-            clearDeviceDisplayPreferences(),
-            clearDeviceAIPreferences(),
-            clearLegacyDeviceGraphLayoutImport(),
-          ],
-          clearLocalSettings: [
-            resetFeedCardDensity,
-            resetInterfaceZoom,
-            resetThemePreference,
-            clearStoredCookies,
-            clearProviderScheduleStateForFactoryReset,
-            clearRssSyncScheduleForFactoryReset,
-          ],
-          clearLocalData: [
-            clearSnapshots,
-            clearClipboardSaveShortcutConfig,
-            async () => {
-              await invoke("clear_factory_reset_runtime_artifacts");
-            },
-          ],
-          clearProviderDataAndConnections: async () => {
-            stopAllCloudSyncs();
-            await clearStoredCloudDataForFactoryReset(deleteFromCloud);
-            const disconnectFailures: unknown[] = [];
-            for (const disconnectProvider of [
-              disconnectFbForFactoryReset,
-              disconnectIgForFactoryReset,
-              disconnectLiForFactoryReset,
-              disconnectSubstackForFactoryReset,
-              disconnectMediumForFactoryReset,
-              disconnectYouTubeForFactoryReset,
-            ]) {
-              try {
-                await disconnectProvider();
-              } catch (error) {
-                disconnectFailures.push(error);
+    const finishCountsTransition = desktopLibraryCountResource.beginTransition();
+    try {
+      await runFactoryResetWithRecovery({
+        reset: async () => {
+          beginFactoryResetBoundary();
+          stopRssPoller();
+          stopProviderSyncScheduler();
+          stopSync();
+          stopAllCloudSyncs();
+          stopSnapshotManager();
+          stopContentFetcher();
+          stopPriorityIndexer();
+          stopSemanticClassifier();
+          await runFactoryResetOperations({
+            phaseTimeoutMs: 255_000,
+            trackedWorkDrainTimeoutMs: 240_000,
+            quiesceLocalWriters: [
+              quiesceDesktopProviderAuthForFactoryReset,
+              quiesceDesktopOAuthForFactoryReset,
+              quiesceDesktopStoreForFactoryReset,
+              stopRssPollerAndDrain,
+              stopProviderSyncSchedulerAndDrain,
+              stopAndDrainContentFetcher,
+              stopAndDrainPriorityIndexer,
+              stopAndDrainSemanticClassifier,
+            ],
+            clearDeviceStores: () => [
+              clearDeviceDisplayPreferences(),
+              clearDeviceAIPreferences(),
+              clearLegacyDeviceGraphLayoutImport(),
+            ],
+            clearLocalSettings: [
+              resetFeedCardDensity,
+              resetInterfaceZoom,
+              resetThemePreference,
+              clearStoredCookies,
+              clearProviderScheduleStateForFactoryReset,
+              clearRssSyncScheduleForFactoryReset,
+            ],
+            clearLocalData: [
+              clearSnapshots,
+              clearClipboardSaveShortcutConfig,
+              async () => {
+                await invoke("clear_factory_reset_runtime_artifacts");
+              },
+            ],
+            clearProviderDataAndConnections: async () => {
+              stopAllCloudSyncs();
+              await clearStoredCloudDataForFactoryReset(deleteFromCloud);
+              const disconnectFailures: unknown[] = [];
+              for (const disconnectProvider of [
+                disconnectFbForFactoryReset,
+                disconnectIgForFactoryReset,
+                disconnectLiForFactoryReset,
+                disconnectSubstackForFactoryReset,
+                disconnectMediumForFactoryReset,
+                disconnectYouTubeForFactoryReset,
+              ]) {
+                try {
+                  await disconnectProvider();
+                } catch (error) {
+                  disconnectFailures.push(error);
+                }
               }
-            }
-            if (disconnectFailures.length > 0) throw disconnectFailures[0];
-          },
-          clearLibrary: async () => {
-            await resetLocalLibrary();
-          },
-        });
-        clearFactoryResetCloudCleanupBarrier();
-      },
-      reload: () => location.reload(),
-      onFailure: (error) => {
-        const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
-        const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
-        toast.error(recovery.message);
-      },
-    });
+              if (disconnectFailures.length > 0) throw disconnectFailures[0];
+            },
+            clearLibrary: async () => {
+              await resetLocalLibrary();
+            },
+          });
+          clearFactoryResetCloudCleanupBarrier();
+        },
+        reload: () => location.reload(),
+        onFailure: (error) => {
+          const cloudCleanupPaused = hasFactoryResetCloudCleanupBarrier();
+          const recovery = getDesktopFactoryResetFailureRecovery(error, cloudCleanupPaused);
+          toast.error(recovery.message);
+        },
+      });
+    } finally {
+      finishCountsTransition();
+    }
   }, []);
 
   const retryCloudProvider = useCallback(async (provider: CloudProvider) => {
@@ -1448,9 +1455,11 @@ function App() {
 
   // Local feature previews should open with a useful library. E2E tests keep
   // deterministic control unless the preview helper opts in explicitly.
+  // Allow native development with hot reload and no automatic sample writes.
   useEffect(() => {
     const shouldAutoSeedPreview =
-      IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
+      import.meta.env.FREED_AUTO_SEED_SAMPLE_DATA !== "0" &&
+      (IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1"));
     if (!isInitialized || !shouldAutoSeedPreview || previewPopulationStarted.current) return;
 
     const guardKey = "freed_dev_seeded";
@@ -1490,7 +1499,8 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
-      feedMediaPreviews: "reader-only",
+      libraryAccess: installation?.state === "read_only_consumer" ? "read-only" : "editable",
+      feedMediaPreviews: "lazy-thumbnails",
       sampleMediaPreviews: IS_FEATURE_PREVIEW ? "inline" : undefined,
       addRssFeed,
       importOPMLFeeds,
@@ -1687,13 +1697,14 @@ function App() {
         tauriRuntimeAvailable && isInitialized && isSqliteLibraryActive()
           ? readDesktopFeedSignalCounts
           : undefined,
+      libraryCountResource: tauriRuntimeAvailable && isInitialized ? desktopLibraryCountResource : undefined,
       readLibraryFacetSummary:
         tauriRuntimeAvailable && isInitialized
           ? readLibraryCoreFacetSummary
           : undefined,
       readLibraryItemDetail:
         tauriRuntimeAvailable && isInitialized
-          ? readLibraryCoreItemDetail
+          ? (id) => readLibraryCoreItemDetail(id, true)
           : undefined,
       readLibrarySavedAnalytics:
         tauriRuntimeAvailable && isInitialized
@@ -1797,14 +1808,14 @@ function App() {
           }
         : undefined,
       updateDownloadProgress: ((): UpdateDownloadProgress | null => {
-        if (updateState.phase === "backing-up") return { phase: "backing-up" };
+        if (updateState.phase === "backing-up") return updateState;
         if (updateState.phase === "downloading") return { phase: "downloading", percent: updateState.percent };
         if (updateState.phase === "error") return { phase: "error", message: updateState.message };
         return null;
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, isInitialized, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
+     [installation?.state, checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, isInitialized, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
   );
 
   if (lockedStartupState !== "ready") {

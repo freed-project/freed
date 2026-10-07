@@ -1,4 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import {
   CARGO_LOCK_PATH,
@@ -67,6 +70,12 @@ export const PROMOTION_COMMIT_SUBJECT_PATTERN =
   /^chore: promote dev (?:into|to) main(?: for production release)?(?: \(#\d+\))?$/;
 const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
   "fix: backport simplified provider approval (#980)",
+]);
+// Immutable snapshot controls were already on dev before the unchanged
+// reverse-integration checkpoint. Pin the backport identity, not its subject:
+// a later main rollback must still require reverse integration.
+const HISTORICAL_MAIN_BACKPORT_COMMITS = new Set([
+  "8f179b4ef898e1e3025b3a7ae5a4407561459474",
 ]);
 const HISTORICAL_MAIN_PROMOTION_SUBJECTS = new Set([
   "chore: refresh dev promotion for production release (#1538)",
@@ -274,9 +283,57 @@ function blobExistsInHistory(ref, filePath, blobId, { cwd } = {}) {
   const commits = splitLines(
     tryRunGit(["log", "--format=%H", ref, "--", filePath], { cwd }) ?? "",
   );
-  return commits.some(
-    (commit) => readBlobId(commit, filePath, { cwd }) === blobId,
+  if (commits.length === 0) return false;
+  // Preserve the exact path-at-commit lookup, but let one Git process resolve
+  // the batch. Thousands of separate processes dominate container backflow checks.
+  const identities = execFileSync("git", ["cat-file", "--batch-check=%(objectname)"], {
+    cwd,
+    encoding: "utf8",
+    input: commits.map((commit) => `${commit}:${filePath}\n`).join(""),
+  });
+  return splitLines(identities).includes(blobId);
+}
+
+function treeEntryExistsInHistory(ref, filePath, sourceRef, { cwd } = {}) {
+  const readEntry = (commit) => tryRunGit(
+    ["ls-tree", "--format=%(objectmode) %(objecttype) %(objectname)", commit,
+      "--", `:(literal)${filePath}`],
+    { cwd },
   );
+  const entry = readEntry(sourceRef);
+  if (!entry) return false;
+  const commits = splitLines(
+    tryRunGit(["log", "--format=%H", ref, "--", filePath], { cwd }) ?? "",
+  );
+  return commits.some((commit) => readEntry(commit) === entry);
+}
+
+// The pinned historical backport may have been applied onto a different lane
+// baseline, so its entire blob need never have existed on dev. Admit it only
+// when replaying that exact change leaves today's regular file byte-identical.
+function historicalBackportAlreadyApplied(devRef, filePath, commit, { cwd }) {
+  const refs = [devRef, `${commit}^`, commit];
+  const entries = refs.map((ref) => tryRunGit(
+    ["ls-tree", "--format=%(objectmode) %(objecttype)", ref, "--", `:(literal)${filePath}`],
+    { cwd },
+  ));
+  if (!entries.every((entry) => entry === "100644 blob")) return false;
+  const directory = mkdtempSync(path.join(tmpdir(), "freed-backport-proof-"));
+  try {
+    const files = refs.map((ref, index) => {
+      const file = path.join(directory, String(index));
+      writeFileSync(file, execFileSync("git", ["show", `${ref}:${filePath}`], { cwd }));
+      return file;
+    });
+    const merged = execFileSync("git", ["merge-file", "-p", ...files], {
+      cwd, stdio: ["ignore", "pipe", "ignore"],
+    });
+    return merged.equals(readFileSync(files[0]));
+  } catch {
+    return false;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 }
 
 function commitIsAncestor(ancestorRef, descendantRef, { cwd } = {}) {
@@ -326,6 +383,10 @@ function cargoLockProductRef(ref, { cwd }) {
   for (;;) {
     const change = latestFileCommit(current, CARGO_LOCK_PATH, { cwd });
     if (!change) return current;
+    // A promotion restores reviewed product provenance even when its only
+    // lockfile delta is the app version. Do not walk past that snapshot.
+    if (PROMOTION_COMMIT_SUBJECT_PATTERN.test(change.subject) ||
+      HISTORICAL_MAIN_PROMOTION_SUBJECTS.has(change.subject)) return current;
     const parent = tryRunGit(["rev-parse", `${change.commit}^`], { cwd });
     if (!parent || !isCargoLockReleaseOnlyChange({
       fromRef: parent,
@@ -398,6 +459,16 @@ export function listMainBackflowDiffFiles({ devRef, mainRef, cwd }) {
       if (
         mainChange &&
         commitIsAncestor(mainChange.commit, devRef, { cwd })
+      ) {
+        return false;
+      }
+
+      if (
+        mainBlobId &&
+        mainChange &&
+        HISTORICAL_MAIN_BACKPORT_COMMITS.has(mainChange.commit) &&
+        (treeEntryExistsInHistory(devRef, filePath, productMainRef, { cwd }) ||
+          historicalBackportAlreadyApplied(devRef, filePath, mainChange.commit, { cwd }))
       ) {
         return false;
       }

@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { loadEnv } from "vite";
 import { tauriInitScript } from "./src/__mocks__/tauri-init.js";
 import react from "@vitejs/plugin-react";
 import wasm from "vite-plugin-wasm";
@@ -73,8 +74,14 @@ export default defineConfig(({ mode }) => ({
   // other's optimized dependency graph when the complete suite runs both.
   cacheDir: process.env.FREED_E2E_PERF === "1"
     ? rootFile("node_modules/.vite-feed-perf")
-    : undefined,
+    : process.env.VITE_TEST_TAURI && mode === "library-transfer-acceptance"
+      ? rootFile("node_modules/.vite-transfer-acceptance")
+      : undefined,
   define: {
+    // Expose only this development switch, without exposing other FREED_* values.
+    "import.meta.env.FREED_AUTO_SEED_SAMPLE_DATA": JSON.stringify(
+      loadEnv(mode, rootFile("."), "FREED_AUTO_SEED_SAMPLE_DATA").FREED_AUTO_SEED_SAMPLE_DATA ?? "",
+    ),
     __LIBRARY_TRANSFER_ACCEPTANCE__: mode === "library-transfer-acceptance" || mode === "test",
     __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
     __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),

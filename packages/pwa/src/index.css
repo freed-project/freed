@@ -7,6 +7,31 @@
 @tailwind components;
 @tailwind utilities;
 
+.ios-pwa-status-strip {
+  display: none;
+}
+
+/* WebKit samples fixed backgrounds to suppress the native top scroll pocket.
+   11px exceeds its 10px threshold; the empty clipped element paints no stripe.
+   https://zenn.dev/uakihir0/articles/260920-ios27-pwa-blur */
+@supports (-webkit-touch-callout: none) {
+  @media (display-mode: standalone) {
+    .ios-pwa-status-strip {
+      display: block;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 11px;
+      z-index: 2147483647;
+      pointer-events: none;
+      background-color: var(--theme-attached-topbar-background, #0a0a0a);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+  }
+}
+
 /* ============================================
    PWA-specific additions
    ============================================ */

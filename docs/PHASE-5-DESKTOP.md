@@ -2,11 +2,75 @@
 
 > **Status:** 🚧 In Progress (direct desktop distribution live, macOS signing and notarization live in releases, Windows signing plan scaffolded, legal consent gate shipped, tri-state sidebar chrome shipped, public-safe bug reporting shipped, runtime memory telemetry shipped, native startup recovery shipped, bundled recovery updater flow shipped, permanent local social media vault shipped, desktop hot-path side-effect scheduling shipped, bounded SQLite user mutations and queries shipped, visible-scope bulk actions shipped, background runtime coordination shipped, renderer recovery safe mode shipped, deep local WebKit diagnostics shipped, adaptive high-memory scrape budgets shipped, explicit local-only primary Library authority shipped, normalized sample-data accounting, Story Wall candidates, Saved analytics, full-library native search, bounded scheduled RSS refresh, Google Drive checkpoint publication, follower intents, global background activity monitoring, and native terminal sync soaks shipped)
 
+Annotation text now has a bounded authenticated local read contract that retains
+canonical digest references separately from display text. Synthetic native
+SQLite/vault and Chromium PWA worker/OPFS restart proofs cover exact bytes and
+nondestructive read failures. Optional source admission now checks inside the
+existing local write transaction after exact retry recognition. Unchanged quote
+digests survive note/tag assembly. Selected-item results now carry separate original
+annotation snapshots through both existing note-editor entrances and local note
+admission. Missing, corrupt, oversized, unavailable and stale reads prevent
+incomplete edits. Unchanged-URL note edits use local metadata without requesting
+a preview; new-save and changed-URL previews retain their 350 ms delay.
+Bounded annotation reads preserve NUL and leading U+FEFF in notes, tags and inline
+quotes, distinguish null from empty notes, and refuse invalid UTF-8 or excess
+bytes. Synthetic signed native SQLite/vault and PWA worker/OPFS restart tests
+preserve edited notes and untouched canonical annotations. These fixtures do
+not establish installed Desktop IPC or pending-view editing acceptance.
+
+Primary new-item annotation initialization uses independent source-fenced batches
+bounded by 256 members and 4 MiB of envelopes. It refuses nonempty canonical
+originals and source races. Atomicity applies to each transaction, not the whole
+import; retry lookup can skip items whose initialization did not finish.
+Generic existing-item annotation replacement requires the caller's original
+snapshot and refuses missing or stale provenance before capture or annotation
+writes. Untouched fields retain their canonical values. Annotation admission and
+capture remain separate transactions: a later capture failure does not undo an
+accepted annotation. New-item initialization excludes initially existing IDs and
+refuses conflicting canonical annotations. Generic store APIs have no production
+annotation-edit UI caller; callers without a snapshot fail closed.
+
+The pending-edit repair refuses fresh replacement while the same item has an
+unresolved local annotation intent. Eligibility remains separate from authenticated
+quote display. READY-only admission preserves exact retries before this guard.
+Device-local physical catalogs 4/5 add bounded upgrade receipts and unresolved
+markers without changing canonical or wire identities. Owner continuations page
+only unresolved markers, yield between transactions, and publish local change
+hints when authenticated settlement permits editing again. Native SQLite and
+SQLite-WASM cursor fixtures plus a shipping Chromium OPFS owner/reopen fixture
+cover retained progress beyond an unresolved prefix. Runtime review and remaining
+lifecycle proofs are outstanding; Windows range-vault and installed acceptance
+remain open.
+Startup migration now retains the existing owner across bounded slices and yields
+until READY. Ordinary path opens cannot advance migration. Explicit fresh setup
+uses the owned upgrader before publication. Native subprocess interruption and
+PWA worker cancellation/reopen fixtures preserve committed progress and the
+original pin. Non-Unix startup is wired before runtime exposure; Linux path-helper
+proof does not establish Windows execution.
+PWA startup also yields safely when its first budget expires before bootstrap
+creates a receipt. Native maintenance uses one annotation-specific thread owner;
+reset and process exit stop and join its bounded current slice. Controlled-callback
+tests cover dirty arrivals, busy deferral, latched refusal and restart. Real binding
+and SQLite proofs remain separate from installed runtime acceptance.
+No new quote editor is included.
+
 Native provider admission now has bounded lifetime counters in the existing
 runtime-health sampler. The soak verdict reports their delta only across a
 stable, covered interval with no active provider commands or provider windows.
 Missing or inconsistent evidence is inconclusive. Installed consumer-role and
 multi-device acceptance remain separate requirements.
+
+Freed Desktop ordinary feed cards support lazy image thumbnails with async
+decoding and the existing renderer memory-pressure shedding. Video metadata
+loads remain reader-only for ordinary cards. Stories and explicit local sample
+previews keep their existing media behavior. Installed acceptance is pending.
+
+Same-scope Library refreshes retain committed search results, Friends activity,
+Map pins and popups, and bounded overview pages while replacement reads are
+pending. Query, reader and revision changes remain action-admission fences;
+pending search results and stale page callbacks cannot execute bulk actions or
+reuse an obsolete cursor. Failures and settled empty results clear stale data.
+Installed native continuity and graphics acceptance remain pending.
 
 The Jev evaluation MVP includes an optional GLiClass Base v3.0 classifier.
 Selection downloads pinned official Apache-2.0 weights and tokenizer with
@@ -51,7 +115,9 @@ investigation.
 
 Local snapshots now reuse the transaction-pinned indexed checkpoint export cache
 for both canonical passes. Update status distinguishes Library backup from network
-download, and failed backup still blocks installation. Real-library installed
+download, and failed backup still blocks installation. The backup toast and
+Settings indicator show a monotonic elapsed timer from the same update attempt;
+backup has no percentage because its snapshot API reports no measurable total. Real-library installed
 interaction and fresh rollback verification remain outstanding.
 
 The first renderer heartbeat now carries the existing frontend build and app-session
@@ -526,6 +592,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
 - **Blank-state testing escape hatch** — Desktop empty states now offer a lightweight sample-data section below the primary blank-state prompt, so fresh installs can seed realistic data without detouring into Settings
 - **Fingerprinted sample-data cleanup** - New sample batches carry an internal marker across feeds, items, people, and accounts, so accidental sample population can be cleared without matching on names, URLs, or content patterns
+- **Development sample opt-out** - `FREED_AUTO_SEED_SAMPLE_DATA=0` disables automatic sample population in native development and feature previews while preserving hot reload, native APIs, existing records, and manual sample controls.
 - **Explicit local-only primary authority** - A provider-free Freed Desktop establishes signed Library authority and a durable local writer admission during startup, so ordinary mutations and sample-data cleanup work without configuring cloud sync. Existing cloud and follower authority remain fail-closed.
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 - **Live sidebar snap preview** — During desktop resize drag, the expanded card still tracks the grab rail directly, while compact and closed thresholds now animate in place so the sidebar snaps to the icon rail or slides offscreen before mouseup
@@ -910,7 +977,7 @@ export async function captureDomFeed(
 - [x] System tray shows sync status
 - [x] App runs in background after window close
 - [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
-- [x] Desktop Settings > Updates embeds a compact scrolling preview of the latest five changelog cards with a full changelog link
+- [x] Desktop Settings > Updates shows the latest ten individual release builds with their complete notes in a scrolling list and a full changelog link; same-day builds remain separate
 - [x] Desktop Settings includes an in-app Newsletter section that completes protected signup without opening the marketing site or exposing the Brevo credential
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] Native Library Core changes compile on Windows during pull request and dev integration validation, before release packaging
@@ -1743,3 +1810,83 @@ terminal evidence under a shared budget is inconclusive. No identifiers,
 content, errors or thread identities are logged. Invocation queueing and native
 execution-thread ownership remain unmeasured. This attribution change does not
 establish an installed responsiveness improvement.
+
+### Runtime-owned navigation counts
+
+Desktop publishes one immutable navigation count resource only after facet, RSS
+and preference responses agree on generation, canonical revision and local
+transition sequence. Native Library, authority epoch and actor identity fence
+publication; supported setup, reset, restore and handoff transitions retire old
+values before native work. Same-context refreshes retain committed counts, while
+a completed zero replaces them. Sidebar consumes that resource without issuing
+duplicate facet or RSS reads. Retries drain sibling reads and stop after three
+attempts. This is source-coherent composition, not a shared SQL transaction or
+new write authority. External generation ABA and installed visual stability
+remain unproven.
+
+### Relationship-neutral Map navigation
+
+Tracked social Galaxy accounts require an existing Friend or Connection Person
+link. Content-discovered accounts remain available as content identities but
+do not gain tracked relationship eligibility from discovery, activity, pins or
+roster flags alone. Profile Map navigation selects an existing Person or an
+unlinked Account in all-content mode, without creating a Connection. Historical
+relationship provenance remains unverified; this change does not clean up data.
+
+### Linked URL projection
+
+Compact feed and item-detail cards preserve the stored linked article URL
+independently from the post source URL. Missing links do not fabricate article
+fetch targets. Existing reader, pinning and item-change fetch flows can therefore
+request the stored publisher instead of the social post; response images and
+existing optional summarization remain governed by their existing settings. This
+exact correction was explicitly approved on 2026-10-04; no cadence, credential or
+AI-setting change is introduced. The original selection complaint remains
+unattributed.
+
+Captured Friends, graph-picker and recovery actions now require their current selection, reader and revision owners. Ownership changes remain fenced through A to B to A transitions and temporary disabling; native identity reads are checked again before account assignment, and obsolete completions cannot move the new selection. Mutation-facing suggestion rows retain one bounded proved window during same-context revision refresh; current and captured choice actions remain disabled until fresh results settle. Reader, request, rewind, real zero and error clear or replace that window. Native authority admission and installed UI acceptance remain separate checks.
+
+Friends activity uses the shared loading indicator while its directory loads. Outbox wrappers retain their existing coordinator and drain ownership after the 120-second deadline until underlying work settles, then report the original timeout. Hung work can retain ownership indefinitely; cancellation and screen-lock admission remain separate.
+
+### Optional local Kev evaluation
+
+AI settings offers a per-device Kev selection alongside Jev and GLiClass. Kev
+uses a separately installed service at `127.0.0.1:8009`. Native transport disables
+proxies, redirects, and cloud fallback. Switching classifiers cancels active work.
+Kev keeps uncertain probabilities visible but abstains between 0.2 and 0.8. These
+thresholds are provisional. A six-example labeled evaluation compares raw accuracy,
+Brier score, decision coverage, accepted accuracy and latency. It is a smoke corpus,
+not a representative benchmark. Library scores remain session-local and do not
+change feed filters. See [setup and evaluation](JEV-CLASSIFICATION-PREVIEW.md#local-kev).
+
+### Linux Library credential custody
+
+Freed Desktop uses an existing unlocked Secret Service default collection on
+Linux for its per-Library actor, authority, and pending handoff keys. The adapter
+uses an encrypted D-Bus session and never requests an unlock prompt or creates a
+collection. Missing services, locked collections, ambiguous entries, and corrupt envelopes
+fail closed. There is no fallback to a session-only key store. Linux users must provision and unlock
+a persistent desktop vault before opening a Library.
+
+The `linux_platform_vault` native acceptance test starts a private D-Bus
+session and GNOME Keyring with synthetic data. It checks key separation,
+persistence after process and daemon restart, locked and unavailable vault
+refusal, corruption, and duplicate entries. Run it from `packages/desktop/src-tauri`
+with `cargo test --test linux_platform_vault isolated_linux_vault -- --ignored --exact`.
+Linux native feature and integration gates run it explicitly. It requires
+`dbus-daemon`, `dbus-send`, and `gnome-keyring-daemon` on `PATH`; it does
+not use the login session's vault. This credential test does not establish
+installed multi-Desktop/PWA convergence or authorize a Library activation.
+
+### Strict viewer after source handoff
+
+The transfer-acceptance UI offers an explicit read-only choice when the former
+Primary adopts its verified successor. Native catalog 6 commits that choice with
+source demotion and checkpoint selection; retries verify the same choice before
+sync resumes. Feed, reader and synchronized settings controls respect viewer
+access, including automatic read state. Device-local appearance, cache and AI
+configuration remain available. Archive browsing preserves proof checks without
+enabling reapplication. Native restrictions survive restart and later successor
+recovery. These changes have synthetic test coverage; signed delivery, installed
+viewer acceptance and the personal Library transition remain pending. Ordinary
+transfer and recovery activation holds are unchanged.

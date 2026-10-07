@@ -30,10 +30,10 @@ import {
   type SavedFeedSelectionPin,
 } from "./saved-feed-presentation-patch.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
-import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform, getPlatformCapabilities } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
-import { useLibraryItemDetail } from "../../hooks/useLibraryItemDetail.js";
+import { useLibraryItemDetail, annotationFailureLabel } from "../../hooks/useLibraryItemDetail.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
 import { type FeedItem } from "@freed/shared";
 import { runFeedLayoutTransition } from "../../lib/view-transitions.js";
@@ -301,8 +301,8 @@ export function FeedView() {
     queryLibraryCore,
     readLibraryAccountDetail,
   } = platform;
-  const readOnly = platform.interactionMode === "read-only";
-  const canAddFeeds = !!addRssFeed;
+  const readOnly = !getPlatformCapabilities(platform).libraryEdits;
+  const canAddFeeds = !readOnly && !!addRssFeed;
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
@@ -560,7 +560,12 @@ export function FeedView() {
 
   // Search is a separate bounded SQLite window. Ordinary browsing comes from
   // the feed query above and never falls back to a renderer-held corpus.
-  const { filteredItems, isSearching } = useSearchResults(
+  const {
+    filteredItems,
+    isSearching,
+    status: searchStatus,
+    failureCode: searchFailureCode,
+  } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
@@ -703,9 +708,9 @@ export function FeedView() {
     libraryItemVersion,
   );
   const selectedItem =
+    selectedItemDetail.item ??
     residentSelectedItem ??
-    (boundedFeedEligible ? currentSelectedItemPin : null) ??
-    selectedItemDetail.item;
+    (boundedFeedEligible ? currentSelectedItemPin : null);
   useEffect(() => {
     const patch = savedFeedPresentationPatch;
     if (
@@ -1101,6 +1106,8 @@ export function FeedView() {
           ) : null}
           <ReaderView
             item={selectedItem}
+            annotations={selectedItemDetail.status === "ready" ? selectedItemDetail.annotations : null}
+            annotationStatus={selectedItemDetail.annotationFailure ? annotationFailureLabel(selectedItemDetail.annotationFailure) : selectedItemDetail.status !== "ready" ? "Annotations are not ready for editing." : undefined}
             onClose={closeItem}
             dualColumn={showDualColumn}
             inline
@@ -1118,7 +1125,18 @@ export function FeedView() {
 
   return (
     <div className="h-full flex flex-col">
-      {!selectedItem &&
+      {!selectedItem && isSearching && searchStatus === "failed" ? (
+        <div
+          role="alert"
+          data-search-failure-code={searchFailureCode}
+          className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center"
+        >
+          <p>Unable to search this Library.</p>
+          <p className="text-sm theme-text-muted">
+            Search for <span className="font-medium">{searchQuery}</span> could not complete.
+          </p>
+        </div>
+      ) : !selectedItem &&
       boundedFeedEligible &&
       boundedFeedStatusIsCurrent &&
       boundedFeed.status === "failed" ? (
@@ -1156,8 +1174,9 @@ export function FeedView() {
             onOpenCommentUrl={handleOpenCommentUrl}
             isSearching={isSearching}
             loading={
-              boundedFeedEligible &&
-              (!boundedFeedStatusIsCurrent || boundedFeed.status === "loading")
+              (isSearching && (searchStatus === "loading" || searchStatus === "refreshing")) ||
+              (boundedFeedEligible &&
+                (!boundedFeedStatusIsCurrent || boundedFeed.status === "loading"))
             }
             searchQuery={searchQuery}
             onLoadMore={loadMoreBoundedItems}
@@ -1173,6 +1192,8 @@ export function FeedView() {
       {selectedItem && (
         <ReaderView
           item={selectedItem}
+          annotations={selectedItemDetail.status === "ready" ? selectedItemDetail.annotations : null}
+          annotationStatus={selectedItemDetail.annotationFailure ? annotationFailureLabel(selectedItemDetail.annotationFailure) : selectedItemDetail.status !== "ready" ? "Annotations are not ready for editing." : undefined}
           inline
           onClose={closeItem}
           onOpenUrl={handleOpenCommentUrl}

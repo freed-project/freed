@@ -27,6 +27,9 @@ interface CachedSignalCounts {
 }
 
 interface VersionedSignalCounts {
+  reader: ReadFeedSignalCounts;
+  contextKey: string;
+  sourceVersion: number;
   requestKey: string;
   counts: FeedSignalCounts;
 }
@@ -76,6 +79,7 @@ export function useFeedSignalCounts(
   enabled: boolean,
 ): FeedSignalCounts {
   const { readFeedSignalCounts } = usePlatform();
+  const contextKey = JSON.stringify(baseFilter);
   const requestKey = useMemo(
     () => JSON.stringify([sourceVersion, baseFilter]),
     [baseFilter, sourceVersion],
@@ -88,10 +92,10 @@ export function useFeedSignalCounts(
         signalCountCache.requestKey === requestKey
           ? signalCountCache.result
           : null;
-      return cached ? { requestKey, counts: cached } : null;
+      return cached ? { reader: readFeedSignalCounts, contextKey, sourceVersion, requestKey, counts: cached } : null;
     },
   );
-  const [failedKey, setFailedKey] = useState<string | null>(null);
+  const [failedKey, setFailedKey] = useState<{ reader: ReadFeedSignalCounts; requestKey: string } | null>(null);
   useEffect(() => {
     let cancelled = false;
     if (!enabled || !readFeedSignalCounts) {
@@ -108,13 +112,13 @@ export function useFeedSignalCounts(
       requestKey,
       baseFilter,
     );
-    if (prepared.result) setVersioned({ requestKey, counts: prepared.result });
+    if (prepared.result) setVersioned({ reader: readFeedSignalCounts, contextKey, sourceVersion, requestKey, counts: prepared.result });
     prepared.promise
       .then((counts) => {
-        if (!cancelled) setVersioned({ requestKey, counts });
+        if (!cancelled) setVersioned({ reader: readFeedSignalCounts, contextKey, sourceVersion, requestKey, counts });
       })
       .catch(() => {
-        if (!cancelled) setFailedKey(requestKey);
+        if (!cancelled) { setVersioned(null); setFailedKey({ reader: readFeedSignalCounts, requestKey }); }
       });
 
     return () => {
@@ -126,10 +130,10 @@ export function useFeedSignalCounts(
   }, [enabled, readFeedSignalCounts, requestKey]);
 
   if (!enabled) return EMPTY_FEED_SIGNAL_COUNTS;
-  if (!readFeedSignalCounts || failedKey === requestKey) {
+  if (!readFeedSignalCounts || (failedKey?.reader === readFeedSignalCounts && failedKey.requestKey === requestKey)) {
     return EMPTY_FEED_SIGNAL_COUNTS;
   }
-  return versioned?.requestKey === requestKey
+  return versioned?.reader === readFeedSignalCounts && versioned.contextKey === contextKey && versioned.sourceVersion <= sourceVersion
     ? versioned.counts
     : EMPTY_FEED_SIGNAL_COUNTS;
 }

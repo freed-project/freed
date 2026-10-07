@@ -187,11 +187,12 @@ async function seedLargeFriendsWorkspace(page: Page): Promise<void> {
       updatedAt: now - index * 1_000,
     }));
     const accounts = Array.from({ length: accountCount }, (_, index) => {
-      const linked = index < personCount;
       const provider = providers[index % providers.length]!;
       return {
         id: `scale-account-${index}`,
-        personId: linked ? `scale-person-${index}` : undefined,
+        // This benchmark measures tracked identities. Content discovery alone
+        // cannot admit an account to the Friends graph, even in all-content mode.
+        personId: `scale-person-${index % personCount}`,
         kind: "social",
         provider,
         externalId: `scale-author-${index}`,
@@ -382,7 +383,7 @@ test("Friends WebGL2 view pages 3,520 SQLite identities while zooming and pannin
       };
       const sqlite = (window as Record<string, unknown>).__TAURI_MOCK_SQLITE_LIBRARY__ as {
         active?: boolean;
-        accounts?: Record<string, unknown>;
+        accounts?: Record<string, { personId?: string }>;
         items?: Record<string, { globalId?: string; __deleted?: boolean }>;
         persons?: Record<string, unknown>;
       } | undefined;
@@ -392,6 +393,9 @@ test("Friends WebGL2 view pages 3,520 SQLite identities while zooming and pannin
           .filter((id) => id.startsWith("scale-person-")).length,
         accounts: Object.keys(sqlite?.accounts ?? {})
           .filter((id) => id.startsWith("scale-account-")).length,
+        unlinkedAccounts: Object.entries(sqlite?.accounts ?? {})
+          .filter(([id, account]) => id.startsWith("scale-account-") &&
+            !sqlite?.persons?.[account.personId ?? ""]).length,
         sqliteItems: Object.values(sqlite?.items ?? {})
           .filter((item) => !item.__deleted && item.globalId?.startsWith("scale-item-")).length,
         residentItems: state.items?.length ?? 0,
@@ -400,6 +404,7 @@ test("Friends WebGL2 view pages 3,520 SQLite identities while zooming and pannin
     .toEqual({
       persons: PERSON_COUNT,
       accounts: ACCOUNT_COUNT,
+      unlinkedAccounts: 0,
       sqliteItems: ITEM_COUNT,
       residentItems: 0,
     });

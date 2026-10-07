@@ -244,6 +244,14 @@ npm run typecheck  # Type-check all packages
 
 Freed is open source. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+For Freed Desktop development without automatic sample data, set
+`FREED_AUTO_SEED_SAMPLE_DATA=0` in `packages/desktop/.env.local` and restart the
+dev server, or run `FREED_AUTO_SEED_SAMPLE_DATA=0 npm run tauri:dev` from
+`packages/desktop`. Hot reload and native APIs stay enabled. The flag also
+disables automatic seeding in Desktop feature previews. Clear existing samples
+through Settings; manual sample population still works. See the
+[Desktop development guide](packages/desktop/README.md#development).
+
 Areas where we need help:
 
 - Desktop app UI
@@ -278,3 +286,5 @@ Read the manifesto at [freed.wtf/manifesto](https://freed.wtf/manifesto).
 ---
 
 _Built for humans, not algorithms._
+<!-- iOS Home Screen installation note -->
+On iOS, Freed uses the default Home Screen status bar and an invisible theme-aware color extension to keep the toolbar sharp without extra padding. If an existing shortcut retains native blur, add a replacement from Safari with Open as Web App enabled. Keep the original until the replacement and your library work; replacement shortcuts can have separate storage. Do not clear Safari data or delete the original library.

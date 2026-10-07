@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const native = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: native.invoke }));
 import {
-  subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, readLibraryCoreDesktopRole, refreshLibraryCoreDesktopRole, selectDesktopLibrarySetup,
+  subscribeDesktopLibraryInstallation, readDesktopLibraryInstallationError, readDesktopLibraryInstallation, readLibraryCoreDesktopRole, refreshLibraryCoreDesktopRole, refreshLibraryCoreDesktopRoleAfterPending, selectDesktopLibrarySetup,
   requirePrimaryLibraryCoreDesktopRole, requireFollowerLibraryCoreDesktopRole,
 } from "./library-core-desktop-role";
 const primary = { state: "standalone_primary", role: "primary", libraryId: "a".repeat(64), authorityEpochId: "b".repeat(64), actorId: "c".repeat(64) };
@@ -28,6 +28,16 @@ describe("native Desktop installation role", () => {
     expect(readLibraryCoreDesktopRole()).toBe("follower");
     expect(requirePrimaryLibraryCoreDesktopRole).toThrow();
     expect(requireFollowerLibraryCoreDesktopRole).not.toThrow();
+  });
+
+  it("retains native viewer restriction before and after enrollment without granting Primary", async () => {
+    for (const actorId of [null, primary.actorId]) {
+      native.invoke.mockResolvedValue({ ...primary, role: "follower", state: "read_only_consumer", actorId });
+      await refreshLibraryCoreDesktopRole();
+      expect(readDesktopLibraryInstallation()?.state).toBe("read_only_consumer");
+      expect(requireFollowerLibraryCoreDesktopRole).not.toThrow();
+      expect(requirePrimaryLibraryCoreDesktopRole).toThrow();
+    }
   });
 
   it("admits Primary only after native selection and clears stale admission on failure", async () => {
@@ -74,4 +84,16 @@ describe("native Desktop installation role", () => {
     expect(requirePrimaryLibraryCoreDesktopRole).not.toThrow();
   });
 
+});
+
+it("post-query status drains a preexisting read and starts a fresh native read", async () => {
+  await refreshLibraryCoreDesktopRole().catch(() => {});
+  native.invoke.mockReset();
+  let resolve!: (value: unknown) => void;
+  native.invoke.mockImplementationOnce(() => new Promise(done => { resolve = done; })).mockResolvedValueOnce({ ...primary, actorId: "d".repeat(64) });
+  const earlier = refreshLibraryCoreDesktopRole();
+  const afterQuery = refreshLibraryCoreDesktopRoleAfterPending();
+  expect(native.invoke).toHaveBeenCalledTimes(1);
+  resolve(primary); await earlier;
+  expect((await afterQuery).actorId).toBe("d".repeat(64)); expect(native.invoke).toHaveBeenCalledTimes(2);
 });

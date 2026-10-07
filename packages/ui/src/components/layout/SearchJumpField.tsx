@@ -357,7 +357,7 @@ export function SearchJumpField({
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
-  const [deviceDisplay] = useDeviceDisplayPreferences();
+  const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
   const [inputValue, setInputValue] = useState(searchQuery);
   const [isFocused, setIsFocused] = useState(false);
   const [isTriggerOpen, setIsTriggerOpen] = useState(false);
@@ -391,13 +391,16 @@ export function SearchJumpField({
   const deferredIdentityQuery = useDeferredValue(inputValue);
   const inlineBlurTimerRef = useRef<number | null>(null);
 
-  const { filteredItems: commandScopeItems } = useSearchResults(
+  const { filteredItems: commandScopeItems, resultsCurrent: searchResultsCurrent } = useSearchResults(
     searchQuery,
     activeFilter,
     searchCorpusVersion,
     deviceDisplay.friendsMode,
     libraryItemVersion,
   );
+  const searchScopeCurrent = inputValue.trim().length === 0 || searchResultsCurrent === true;
+  const latestSearchScopeCurrent = useRef(searchScopeCurrent);
+  latestSearchScopeCurrent.current = searchScopeCurrent;
   const {
     archivableScopeCount,
     archivedUnsavedCount: archivedCount,
@@ -411,6 +414,7 @@ export function SearchJumpField({
     activeFilter,
     activeView,
     commandScopeItems,
+    commandScopeCurrent: searchScopeCurrent,
     enabled: showCommandSurface,
     identityMode: deviceDisplay.friendsMode,
     inputValue,
@@ -583,6 +587,7 @@ export function SearchJumpField({
           setActiveView("map");
         },
         navigateToSocialProfileFriends: (account, personId) => {
+          if (!socialChannelPage.isAccountCurrent(account)) return;
           clearQueryForNavigation();
           setSelectedItem(null);
           if (personId) {
@@ -592,11 +597,14 @@ export function SearchJumpField({
           }
           setActiveView("friends");
         },
-        navigateToSocialProfileMap: async (account, personId) => {
-          const resolvedPersonId = await ensurePersonForAccount(account.id, personId);
+        navigateToSocialProfileMap: (account, personId) => {
+          if (!socialChannelPage.isAccountCurrent(account)) return;
           clearQueryForNavigation();
           setSelectedItem(null);
-          setSelectedPerson(resolvedPersonId);
+          setSelectedPerson(personId);
+          setSelectedAccount(personId ? null : account.id);
+          // Viewing an author's location is not a relationship mutation.
+          setDeviceDisplay({ mapMode: "all_content" });
           setActiveView("map");
         },
         promoteSocialProfile: capabilities.changeCare ? async (account, level) => {
@@ -668,12 +676,12 @@ export function SearchJumpField({
             ? () => toggleLiked(selectedItem.globalId)
             : null,
         markScopeRead:
-          !readOnly && activeView === "feed" && unreadScopeCount > 0
-            ? markScopeRead
+          !readOnly && activeView === "feed" && searchScopeCurrent && unreadScopeCount > 0
+            ? () => { if (latestSearchScopeCurrent.current) return markScopeRead(); }
             : null,
         archiveScopeRead:
-          !readOnly && activeView === "feed" && archivableScopeCount > 0
-            ? archiveScopeRead
+          !readOnly && activeView === "feed" && searchScopeCurrent && archivableScopeCount > 0
+            ? () => { if (latestSearchScopeCurrent.current) return archiveScopeRead(); }
             : null,
         unarchiveSavedItems: readOnly ? null : unarchiveSavedItems,
         syncRssNow,
@@ -704,6 +712,7 @@ export function SearchJumpField({
       inputValue,
       ensurePersonForAccount,
       markScopeRead,
+      searchScopeCurrent,
       openAddFeedDialog,
       openSavedContentDialog,
       openSettingsTo,
@@ -714,12 +723,14 @@ export function SearchJumpField({
       savedArchivedCount,
       selectedItem,
       setActiveView,
+      setDeviceDisplay,
       setFilter,
       setSearchQuery,
       setSelectedAccount,
       setSelectedItem,
       setSelectedPerson,
       socialChannels,
+      socialChannelPage.isAccountCurrent,
       settingsSections,
       syncRssNow,
       syncSourceNow,

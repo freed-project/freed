@@ -34,6 +34,18 @@ npm-debug.log*
 # TypeScript incremental build info
 *.tsbuildinfo
 
+# TypeScript project-reference emit. packages/desktop/tsconfig.node.json is
+# composite, so it must emit; it now writes here instead of beside its sources.
+packages/desktop/.tsbuild/
+
+# Former emit locations. These were committed and drifted from their .ts
+# sources. Listed so existing clones do not report a dirty tree after the
+# tracked copies were removed.
+packages/desktop/vite.config.js
+packages/desktop/vite.config.d.ts
+packages/desktop/tests/e2e/fixtures/tauri-init.js
+packages/desktop/tests/e2e/fixtures/tauri-init.d.ts
+
 # Cache
 .cache/
 .parcel-cache/

@@ -51,6 +51,7 @@ const feedCard = (globalId: string) => ({
   likedAt: null,
   likedSyncedAt: null,
   linkPreviewTitle: null,
+  linkPreviewUrl: null,
   locationName: null,
   mediaTypes: [],
   mediaUrls: [],
@@ -70,6 +71,7 @@ const feedCard = (globalId: string) => ({
 const backgroundCard = (globalId: string) => ({
   ...feedCard(globalId),
   hidden: false,
+  seenSyncedAt: null,
   rssSource: null,
   sampleDataFingerprint: null,
 });
@@ -956,4 +958,30 @@ describe("cross-platform normalized feed readers", () => {
       }),
     );
   });
+  it.each(["native page", "optimistic overlay"])("propagates failed SQLite search %s without admitting partial rows", async (boundary) => {
+    const failure = new Error("synthetic source refusal");
+    const query = vi.fn().mockResolvedValueOnce({
+      nextCursor: "search-next", rows: [{ card: feedCard("first-match"), priority: 42, score: 7 }], source: querySource,
+    });
+    if (boundary === "native page") query.mockResolvedValueOnce({ rows: [], source: querySource }).mockRejectedValueOnce(failure);
+    else query.mockRejectedValueOnce(failure);
+    const visit = vi.fn(() => "continue" as const);
+    await expect(searchLibraryCoreNormalizedItemsV1(
+      { query: query as unknown as LibraryCoreNormalizedQueryExecutor, randomId: () => "test" },
+      { filter: {}, identityMode: "all_content", query: "needle" }, visit,
+    )).rejects.toBe(failure);
+    expect(visit).toHaveBeenCalledTimes(boundary === "native page" ? 1 : 0);
+  });
+
+  it("admits true zero SQLite search without querying optimistic fields", async () => {
+    const query = vi.fn().mockResolvedValue({ nextCursor: null, rows: [], source: querySource });
+    const visit = vi.fn(() => "continue" as const);
+    await expect(searchLibraryCoreNormalizedItemsV1(
+      { query: query as unknown as LibraryCoreNormalizedQueryExecutor, randomId: () => "test" },
+      { filter: {}, identityMode: "all_content", query: "zzzzzzzz" }, visit,
+    )).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledOnce();
+    expect(visit).not.toHaveBeenCalled();
+  });
+
 });

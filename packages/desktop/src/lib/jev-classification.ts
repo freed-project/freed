@@ -244,8 +244,8 @@ function validTokenCount(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function parseNoulResponse<Key extends string>(value: unknown, keys: readonly Key[]) {
-  if (!isRecord(value) || value.model !== JEV_MODEL) {
+function parseNoulResponse<Key extends string>(value: unknown, keys: readonly Key[], expectedModel = JEV_MODEL) {
+  if (!isRecord(value) || value.model !== expectedModel) {
     throw new Error("Jev returned an unexpected model or response shape.");
   }
   const { answers, usage } = value;
@@ -273,13 +273,13 @@ function parseNoulResponse<Key extends string>(value: unknown, keys: readonly Ke
 }
 
 /** Validates all 26 answers before splitting durable and experimental evidence. */
-export function parseJevResponse(value: unknown, inferredAt = Date.now()): {
+export function parseJevResponse(value: unknown, inferredAt = Date.now(), expectedModel = JEV_MODEL): {
   contentSignals: ContentSignals;
   experimentalSignals: JevExperimentalSignals;
   model: string;
   usage: { input_tokens: number; output_tokens: number };
 } {
-  const parsed = parseNoulResponse(value, JEV_SIGNAL_KEYS);
+  const parsed = parseNoulResponse(value, JEV_SIGNAL_KEYS, expectedModel);
   if (!validTokenCount(inferredAt)) {
     throw new Error("Jev classification requires a valid timestamp.");
   }

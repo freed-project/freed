@@ -7,6 +7,7 @@
  */
 
 import { create } from "zustand";
+import { readDesktopLibraryInstallation } from "./library-core-desktop-role";
 import { isTauri } from "@tauri-apps/api/core";
 import type {
   BaseAppState,
@@ -231,6 +232,15 @@ function trackResetSensitiveStoreOperation<T>(operation: Promise<T>): Promise<T>
 }
 
 function assertDesktopStoreWritable(): void {
+  if (readDesktopLibraryInstallation()?.state === "read_only_consumer") {
+    throw new Error("This Freed Desktop is a read-only viewer.");
+  }
+  assertDesktopStoreAvailable();
+}
+
+// Initialization reads Library state and maintains device-local state. A viewer
+// must still initialize, while the reset boundary continues to drain both paths.
+function assertDesktopStoreAvailable(): void {
   if (!storeAcceptingResetSensitiveWork || isFactoryResetInProgress()) {
     throw new Error("Desktop store is quiesced for factory reset");
   }
@@ -323,7 +333,7 @@ interface AppState {
 
   // Item actions persisted through typed SQLite mutations.
   addItems: (items: FeedItem[]) => Promise<void>;
-  updateItem: (id: string, update: Partial<FeedItem>) => Promise<void>;
+  updateItem: (id: string, update: Partial<FeedItem>, annotationSnapshot?: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations) => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markItemsAsRead: (ids: string[]) => Promise<void>;
   markAllAsRead: (platform?: string) => Promise<void>;
@@ -610,6 +620,10 @@ async function flushPendingReadMarks(): Promise<void> {
 
   try {
     while (pendingReadIds.size > 0) {
+      if (readDesktopLibraryInstallation()?.state === "read_only_consumer") {
+        pendingReadIds.clear();
+        break;
+      }
       const ids = Array.from(pendingReadIds);
       pendingReadIds.clear();
 
@@ -644,7 +658,7 @@ async function collectRssFeedUrls(): Promise<string[]> {
 }
 
 function queueReadMarks(ids: readonly string[], options: { waitForFlush?: boolean } = {}): Promise<void> {
-  if (!storeAcceptingResetSensitiveWork) return Promise.resolve();
+  if (!storeAcceptingResetSensitiveWork || readDesktopLibraryInstallation()?.state === "read_only_consumer") return Promise.resolve();
   const nextIds = ids.filter(Boolean);
   if (nextIds.length === 0) return Promise.resolve();
 
@@ -727,7 +741,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // Initialize from the native SQLite Library.
   initialize: () => {
-    assertDesktopStoreWritable();
+    assertDesktopStoreAvailable();
     if (get().isInitialized) return Promise.resolve();
     if (appInitializationPromise) return appInitializationPromise;
 
@@ -742,14 +756,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         const desktopClientRegistration = await getOrCreateDesktopClientRegistration();
 
         recordLibraryRuntimeLoadStarted();
-        assertDesktopStoreWritable();
+        assertDesktopStoreAvailable();
         const runtimeState = await initializeDesktopLibraryRuntime(
           desktopClientRegistration,
         );
         // Close the startup-baseline window. Any memory sample after this point
         // includes the active Library Core runtime, so it cannot be a baseline.
         recordLibraryRuntimeReady();
-        assertDesktopStoreWritable();
+        assertDesktopStoreAvailable();
         migrateLegacyDeviceDisplayPreferences(runtimeState.preferences.display as unknown);
         migrateLegacyThemePreference(runtimeState.preferences.display as unknown);
         migrateLegacyDeviceAIPreferences(runtimeState.preferences.ai as unknown);
@@ -838,7 +852,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         if (isTauri() || import.meta.env.VITE_TEST_TAURI === "1") {
           const previousAuth = { fbAuth, igAuth, liAuth };
           const reconciledAuth = await reconcileSocialAuthStateHints({ fbAuth, igAuth, liAuth });
-          assertDesktopStoreWritable();
+          assertDesktopStoreAvailable();
           fbAuth = reconciledAuth.fbAuth;
           igAuth = reconciledAuth.igAuth;
           liAuth = reconciledAuth.liAuth;
@@ -919,10 +933,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
-  updateItem: async (id, update) => {
+  updateItem: async (id, update, annotationSnapshot) => {
     await runStoreMutation(
       "desktop:updateItem",
-      () => updateLibraryFeedItem(id, update),
+      () => updateLibraryFeedItem(id, update, annotationSnapshot),
     );
   },
 

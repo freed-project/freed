@@ -98,6 +98,15 @@ export class PwaLibraryCoreOpfsContentVault {
     this.#storage = storage;
   }
 
+  /** Internal worker read; canonical proof and digest checks remain in the query. */
+  async readAnnotationRange(storageKey: string, byteLength: number): Promise<Uint8Array> {
+    if (!Number.isSafeInteger(byteLength) || byteLength < 1 || byteLength > 65_536) throw new TypeError("annotation range exceeds its bound");
+    const size = await this.#storage.stat(storageKey);
+    if (size === null) throw new Error("annotation range unavailable");
+    if (size !== byteLength) return new Uint8Array();
+    return this.#storage.read(storageKey, 0, byteLength);
+  }
+
   async begin(
     input: LibraryCoreContentRangePublicationBeginV1,
   ): Promise<LibraryCoreContentRangePublicationStatusV1> {

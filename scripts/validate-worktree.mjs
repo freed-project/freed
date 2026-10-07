@@ -156,16 +156,20 @@ const RELEASE_PUBLISHER_TEST_FILES = [
 
 const PULL_REQUEST_PUBLISHER_TOOLING_PATHS = new Set([
   "scripts/worktree-publish.sh",
+  "scripts/lib/provider-query-snapshot.mjs",
   "scripts/worktree-publish.test.mjs",
   "scripts/task-decisions.mjs",
   "scripts/task-decisions.test.mjs",
   "scripts/worktree-add.sh",
+  "scripts/worktree-add.test.mjs",
   "scripts/worktree-cleanup.sh",
 ]);
 
-const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs"];
+const PULL_REQUEST_PUBLISHER_TEST_FILES = ["scripts/worktree-publish.test.mjs", "scripts/task-decisions.test.mjs", "scripts/worktree-add.test.mjs"];
 
 const TOOLING_SMOKE_RUNNER_PATHS = new Set([
+  ".github/workflows/nightly-fixture-acceptance.yml",
+  "scripts/nightly-fixture-acceptance.mjs",
   ".github/workflows/ci.yml",
   ".github/workflows/tooling-nightly.yml",
   "scripts/lib/tooling-smoke-plan.mjs",
@@ -176,11 +180,15 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
   "scripts/run-native-acceptance.test.mjs",
   "scripts/run-tooling-smoke-shard.mjs",
   "scripts/run-tooling-smoke-shard.test.mjs",
+  "scripts/test-helpers/nightly-fixture-preload.mjs",
+  "scripts/test-helpers/nightly-fixture-supervisor.py",
+  "scripts/test-helpers/nightly_fixture_darwin.py",
   "scripts/tooling-smoke-plan.test.mjs",
 ]);
 
 const RETIRED_AUTOMERGE_RUNTIME_GUARD_PATHS = new Set([
-  "packages/desktop/vite.config.js",
+  // vite.config.js was tsc output, now untracked, so it can never appear in a
+  // changed-file set. vite.config.ts carries the trigger.
   "packages/desktop/vite.config.ts",
   "packages/pwa/package.json",
   "packages/pwa/vite.config.ts",
@@ -716,6 +724,11 @@ function nativeRustChecks() {
       "--all-features",
     ]),
     cargoCommand("native rust tests", ["test", "--all-features"]),
+    ...(process.platform === "linux" ? [cargoCommand(
+      "native rust Linux credential acceptance",
+      ["test", "--all-features", "--test", "linux_platform_vault",
+        "isolated_linux_vault", "--", "--ignored", "--exact"],
+    )] : []),
   ];
 }
 
@@ -1439,6 +1452,18 @@ export function buildValidationPlan(mode, changedFiles) {
     );
   }
 
+  if (changedFiles.some((file) => [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("worktree preview process tests", [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]));
+  }
+
   if (toolingSmokeRunnerChanged) {
     addCommand(
       plan,
@@ -1464,6 +1489,15 @@ export function buildValidationPlan(mode, changedFiles) {
 
   if (retiredAutomergeRuntimeGuardChanged) {
     addCommand(plan, retiredAutomergeRuntimeGuardTestsCommand());
+  }
+
+  if (changedFiles.some((file) => [
+    "scripts/check-installed-tree.mjs",
+    "scripts/check-installed-tree.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("installed dependency tree tests", [
+      "--test", path.join("scripts", "check-installed-tree.test.mjs"),
+    ]));
   }
 
   if (validateRunnerChanged) {

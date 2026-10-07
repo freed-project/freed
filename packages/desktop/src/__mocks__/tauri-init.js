@@ -197,6 +197,17 @@ export function tauriInitScript() {
       });
       var first = envelopes[0];
       envelopes.forEach(applyNormalizedEnvelope);
+      // Queued annotation intents remain excluded from further edits. Primary
+      // commits acknowledge applied snapshots; queued follower intents do not.
+      envelopes.forEach(function(envelope) {
+        if (envelope.operation_type !== 'feed_item_annotations_replace') return;
+        var state = sqliteState();
+        state.annotationPendingItems = state.annotationPendingItems || Object.create(null);
+        Object.defineProperty(state.annotationPendingItems, envelope.entity_id, {
+          value: true, enumerable: true, configurable: true, writable: true,
+        });
+        state.annotationLocalSequence = (state.annotationLocalSequence || 0) + 1;
+      });
       sqliteState().revision += 1;
       return {
         transactionId: first.transaction_id,
@@ -453,6 +464,7 @@ export function tauriInitScript() {
         likedAt: user.likedAt == null ? null : user.likedAt,
         likedSyncedAt: user.likedSyncedAt == null ? null : user.likedSyncedAt,
         linkPreviewTitle: content.linkPreview && content.linkPreview.title || null,
+      linkPreviewUrl: content.linkPreview && content.linkPreview.url || null,
         locationName: item.location && item.location.name || null,
         mediaTypes: content.mediaTypes || [],
         mediaUrls: content.mediaUrls || [],
@@ -1558,6 +1570,18 @@ export function tauriInitScript() {
           source: source,
         };
       }
+      if (request.queryId === 'item_annotation_edit_state_v1') {
+        return {
+          globalId: request.globalId,
+          localSequence: state.annotationLocalSequence || 0,
+          pending: !!(state.annotationPendingItems &&
+            Object.prototype.hasOwnProperty.call(state.annotationPendingItems, request.globalId) &&
+            state.annotationPendingItems[request.globalId] === true),
+          queryId: request.queryId,
+          schemaVersion: 1,
+          source: source,
+        };
+      }
       if (request.queryId === 'item_annotations_v1') {
         var annotatedItem = state.items[request.globalId];
         var annotations = annotatedItem && !annotatedItem.__deleted ? sqliteItemState(annotatedItem) : {};
@@ -1577,6 +1601,7 @@ export function tauriInitScript() {
         return {
           item: item && !item.__deleted ? {
             card: sqliteFeedCard(item),
+            seenSyncedAt: sqliteItemState(item).seenSyncedAt == null ? null : sqliteItemState(item).seenSyncedAt,
             contentBody: {
               blobDigest: null,
               storage: item.content && item.content.text ? 'inline' : 'none',
@@ -1604,6 +1629,7 @@ export function tauriInitScript() {
             var rss = item.rssSource || null;
             return Object.assign({}, sqliteFeedCard(item), {
               hidden: !!sqliteItemState(item).hidden,
+              seenSyncedAt: sqliteItemState(item).seenSyncedAt == null ? null : sqliteItemState(item).seenSyncedAt,
               rankingCareLevel: item.rankingCareLevel == null ? null : item.rankingCareLevel,
               rankingEngagementReposts: !item.engagement || item.engagement.reposts == null
                 ? null
@@ -1985,6 +2011,9 @@ export function tauriInitScript() {
   set_jev_budget: () => { throw new Error("Jev budget requires an explicit test handler."); },
   request_jev: () => { throw new Error("Native Jev requests require an explicit test handler."); },
   cancel_jev_request: () => undefined,
+  request_kev: () => { throw new Error("Local Kev requires Freed Desktop and a loopback server."); },
+  get_kev_models: () => { throw new Error("Local Kev requires Freed Desktop and a loopback server."); },
+  cancel_kev_request: () => undefined,
       normalized_desktop_installation_status: () => window.__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({
         state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
         authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),

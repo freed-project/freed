@@ -1,3 +1,9 @@
+import { assertLibraryCoreAnnotationEditEligible } from "@freed/shared/library-core";
+import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
+import { parseLibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
+import { assembleHydratedAnnotationReplacement, replaceHydratedSavedNote, sameAnnotationSource } from "@freed/shared/library-core";
+import { desktopLibraryCountResource } from "./library-count-resource";
+import { refreshLibraryCoreDesktopRole, refreshLibraryCoreDesktopRoleAfterPending } from "./library-core-desktop-role";
 import { snapshotLibraryCoreRecoverySavedUrlEditsV1, reviseLibraryCoreRecoverySavedUrlV1, decodeLibraryCoreFractionalNumbersV1, type RecoverySavedUrlEdit } from "@freed/shared/library-core";
 import { loadRecoverySavedUrlDrafts } from "./library-core-recovery-saved-url-editor";
 import { createLibraryCoreSqliteActivatePredecessorWorkerRequest, createLibraryCoreSqlitePredecessorReadWorkerRequest,
@@ -63,16 +69,14 @@ import {
   compareLibraryCoreUtf8V1,
   FRIEND_REPLACE_PAYLOAD_SCHEMA,
   finalizeLibraryCoreTransactionV1,
+  measureLibraryCoreTransactionEnvelopeBytesV1,
   LIBRARY_CORE_CHECKPOINT_PAGE_MAXIMUM_RECORDS,
   LIBRARY_CORE_NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
   LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS,
-  LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-  LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
   LIBRARY_CORE_ACCOUNT_DETAIL_QUERY_ID,
   LIBRARY_CORE_ACCOUNT_DETAIL_SCHEMA_VERSION,
   LIBRARY_CORE_RSS_FEED_DETAIL_QUERY_ID,
   LIBRARY_CORE_RSS_FEED_DETAIL_SCHEMA_VERSION,
-  libraryCoreRuntimeStateFromFacetSummaryV1,
   PERSON_REMOVE_AND_ACCOUNTS_TRANSACTION_MEMBER_SCHEMA,
   PERSON_REACH_OUT_APPEND_TRANSACTION_MEMBER_SCHEMA,
   PERSON_UPSERT_TRANSACTION_MEMBER_SCHEMA,
@@ -88,7 +92,6 @@ import {
   parseLibraryCoreNormalizedIntentTransportPublicationV2,
   parseLibraryCoreNormalizedResultTransportImportV2,
   PREFERENCES_LEAF_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
-  readLibraryCoreNormalizedPreferencesV1,
   collectLibraryCoreSampleRemovalPlanV1,
   scanLibraryCoreAccountRowsV1,
   scanLibraryCoreNormalizedBackgroundItemsV1,
@@ -97,8 +100,8 @@ import {
   RSS_FEED_TITLE_ASSIGNMENT_TRANSACTION_MEMBER_SCHEMA,
   RSS_FEED_UPSERT_TRANSACTION_MEMBER_SCHEMA,
   readLibraryCoreNormalizedItemDetailV1,
-  canonicalizeFeedItemTagsV1,
   canonicalizeFeedItemHighlightsV1,
+  canonicalizeFeedItemTagsV1,
   canonicalizeFeedItemAnalysisV1,
   sha256LowerHex,
   type AccountRemoveTransactionMemberInputV1,
@@ -528,6 +531,7 @@ async function signNormalizedLibraryFollowerOperation(input: {
 
 async function enqueueNormalizedLibraryFollowerIntent(
   canonicalEnvelopeJson: readonly string[],
+  expectedSource?: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1,
 ): Promise<SqliteLibraryNormalizedFollowerIntentReceipt> {
   if (
     canonicalEnvelopeJson.length === 0 ||
@@ -543,6 +547,7 @@ async function enqueueNormalizedLibraryFollowerIntent(
       request: {
         canonicalEnvelopeJson: [...canonicalEnvelopeJson],
         enqueuedAtMs: Date.now(),
+        ...(expectedSource ? { expectedSource } : {}),
       },
     },
   );
@@ -757,10 +762,14 @@ async function finalizeAndSubmitTransaction(
   context: SqliteLibraryMutationContext,
   members: Parameters<typeof assembleLibraryCoreTransactionV1>[0],
   committedAtMs: number,
+  expectedSource?: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1,
 ): Promise<void> {
+  const source = expectedSource === undefined ? undefined : parseLibraryCoreFeedPageSourceV1(expectedSource);
+  if (source && !source.ok) throw new TypeError(source.error);
+  const admissionSource = source?.value;
   const { canonicalEnvelopeJson, finalized } = await finalizeSignedTransaction(context, members);
   if (context.mode === "follower") {
-    await enqueueNormalizedLibraryFollowerIntent(canonicalEnvelopeJson);
+    await enqueueNormalizedLibraryFollowerIntent(canonicalEnvelopeJson, admissionSource);
     return;
   }
   const receipt = await invoke<SqliteLibraryNormalizedMutationReceipt>(
@@ -770,6 +779,7 @@ async function finalizeAndSubmitTransaction(
         libraryId: context.libraryId,
         canonicalEnvelopeJson,
         committedAtMs,
+        ...(admissionSource ? { expectedSource: admissionSource } : {}),
       },
     },
   );
@@ -1085,52 +1095,97 @@ export async function prepareDesktopRecoveryAnnotationTransaction(
   return Object.freeze((await finalizeSignedTransaction(context, members)).canonicalEnvelopeJson);
 }
 
+/** Edit only the item note; untouched canonical quote digests never enter an inline assembler. */
+async function updateSqliteSavedItemNote(globalId: string, note: string, originalSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations): Promise<void> {
+  const snapshot = retainRenderedAnnotationSnapshot(originalSnapshot, globalId);
+  await assertLibraryCoreAnnotationEditEligible(queryNormalizedLibrary, snapshot);
+  const originals = snapshot.originals;
+  const context = await mutationContext();
+  if (!context) throw new Error("Normalized SQLite annotation context is required");
+  const now = Date.now();
+  const payload = replaceHydratedSavedNote(snapshot, note, now);
+  const current = await queryNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId });
+  if (!sameAnnotationSource(current.source, originals.source)) throw new Error("Annotation source changed; reopen the item");
+  const transactionId = `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+  const members = annotationTransactionMembers(context, [{ entityId: globalId, highlights: payload.highlights, tags: payload.tags }], transactionId, now);
+  await finalizeAndSubmitTransaction(context, members, now, originals.source);
+}
+
+/** Only the fixed initially-missing import set may use independent initialization batches.
+ * Captures and batches commit separately. A failed import is not rolled back as a whole.
+ */
+async function initializeNewFeedItemAnnotations(
+  input: readonly Readonly<{ entityId: string; highlights: readonly Highlight[]; tags: readonly string[] }>[],
+  assignedAtMs: number,
+): Promise<boolean> {
+  const assignments = [...new Map(input.map(row => [row.entityId, row])).values()];
+  const limit = LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace.maximumMembers;
+  for (let start = 0; start < assignments.length;) {
+    const context = await mutationContext();
+    if (!context) return false;
+    const transactionId = `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    let count = Math.min(limit, assignments.length - start);
+    let members;
+    // Partition before reading originals or signing. Never resize/reprepare a stale batch.
+    for (;;) {
+      const batch = assignments.slice(start, start + count).map(row => ({
+        entityId: row.entityId,
+        highlights: canonicalizeFeedItemHighlightsV1(row.highlights),
+        tags: canonicalizeFeedItemTagsV1(row.tags),
+      }));
+      members = annotationTransactionMembers(context, batch, transactionId, assignedAtMs);
+      try {
+        measureLibraryCoreTransactionEnvelopeBytesV1(assembleLibraryCoreTransactionV1(
+          members, context.previousChainDigest as LibraryCoreLowercaseHex64, { digest: operationDigest },
+        ));
+        break;
+      } catch (error) {
+        if (!(error instanceof RangeError) || count === 1) throw error;
+        count = Math.max(1, Math.floor(count / 2));
+      }
+    }
+    let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
+    for (const assignment of assignments.slice(start, start + count)) {
+      const originals = await queryNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
+      if (originals.tags.length || originals.highlights.length) throw new Error("Imported item annotations already exist; initialization refused");
+      if (expectedSource && !sameAnnotationSource(expectedSource, originals.source)) throw new Error("Annotation source changed; initialization refused");
+      expectedSource ??= originals.source;
+    }
+    await finalizeAndSubmitTransaction(context, members, assignedAtMs, expectedSource);
+    start += count;
+  }
+  return true;
+}
+
 async function maybeSubmitFeedItemAnnotationSets(
   input: readonly Readonly<{
     entityId: string;
     highlights: readonly Highlight[];
     tags: readonly string[];
+    annotationSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations;
   }>[],
   assignedAtMs: number,
 ): Promise<boolean> {
-  let context = await mutationContext();
-  if (!context) return false;
-  const unique = new Map<
-    string,
-    Readonly<{
-      highlights: ReturnType<typeof canonicalizeFeedItemHighlightsV1>;
-      tags: ReturnType<typeof canonicalizeFeedItemTagsV1>;
-    }>
-  >();
-  for (const assignment of input) {
-    unique.set(assignment.entityId, {
-      highlights: canonicalizeFeedItemHighlightsV1(assignment.highlights),
-      tags: canonicalizeFeedItemTagsV1(assignment.tags),
-    });
-  }
-  const assignments = [...unique].map(([entityId, annotations]) => ({
-    entityId,
-    ...annotations,
-  }));
-  if (assignments.length === 0) return true;
-  const batchLimit =
-    LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace
-      .maximumMembers;
+  const assignments = [...new Map(input.map(row => [row.entityId, { ...row, annotationSnapshot: retainRenderedAnnotationSnapshot(row.annotationSnapshot, row.entityId) }])).values()];
+  const batchLimit = LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS.feed_item_annotations_replace.maximumMembers;
+  let expectedSource: import("@freed/shared/library-core").LibraryCoreFeedPageSourceV1 | undefined;
   for (let start = 0; start < assignments.length; start += batchLimit) {
-    const batchContext = context;
-    const batch = assignments.slice(start, start + batchLimit);
-    const transactionId =
-      `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
-    const members = annotationTransactionMembers(batchContext, batch, transactionId, assignedAtMs);
-    await finalizeAndSubmitTransaction(batchContext, members, assignedAtMs);
-    if (start + batch.length < assignments.length) {
-      context = await mutationContext();
-      if (!context) {
-        throw new Error(
-          "Library mutation context changed during annotation commit",
-        );
-      }
+    const batch = [];
+    for (const assignment of assignments.slice(start, start + batchLimit)) {
+      const originals = await queryNormalizedLibrary({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: assignment.entityId });
+      const snapshot = assignment.annotationSnapshot;
+      await assertLibraryCoreAnnotationEditEligible(queryNormalizedLibrary, snapshot);
+      if (!sameAnnotationSource(snapshot.originals.source, originals.source) ||
+          (expectedSource && !sameAnnotationSource(expectedSource, snapshot.originals.source))) throw new Error("Annotation source changed; reopen the item");
+      expectedSource ??= snapshot.originals.source;
+      const payload = assembleHydratedAnnotationReplacement(snapshot, assignment.highlights, assignment.tags, assignedAtMs);
+      batch.push({ entityId: assignment.entityId, highlights: payload.highlights, tags: payload.tags });
     }
+    const context = await mutationContext();
+    if (!context) return false;
+    const transactionId = `desktop-library-annotations:${crypto.randomUUID()}` as LibraryCoreOperationInstanceId;
+    const members = annotationTransactionMembers(context, batch, transactionId, assignedAtMs);
+    await finalizeAndSubmitTransaction(context, members, assignedAtMs, expectedSource);
   }
   return true;
 }
@@ -2372,12 +2427,14 @@ export async function readNormalizedLibraryConsumerRecovery(): Promise<Normalize
 }
 
 export async function prepareNormalizedLibraryConsumerRecovery(): Promise<NormalizedLibraryConsumerRecoverySummary> {
-  return parseConsumerRecoverySummary(await invoke<unknown>("prepare_normalized_library_consumer_recovery"));
+  return desktopLibraryCountResource.transition(async () =>
+    parseConsumerRecoverySummary(await invoke<unknown>("prepare_normalized_library_consumer_recovery")));
 }
 
 export async function commitNormalizedLibraryConsumerRecovery(recoveryId: string): Promise<NormalizedLibraryConsumerRecoverySummary> {
   if (!HEX_64.test(recoveryId)) throw new TypeError("Invalid consumer recovery identity");
-  return parseConsumerRecoverySummary(await invoke<unknown>("commit_normalized_library_consumer_recovery", { recoveryId }));
+  return desktopLibraryCountResource.transition(async () =>
+    parseConsumerRecoverySummary(await invoke<unknown>("commit_normalized_library_consumer_recovery", { recoveryId })));
 }
 
 export interface NormalizedLibraryHandoffStatus {
@@ -2441,15 +2498,15 @@ export function prepareNormalizedLibraryHandoffActivation(handoffId: string, con
 }
 
 export function adoptNormalizedLibrarySourceHandoff(input: {
-  handoffId: string; stageId: string; canonicalControl: string; accessToken: string;
+  handoffId: string; stageId: string; canonicalControl: string; accessToken: string; readOnly?: boolean;
 }): Promise<NormalizedLibraryHandoffStatus> {
   if (!HEX_64.test(input.handoffId) || !input.stageId || input.stageId.length > 255) throw new TypeError("Invalid source adoption identity");
-  return invoke("adopt_normalized_library_source_handoff", input);
+  return desktopLibraryCountResource.transition(() => invoke("adopt_normalized_library_source_handoff", input));
 }
 
 export function activateNormalizedLibraryTargetHandoff(handoffId: string, accessToken: string): Promise<NormalizedLibraryHandoffStatus> {
   if (!HEX_64.test(handoffId)) throw new TypeError("Invalid handoff identity");
-  return invoke("activate_normalized_library_target_handoff", { handoffId, accessToken });
+  return desktopLibraryCountResource.transition(() => invoke("activate_normalized_library_target_handoff", { handoffId, accessToken }));
 }
 
 export function stageNormalizedLibraryTargetHandoff(handoffId: string): Promise<string> {
@@ -2578,10 +2635,10 @@ export async function activateNormalizedLibraryPredecessorCheckpoint(
 ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
   const request = createLibraryCoreSqliteActivatePredecessorWorkerRequest("native-predecessor-import", activation, successorStageId);
   if (request.kind !== "activate_verified_predecessor_checkpoint") throw new Error("invalid predecessor import request");
-  return parseLibraryCoreNormalizedCheckpointActivationReceiptV2(await invoke<unknown>(
+  return desktopLibraryCountResource.transition(async () => parseLibraryCoreNormalizedCheckpointActivationReceiptV2(await invoke<unknown>(
     "activate_normalized_library_predecessor_checkpoint", { request: { stageId: request.activation.stageId,
       successorStageId: request.successorStageId, followerReceipt: request.activation.followerReceipt } },
-  ));
+  )));
 }
 
 export async function activateNormalizedLibraryCheckpointImport(
@@ -2598,29 +2655,29 @@ export async function activateNormalizedLibraryCheckpointImport(
     }>;
   }>,
 ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
-  return parseLibraryCoreNormalizedCheckpointActivationReceiptV2(
+  return desktopLibraryCountResource.transition(async () => parseLibraryCoreNormalizedCheckpointActivationReceiptV2(
     await invoke<unknown>("activate_normalized_library_checkpoint_import", {
       request: input,
     }),
-  );
+  ));
 }
 
 const HEX_64 = /^[a-f0-9]{64}$/;
 
 export async function loadSqliteLibraryState(): Promise<LibraryCoreRuntimeStateV1> {
-  const [facets, preferences] = await Promise.all([
-    queryNormalizedLibrary({
-      queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-      schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
-    }),
-    readLibraryCoreNormalizedPreferencesV1(NORMALIZED_MUTATION_READER_RUNTIME),
-  ]);
+  const readSelection = async (afterReads = false) => {
+    const status = await (afterReads ? refreshLibraryCoreDesktopRoleAfterPending() : refreshLibraryCoreDesktopRole());
+    if (!status.libraryId || !status.authorityEpochId
+      || (status.actorId === null && status.state !== "read_only_consumer")
+      || !["editable_consumer", "read_only_consumer", "standalone_primary", "shared_primary"].includes(status.state)) {
+      throw new Error("Native Library count identity is unavailable");
+    }
+    return { libraryId: status.libraryId, authorityEpochId: status.authorityEpochId, actorId: status.actorId };
+  };
+  await readSelection();
+  const state = await desktopLibraryCountResource.refresh(queryNormalizedLibrary, () => readSelection(true));
   sqliteActive = true;
-  return libraryCoreRuntimeStateFromFacetSummaryV1(
-    preferences,
-    facets.summary,
-    facets.source.projectionRevision,
-  );
+  return state;
 }
 
 export async function readSqliteItems(
@@ -2671,7 +2728,7 @@ async function insertMissingSqliteItems(
       (item.userState.highlights?.length ?? 0) > 0,
   );
   if (
-    !(await maybeSubmitFeedItemAnnotationSets(
+    !(await initializeNewFeedItemAnnotations(
       annotated.map((item) => ({
         entityId: item.globalId,
         highlights: item.userState.highlights ?? [],
@@ -3141,15 +3198,18 @@ export async function dispatchSqliteMutation(
       result = summary;
       break;
     }
+    case "UPDATE_SAVED_ITEM_NOTE": {
+      await updateSqliteSavedItemNote(message.globalId, message.note, message.annotationSnapshot);
+      changedIds = [message.globalId];
+      source = "item_patch";
+      break;
+    }
     case "UPDATE_FEED_ITEM": {
+      const changesAnnotations = message.updates.userState?.tags !== undefined || message.updates.userState?.highlights !== undefined;
+      const snapshot = changesAnnotations ? retainRenderedAnnotationSnapshot(message.annotationSnapshot, message.globalId) : null;
       const [item] = await readSqliteItems([message.globalId]);
       if (item) {
         const updated = deepMerge(item, message.updates);
-        if (!(await maybeSubmitFeedItemCaptures([updated], timestamp))) {
-          throw new Error(
-            "Normalized SQLite FeedItem mutation context is required",
-          );
-        }
         if (
           (message.updates.userState?.tags !== undefined ||
             message.updates.userState?.highlights !== undefined) &&
@@ -3157,8 +3217,9 @@ export async function dispatchSqliteMutation(
             [
               {
                 entityId: message.globalId,
-                highlights: updated.userState.highlights ?? [],
-                tags: updated.userState.tags,
+                highlights: message.updates.userState?.highlights ?? snapshot!.highlights!,
+                tags: message.updates.userState?.tags ?? snapshot!.originals.tags,
+                annotationSnapshot: snapshot!,
               },
             ],
             timestamp,
@@ -3166,6 +3227,13 @@ export async function dispatchSqliteMutation(
         ) {
           throw new Error(
             "Normalized SQLite FeedItem annotation mutation context is required",
+          );
+        }
+        // Annotation admission precedes capture, so stale provenance cannot partially capture.
+        // These remain separate transactions; later capture failure does not roll back annotations.
+        if (!(await maybeSubmitFeedItemCaptures([updated], timestamp))) {
+          throw new Error(
+            "Normalized SQLite FeedItem mutation context is required",
           );
         }
         if (
@@ -3593,14 +3661,14 @@ export async function restoreNormalizedLocalSnapshot(
   snapshotId: string,
   request: NormalizedLocalSnapshotRestoreRequest,
 ): Promise<NormalizedLocalSnapshotSummary> {
-  const restored = await invoke<NormalizedLocalSnapshotSummary>(
+  const restored = await desktopLibraryCountResource.transition(() => invoke<NormalizedLocalSnapshotSummary>(
     "restore_normalized_local_snapshot",
     {
       snapshotId,
       operationId: request.operationId,
       restoredAtMs: request.restoredAtMs,
     },
-  );
+  ));
   sqliteActive = true;
   return restored;
 }
@@ -3610,7 +3678,7 @@ export async function clearNormalizedLocalSnapshots(): Promise<void> {
 }
 
 export async function resetNormalizedLibrary(): Promise<void> {
-  await invoke("reset_normalized_library");
+  await desktopLibraryCountResource.transition(() => invoke("reset_normalized_library"));
   sqliteActive = false;
 }
 

@@ -365,6 +365,16 @@ describe("old Primary adoption", () => {
     expect(guard.isDesktopHandoffPaused()).toBe(false);
     expect(mocks.publish).not.toHaveBeenCalled();
   });
+  it("requires native viewer readback before resuming a read-only adoption", async () => {
+    const { api, guard } = await load();
+    await expect(api.adoptDesktopLibrarySourceHandoff({ ...adoption, readOnly: true })).rejects.toThrow("access mode could not be verified");
+    expect(guard.isDesktopHandoffPaused()).toBe(true);
+    mocks.refreshRole.mockResolvedValue({ role: "follower", state: "read_only_consumer", libraryId: "library", authorityEpochId: "successor" });
+    await expect(api.adoptDesktopLibrarySourceHandoff({ ...adoption, readOnly: true })).resolves.toMatchObject({ phase: "demoted" });
+    expect(mocks.adoptSource).toHaveBeenLastCalledWith({ ...adoption, readOnly: true });
+    expect(mocks.stageSource).toHaveBeenCalledOnce();
+    expect(guard.isDesktopHandoffPaused()).toBe(false);
+  });
   it("keeps a lost response paused and resumes on exact native retry", async () => {
     const { api, guard } = await load();
     mocks.adoptSource.mockImplementationOnce(async () => { mocks.status = demoted(); throw new Error("response lost"); });

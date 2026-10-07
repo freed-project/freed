@@ -13,6 +13,14 @@ actor row. The original pending request bytes and digest remain preserved even
 when they differ from the recovered certificate. Unknown history, conflicting
 grants, changed authority and invalid signatures fail before any recovery write.
 
+The local follower commit request also accepts the optional source admission
+metadata defined in [the mutation contract](mutations.md). It survives worker
+transport and an exact response-loss retry unchanged. It is checked after
+retry recognition in the same write transaction as intent admission, and is
+not serialized into canonical members or provider transport. Canonical source
+revision currently does not distinguish pending local annotation versions;
+the guard alone does not establish safe repeated offline editing.
+
 A follower edit atomically writes a signed intent transaction and its sparse
 optimistic effect to local SQLite. The intent envelope binds:
 
@@ -382,6 +390,35 @@ authority check, actor-chain check or final receipt write rolls back both canoni
 and local changes. Checkpoint activation settles only overlays whose already
 verified accepted result is covered by the new canonical revision. It does not
 invent results, reset request identities, or re-sign unresolved edits.
+
+### Installation-local read-only viewers
+
+The native transfer-acceptance route can select read-only access when a former
+Primary adopts its verified successor. Native catalog 6 records that choice in
+the same transaction as source demotion and checkpoint selection. The policy
+binds the Library and original source handoff, stays outside logical checkpoints,
+and preserves the existing catalog 5 annotation receipt. Opening a database
+does not enable viewer mode. Ordinary transfer and recovery activation holds
+remain separate from this acceptance route.
+
+A viewer can enroll, receive canonical changes, browse and write local caches.
+Before enrollment, bounded navigation counts bind the native Library and epoch
+with an explicit null actor. Publishing the enrolled actor retires that count
+identity and any pending reads; no placeholder actor grants authority.
+It cannot sign, enqueue or publish Library edit intents, including automatic
+read/seen state and synchronized preferences. Native edit and provider admission
+deny independently of renderer controls. Lost-response adoption retry must name
+the same access choice; an editable retry cannot downgrade a viewer.
+
+Checkpoint replacement and enrollment recovery preserve the local restriction.
+When a demoted viewer follows a later Primary, verify its original source consent
+against the originally adopted epoch and verify the later successor chain
+separately. Explicit recovery preserves the exact source authorization and
+adoption bytes in local history before replacing the lifecycle record. That
+history, the new recovery archive and lifecycle change commit atomically.
+Enrollment recovery grants no edit permission. A failed archive write leaves the
+old source fence intact. Unsupported catalogs and missing or invalid viewer
+policy fail closed; installed predecessor-binary refusal requires separate proof.
 
 ### Explicit recovery assignments
 

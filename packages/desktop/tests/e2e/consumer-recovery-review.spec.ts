@@ -1,4 +1,4 @@
-import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+import { test, expect, resolveViteFsModulePath } from "./fixtures/transfer-acceptance";
 
 const cursorModulePath = resolveViteFsModulePath("../../../shared/src/library-core/feed-page-contracts.ts", import.meta.url);
 const settingsStorePath = resolveViteFsModulePath("../../../ui/src/lib/settings-store.ts", import.meta.url);

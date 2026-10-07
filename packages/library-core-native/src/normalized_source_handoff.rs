@@ -177,6 +177,17 @@ pub fn recover_demoted_source_handoff_v1(
     stage_id: &str,
     canonical_control: &[u8],
 ) -> Result<Option<crate::NativeHandoffStatusV1>, String> {
+    recover_demoted_source_handoff_with_access_v2(connection, handoff_id, stage_id, canonical_control, false)
+}
+
+/// Exact retry additionally binds the installation-local access choice.
+pub fn recover_demoted_source_handoff_with_access_v2(
+    connection: &mut Connection,
+    handoff_id: &str,
+    stage_id: &str,
+    canonical_control: &[u8],
+    read_only: bool,
+) -> Result<Option<crate::NativeHandoffStatusV1>, String> {
     let status = crate::read_native_handoff_status_v1(connection).map_err(|e| e.to_string())?;
     let Some(status) = status.filter(|s| {
         s.installation_role == crate::HandoffInstallationRoleV1::Source
@@ -204,6 +215,18 @@ pub fn recover_demoted_source_handoff_v1(
         return Err("source adoption retry differs from its committed receipt".into());
     }
     verify_demoted_source_selection(connection)?;
+    if crate::normalized_viewer::normalized_library_is_read_only_v1(connection).map_err(|e| e.to_string())? != read_only {
+        return Err("source adoption retry changed its local access choice".into());
+    }
+    if read_only {
+        let same_handoff: bool = connection.query_row(
+            "SELECT source_handoff_id=?1 FROM library_local_viewer_policy WHERE singleton_id=1;",
+            [handoff_id], |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        if !same_handoff {
+            return Err("source adoption retry changed its viewer policy receipt".into());
+        }
+    }
     Ok(Some(status))
 }
 
@@ -231,6 +254,12 @@ fn verify_demoted_source_in_snapshot(connection: &Connection) -> Result<(), Stri
     if !valid {
         return Err("source demotion is not backed by its consumer selection".into());
     }
+    verify_demoted_source_consent(connection)
+}
+
+/// Verify retained consent against its original adopted epoch, independently of
+/// a later selected epoch. This grants neither checkpoint nor edit admission.
+pub(crate) fn verify_demoted_source_consent(connection: &Connection) -> Result<(), String> {
     struct RetainedConsent {
         id: String,
         library: String,
@@ -341,6 +370,17 @@ pub fn adopt_source_handoff_after_remote_verification_v1(
     verified_revision: &str,
     adopted_at: u64,
 ) -> Result<crate::NativeHandoffStatusV1, String> {
+    adopt_source_handoff_with_access_after_remote_verification_v2(connection, plan, verified_revision, adopted_at, false)
+}
+
+/// The viewer restriction commits with demotion, never in a later settings write.
+pub fn adopt_source_handoff_with_access_after_remote_verification_v2(
+    connection: &mut Connection,
+    plan: &HandoffVerificationPlanV1,
+    verified_revision: &str,
+    adopted_at: u64,
+    read_only: bool,
+) -> Result<crate::NativeHandoffStatusV1, String> {
     crate::require_library_transfer_capability()?;
     let stage = plan
         .source_stage_id
@@ -357,11 +397,12 @@ pub fn adopt_source_handoff_after_remote_verification_v1(
         return Err("source adoption requires full SQLite durability".into());
     }
     plan.verify_control_read(&plan.expected_control, verified_revision)?;
-    if let Some(status) = recover_demoted_source_handoff_v1(
+    if let Some(status) = recover_demoted_source_handoff_with_access_v2(
         connection,
         &plan.proposal.handoff_id,
         stage,
         &plan.expected_control,
+        read_only,
     )? {
         return Ok(status);
     }
@@ -416,6 +457,10 @@ pub fn adopt_source_handoff_after_remote_verification_v1(
         control, &snapshot,
     )?;
     verify_demoted_source_selection(&tx)?;
+    if read_only {
+        crate::normalized_viewer::install_after_source_adoption(&tx, &plan.proposal.handoff_id, adopted_at)
+            .map_err(|e| e.to_string())?;
+    }
     tx.commit().map_err(|e| e.to_string())?;
     crate::read_native_handoff_status_v1(connection)
         .map_err(|e| e.to_string())?
@@ -432,6 +477,23 @@ pub(crate) fn retain_demoted_source_for_return(
     created_at: u64,
 ) -> Result<(), String> {
     verify_demoted_source_selection(tx)?;
+    retain_verified_source_history(tx, created_at)
+}
+
+pub(crate) fn retain_demoted_viewer_for_recovery(
+    tx: &rusqlite::Transaction<'_>,
+    created_at: u64,
+) -> Result<(), String> {
+    if !crate::normalized_consumer_recovery::verify_demoted_viewer_successor_checkpoint(tx)? {
+        return Err("viewer recovery requires a verified later successor".into());
+    }
+    retain_verified_source_history(tx, created_at)
+}
+
+fn retain_verified_source_history(
+    tx: &rusqlite::Transaction<'_>,
+    created_at: u64,
+) -> Result<(), String> {
     let (id, library, old_epoch, new_epoch, authorization, adoption, completed):
         (String, String, String, String, Vec<u8>, Vec<u8>, u64) = tx.query_row(
         "SELECT handoff_id, library_id, predecessor_epoch_id, successor_epoch_id,
@@ -461,7 +523,9 @@ pub(crate) fn source_consumer_incarnation_v1(
     let version: u32 = connection
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if version == crate::sqlite_contract_generated::SQLITE_SCHEMA_VERSION {
+    crate::normalized_local_annotations::reject_building(connection)
+        .map_err(|error| error.to_string())?;
+    if matches!(version, 1 | 4) {
         return Ok(None);
     }
     let id = connection.query_row("SELECT handoff_id FROM library_local_handoff WHERE singleton_id = 1 AND installation_role = 'source' AND phase = 'demoted' AND library_id = ?1 AND successor_epoch_id = ?2;", params![library, epoch], |r| r.get::<_, String>(0)).optional().map_err(|e| e.to_string())?;

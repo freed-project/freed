@@ -1208,3 +1208,39 @@ terminal evidence under a shared budget is inconclusive. No identifiers,
 content, errors or thread identities are logged. Invocation queueing and native
 execution-thread ownership remain unmeasured. This attribution change does not
 establish an installed responsiveness improvement.
+
+### Runtime-owned navigation counts
+
+Desktop publishes one immutable navigation count resource only after facet, RSS
+and preference responses agree on generation, canonical revision and local
+transition sequence. Native Library, authority epoch and actor identity fence
+publication; supported setup, reset, restore and handoff transitions retire old
+values before native work. Same-context refreshes retain committed counts, while
+a completed zero replaces them. Sidebar consumes that resource without issuing
+duplicate facet or RSS reads. Retries drain sibling reads and stop after three
+attempts. This is source-coherent composition, not a shared SQL transaction or
+new write authority. External generation ABA and installed visual stability
+remain unproven.
+
+### Linked URL projection
+
+Compact feed and item-detail cards preserve the stored linked article URL
+independently from the post source URL. Missing links do not fabricate article
+fetch targets. Existing reader, pinning and item-change fetch flows can therefore
+request the stored publisher instead of the social post; response images and
+existing optional summarization remain governed by their existing settings. This
+exact correction was explicitly approved on 2026-10-04; no cadence, credential or
+AI-setting change is introduced. The original selection complaint remains
+unattributed.
+
+### Read-only Desktop following
+
+A former Primary can explicitly adopt its successor as an installation-local
+read-only viewer in the transfer-acceptance configuration. Enrollment and inbound
+sync continue; native signing, intent export and provider admission remain denied.
+The consumer coordinator skips intent publication for viewers. Same-epoch
+checkpoints and later verified successor recovery preserve the restriction.
+Later recovery retains the original source consent and adoption bytes atomically
+with the new archive and lifecycle record. Synthetic native coverage includes
+restart, exact retry, malformed consent and archive-failure rollback. Installed
+two-Desktop/PWA convergence and removal of ordinary activation holds remain pending.

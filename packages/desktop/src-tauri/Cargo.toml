@@ -1,6 +1,6 @@
 [package]
 name = "freed-desktop"
-version = "26.10.401"
+version = "26.10.700"
 description = "Freed Desktop - Escape algorithmic manipulation"
 authors = ["Freed"]
 edition = "2021"
@@ -18,7 +18,7 @@ tokenizers = { version = "=0.21.4", default-features = false, features = ["onig"
 freed-library-core = { path = "../../library-core-native" }
 # Decode bounded immutable checkpoint pages during native handoff verification.
 flate2 = "1"
-tauri = { version = "=2.11.5", features = ["macos-private-api", "tray-icon", "image-png"] }
+tauri = { version = "=2.11.6", features = ["macos-private-api", "tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
 tauri-plugin-process = "2"
@@ -73,8 +73,14 @@ libc = "0.2"
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 keyring = { version = "3.6.3", default-features = false, features = ["windows-native"] }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# Use the underlying Secret Service API to forbid interactive unlock prompts.
+# keyring's Linux adapter automatically unlocks matching items. Pin 4.0.3:
+# 4.1.0 replaced OsRng with noncryptographic fastrand for session key exchange.
+dbus-secret-service = { version = "=4.0.3", features = ["crypto-rust", "vendored"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
-plist = "1.8"
+plist = "=1.10.1"
 # The migration signer uses the ordinary macOS credential vault, but every
 # access disables Keychain user interaction first. If the item cannot be used
 # without a prompt, migration fails closed instead of interrupting the user.
@@ -86,7 +92,12 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-web-kit = { version = "0.3", features = ["WKWebViewConfiguration"] }
 
 [dev-dependencies]
-tauri = { version = "=2.11.5", features = ["test"] }
+tauri = { version = "=2.11.6", features = ["test"] }
+# Tauri 2.11.6's test AppConfig constructor is incompatible with the new
+# app_directories_override field in tauri-utils 2.10.1. Retain the compatible
+# baseline until a coherent upstream test-feature update is verified.
+# Keep Tauri's IPC security fix and the test feature enabled.
+tauri-utils = { version = "=2.9.3", default-features = false }
 
 [features]
 default = ["custom-protocol"]

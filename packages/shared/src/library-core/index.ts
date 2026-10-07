@@ -118,3 +118,6 @@ export * from "./visible-preference-source.js";
 export * from "./visible-preference-contracts.js";
 
 export * from "./recovery-saved-url-input.js";
+
+export * from "./item-annotation-text-contracts.js";
+export * from "./annotation-hydration.js";

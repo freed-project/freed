@@ -5,6 +5,9 @@
 //! explicit database path, key stores, and signed timestamps. It has no Tauri,
 //! Google Drive, provider, or historical migration-source dependency.
 
+mod annotation_maintenance_owner;
+pub use annotation_maintenance_owner::{AnnotationMaintenanceError, AnnotationMaintenanceOwner};
+mod annotation_text;
 mod device_contact_sync;
 mod device_graph_layout;
 mod historical_migration_source;
@@ -49,6 +52,8 @@ mod normalized_preference_policy;
 #[cfg(test)]
 mod normalized_preference_projection;
 mod normalized_source_handoff;
+mod normalized_viewer;
+pub use normalized_viewer::normalized_library_is_read_only_v1;
 pub use normalized_handoff_activation::{
     activate_target_handoff_after_remote_verification_v1, recover_active_target_handoff_v1,
 };
@@ -58,6 +63,8 @@ pub use normalized_handoff_checkpoint::{
 pub use normalized_source_handoff::{
     adopt_source_handoff_after_remote_verification_v1, recover_demoted_source_handoff_v1,
     source_handoff_verification_plan_v1,
+    adopt_source_handoff_with_access_after_remote_verification_v2,
+    recover_demoted_source_handoff_with_access_v2,
 };
 mod normalized_handoff_writer_certificate;
 mod normalized_import;
@@ -150,9 +157,11 @@ pub use normalized_desktop_setup::{
 };
 pub use normalized_follower::{
     countersign_normalized_follower_actor_request_v2, enqueue_normalized_follower_intent_v1,
-    export_normalized_follower_intent_page_v1, import_normalized_follower_result_page_v1,
+    enqueue_normalized_follower_intent_with_source_v1, export_normalized_follower_intent_page_v1,
+    import_normalized_follower_result_page_v1,
     import_normalized_follower_result_transport_segment_v2,
     install_normalized_follower_actor_enrollment_v2, normalized_follower_mutation_context_v1,
+    normalized_follower_signing_context_v1,
     normalized_follower_runtime_status_v2, normalized_follower_transport_context_v2,
     page_normalized_follower_transport_v2, prepare_normalized_follower_actor_request_v2,
     record_normalized_follower_intent_publication_v1,
@@ -178,8 +187,10 @@ pub use normalized_migration::{
     NormalizedDesktopAuthorityPreparedV1,
 };
 pub use normalized_mutation::{
-    accept_normalized_operation_transaction_v1, export_normalized_follower_result_page_v1,
-    export_normalized_follower_result_page_v2, ingest_normalized_follower_intent_page_v1,
+    accept_normalized_operation_transaction_v1,
+    accept_normalized_operation_transaction_with_source_v1,
+    export_normalized_follower_result_page_v1, export_normalized_follower_result_page_v2,
+    ingest_normalized_follower_intent_page_v1,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     NormalizedFollowerIntentStagePageV1, NormalizedFollowerIntentStageReceiptV1,
     NormalizedFollowerIntentStageRecordV1, NormalizedFollowerResultCursorV1,
@@ -190,8 +201,8 @@ pub use normalized_mutation::{
 };
 pub use normalized_operation::ActorState;
 pub use normalized_query::{
-    query_normalized_json_v1, query_normalized_v1, NormalizedAccountDetailRequestV1,
-    NormalizedAccountDetailResponseV1, NormalizedAccountDetailV1,
+    deserialize_local_admission_source, query_normalized_json_v1, query_normalized_v1,
+    NormalizedAccountDetailRequestV1, NormalizedAccountDetailResponseV1, NormalizedAccountDetailV1,
     NormalizedAccountGraphPageRequestV1, NormalizedAccountGraphPageResponseV1,
     NormalizedAccountGraphRowV1, NormalizedChangeFeedRequestV1, NormalizedChangeFeedResponseV1,
     NormalizedChangeFeedRowV1, NormalizedFacetSummaryRequestV1, NormalizedFacetSummaryResponseV1,
@@ -231,13 +242,15 @@ pub use normalized_sqlite::{
     describe_normalized_checkpoint_export_v2,
     describe_normalized_checkpoint_export_with_observer_v2,
     describe_normalized_cloud_preflight_identity_v1, export_normalized_checkpoint_page_v2,
-    export_pinned_normalized_checkpoint_page_v2, install_normalized_schema_v1,
-    open_normalized_sqlite_database_v1, verify_normalized_library_selection_v1,
-    BeginNormalizedCheckpointStageV2, NormalizedCheckpointCursorV2,
-    NormalizedCheckpointDescriptionStageV2, NormalizedCheckpointExportDescriptorV2,
-    NormalizedCheckpointExportPageV2, NormalizedCheckpointExportRequestV2,
-    NormalizedCheckpointExportSessionV2, NormalizedCheckpointPreparationStageV2,
-    NormalizedCheckpointStageStatusV2, NormalizedCloudPreflightIdentityV1, NormalizedSqliteError,
+    export_pinned_normalized_checkpoint_page_v2, initialize_owned_normalized_sqlite_database_v1,
+    initialize_owned_normalized_sqlite_database_with_observer_v1,
+    install_normalized_schema_v1, open_normalized_sqlite_database_v1,
+    verify_normalized_library_selection_v1, BeginNormalizedCheckpointStageV2,
+    NormalizedCheckpointCursorV2, NormalizedCheckpointDescriptionStageV2,
+    NormalizedCheckpointExportDescriptorV2, NormalizedCheckpointExportPageV2,
+    NormalizedCheckpointExportRequestV2, NormalizedCheckpointExportSessionV2,
+    NormalizedCheckpointPreparationStageV2, NormalizedCheckpointStageStatusV2,
+    NormalizedCloudPreflightIdentityV1, NormalizedSqliteError,
     PinnedNormalizedCheckpointExportRequestV2,
 };
 pub use normalized_writer_certificate::{
@@ -292,4 +305,10 @@ pub use normalized_handoff_cancellation::{
 pub use normalized_handoff_writer_certificate::{
     activate_normalized_predecessor_checkpoint_v1,
     prepare_normalized_predecessor_checkpoint_read_v1,
+};
+
+mod normalized_local_annotations;
+
+pub use normalized_local_annotations::{
+    reconcile_normalized_annotation_slice_v1, NormalizedAnnotationReconciliationPassV1,
 };

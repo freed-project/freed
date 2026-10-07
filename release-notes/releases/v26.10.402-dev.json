@@ -1,0 +1,99 @@
+{
+  "tag": "v26.10.402-dev",
+  "version": "26.10.402-dev",
+  "channel": "dev",
+  "dayKey": "26.10.4",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed the actual protected product merge and all four repair scopes. Article target behavior carries the explicit 20:01 UTC owner approval. Generated activation delta is empty; physical SQL schema is unchanged.",
+    "Regenerated source identity after protected test-only PR2113 corrected the two graph integration contracts. Four runtime repair scopes remain byte-identical to reviewed product0360e4d5."
+  ],
+  "generatedAt": "2026-10-04T22:52:45.075Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.401-dev",
+    "previousPublishedDayTag": "v26.10.305-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "8f52b037f33380f499a4d74575b63d068b5cf1f8",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.401-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "56200ed2fe66c74df8254f34c617f9e30547b8b4",
+        "toInclusiveProductCommitSha": "8f52b037f33380f499a4d74575b63d068b5cf1f8"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:2f9313f44679415ba4b24b01b04a78db4d7fa9c7215983c49b2f861f6d9f71d8",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.400-dev",
+      "v26.10.401-dev",
+      "v26.10.402-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.400-dev",
+      "v26.10.401-dev",
+      "v26.10.402-dev"
+    ],
+    "prNumbers": [
+      2098,
+      2099,
+      2100,
+      2101,
+      2102,
+      2103
+    ],
+    "commitSubjects": [
+      "test: align graph workflows with tracked relationship eligibility (#2113)",
+      "fix: keep Library counts coherent and preserve article targets (#2103)",
+      "fix: align feed scroll checks with current card heights",
+      "fix: constrain mobile settings navigation scrolling (#2102)",
+      "chore: prepare v26.10.401-dev (#2101)",
+      "perf: attribute native checkpoint preparation substages (#2100)",
+      "chore: prepare v26.10.400-dev (#2099)",
+      "perf: avoid checkpoint census in cloud preflight (#2098)"
+    ]
+  },
+  "release": {
+    "deck": "Clearer Library counts and backup status",
+    "features": [],
+    "fixes": [
+      "Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing.",
+      "Show elapsed backup time in the update notification and Settings.",
+      "Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection.",
+      "Use the stored article link consistently when opening, saving, and processing linked articles.",
+      "Keep mobile Settings navigation within the available screen height.",
+      "Avoid counting every checkpoint record during routine Library sync checks.",
+      "Avoid counting every checkpoint record during routine Library sync checks",
+      "Record bounded timing for Library checkpoint preparation"
+    ],
+    "followUps": [
+      "The elapsed timer reports time spent; it does not shorten a full Library backup.",
+      "Installed responsiveness and count stability still require verification on the signed build.",
+      "Existing AI preferences and provider schedules are unchanged.",
+      "Full checkpoint preparation retains complete validation and can still take time",
+      "Installed startup and manual responsiveness verification remain separate from synthetic benchmarks",
+      "Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged",
+      "Writer admission delays remain a separate investigation",
+      "This build adds attribution; no reduction in stalls or CPU use is claimed"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.402-dev\n\nClearer Library counts and backup status\n\n### Fixes\n\n- Keep navigation counts tied to one coherent Library state and retain verified counts while refreshing\n- Show elapsed backup time in the update notification and Settings\n- Keep discovered accounts out of the tracked relationship graph and open their Map location without creating a connection\n- The stored article link consistently when opening, saving, and processing linked articles. now uses the correct path\n- Keep mobile Settings navigation within the available screen height\n- Avoid counting every checkpoint record during routine Library sync checks\n- Record bounded timing for Library checkpoint preparation\n\n### Follow-ups\n\n- The elapsed timer reports time spent; it does not shorten a full Library backup\n- Installed responsiveness and count stability still require verification on the signed build\n- Existing AI preferences and provider schedules are unchanged\n- Full checkpoint preparation retains complete validation and can still take time\n- Installed startup and manual responsiveness verification remain separate from synthetic benchmarks\n- Priority and social diagnostics remain off; provider and schema activation boundaries are unchanged\n- Writer admission delays remain a separate investigation\n- This build adds attribution; no reduction in stalls or CPU use is claimed\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

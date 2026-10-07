@@ -4,6 +4,11 @@ This is the installed test plan for cooperative Primary handoff. A passing build
 alone does not establish installed acceptance or readiness to move the owner's
 Library. Headless promotion remains separate.
 
+The editable-consumer scenarios below do not establish a read-only viewer.
+If the intended destination is one Primary and one strict viewer, also complete
+the [strict viewer gate](#strict-viewer-gate). The current editable-consumer
+role and shared UI demo mode do not supply that enforcement.
+
 ## Select the acceptance build
 
 Ordinary dev and production builds deliberately disable Primary transfer and
@@ -28,7 +33,10 @@ credentials. It uses the existing approved Vercel preview OAuth relay through
 `app.freed.wtf`; it does not register a new Google callback or deploy production.
 Credential presence does not prove a successful OAuth exchange. Verify sign-in
 on the resulting dedicated preview origin and use a separate browser profile.
-Do not substitute the production PWA for a matching test candidate.
+Do not substitute the production PWA for a matching test candidate. Acceptance
+previews retain normal onboarding and Library selection, with automatic sample
+population disabled. A fresh profile must not create a sample Library on its own;
+after joining, restarting must reopen that Library without reseeding it.
 
 For isolated workflow acceptance, build both clients from the same reviewed,
 clean source. Verify `git status --short` is empty, then set the existing build
@@ -177,6 +185,79 @@ reapplied through this recovery action.
 After the first transfer settles, repeat the transfer back to A. Verify older
 archives remain browsable on both consumers and that no old signed envelope was
 rewritten into a new epoch.
+
+## Strict viewer gate
+
+This gate specifies additional acceptance requirements. It does not assert
+that a persistent native viewer mode is implemented or released. Record the
+exact candidate that supplies it before attempting these scenarios. An
+editable-consumer badge, hidden controls or a disabled mark-read preference
+cannot satisfy the gate.
+
+A strict viewer permits inbound synchronization, browsing and installation-local
+cache writes. It must not sign or enqueue new Library edits, publish pending
+edit intents, reapply archived edits, capture provider content or publish as
+Primary. Automatic read and seen assignments count as edits. Synchronized
+preferences are Library edits; installation-local presentation state is separate.
+
+### Establish the restriction
+
+1. Use synthetic data and independent installation identities. Record native and
+   frontend source, Library, epoch, actor and writer identities before the change.
+2. Establish what happens to unresolved or in-flight edits before confirming
+   viewer mode. Preserve their original bytes and honest outcome. The transition
+   must either refuse until settlement or provide an explicit, durable recovery
+   disposition. It must never discard edits or later upload them silently.
+3. Exercise an edit upload already in progress, including a lost response.
+   Viewer readiness requires that upload to finish or its ambiguous result to
+   resolve through the existing protocol. Cancelling a local promise is not proof
+   that the remote request was cancelled.
+4. Record a durable native policy receipt and the completed transport drain.
+   From that checkpoint onward, no local Library edit may be signed, queued or
+   uploaded. A renderer setting cannot grant edit admission.
+5. For a transferred source, retain its existing source fence until successor
+   verification and viewer policy are durably committed. Resume from a crash
+   before and after this boundary. There must be no intermediate editable
+   consumer state, including during reenrollment and response-loss recovery.
+
+### Exercise native and interface boundaries
+
+With the viewer online and then offline, attempt read, saved, archived and liked
+assignments, notes and highlights, subscriptions, Friends and synchronized
+preferences. Include keyboard shortcuts, command palette actions, bulk actions
+and recovery editors. Repeat through direct native command fixtures with stale
+renderer state. Each fresh edit must be refused before signing or persistence;
+no actor counter, intent, optimistic effect or recovery replacement may appear.
+Reading an existing durable retry receipt is not a fresh edit.
+
+Scroll through unread items, open and close their readers, navigate between
+items, wait for delayed read-mark batches, and suspend and resume the app.
+Verify that automatic read/seen paths create no edit. A provider-admission
+counter alone cannot prove this: read-state intents can exist without a provider
+command being admitted.
+
+Make representative changes on the Primary and sync them into the viewer.
+Verify bounded browsing, local cached content and canonical convergence still
+work. Local cache activity must not become a synchronized Library mutation.
+Keep provider-admission evidence separate and attributed to this viewer interval.
+
+### Restart, checkpoint and predecessor proof
+
+Fully quit and reopen the viewer before reconnecting it. Replace its checkpoint
+through the supported same-Library sync flow and exercise explicit successor
+adoption in an isolated transfer scenario. Native viewer policy must survive
+both operations without entering logical checkpoint records or restricting
+another installation.
+
+On an isolated copy of a synthetic fixture, attempt to reopen the restricted
+installation with the predecessor binary. It must refuse before modifying the
+database or creating an edit. Do not use the owner's Library for this test and
+do not treat a source-level version check as installed predecessor proof.
+
+Preserve policy and transport receipts, bounded edit-ledger evidence, native
+refusals, build identities and observation intervals. Missing coverage is
+inconclusive. A passing editable-consumer suite or zero provider admissions
+does not replace these results.
 
 ## Native background admission evidence
 

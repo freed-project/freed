@@ -2,6 +2,58 @@
 
 > **Status:** 🚧 In Progress (the official SQLite WebAssembly engine, exact schema identity, single-worker OPFS runtime, normalized checkpoint import, product mutation entrypoints, bounded product queries, follower transport, recovery UI, selective content, and IndexedDB Library deletion are implemented; physical iPhone acceptance remains open)
 
+Annotation text now has a bounded authenticated local read contract that retains
+canonical digest references separately from display text. Synthetic native
+SQLite/vault and Chromium PWA worker/OPFS restart proofs cover exact bytes and
+nondestructive read failures. Optional source admission now checks inside the
+existing local write transaction after exact retry recognition. Unchanged quote
+digests survive note/tag assembly. Selected-item results now carry separate original
+annotation snapshots through both existing note-editor entrances and local note
+admission. Missing, corrupt, oversized, unavailable and stale reads prevent
+incomplete edits. Unchanged-URL note edits use local metadata without requesting
+a preview; new-save and changed-URL previews retain their 350 ms delay.
+Bounded annotation reads preserve NUL and leading U+FEFF in notes, tags and inline
+quotes, distinguish null from empty notes, and refuse invalid UTF-8 or excess
+bytes. Synthetic signed native SQLite/vault and PWA worker/OPFS restart tests
+preserve edited notes and untouched canonical annotations. These fixtures do
+not establish installed Desktop IPC or pending-view editing acceptance.
+
+Primary new-item annotation initialization uses independent source-fenced batches
+bounded by 256 members and 4 MiB of envelopes. It refuses nonempty canonical
+originals and source races. Atomicity applies to each transaction, not the whole
+import; retry lookup can skip items whose initialization did not finish.
+Generic existing-item annotation replacement requires the caller's original
+snapshot and refuses missing or stale provenance before capture or annotation
+writes. Untouched fields retain their canonical values. Annotation admission and
+capture remain separate transactions: a later capture failure does not undo an
+accepted annotation. New-item initialization excludes initially existing IDs and
+refuses conflicting canonical annotations. Generic store APIs have no production
+annotation-edit UI caller; callers without a snapshot fail closed.
+
+The pending-edit repair refuses fresh replacement while the same item has an
+unresolved local annotation intent. Eligibility remains separate from authenticated
+quote display. READY-only admission preserves exact retries before this guard.
+Device-local physical catalogs 4/5 add bounded upgrade receipts and unresolved
+markers without changing canonical or wire identities. Owner continuations page
+only unresolved markers, yield between transactions, and publish local change
+hints when authenticated settlement permits editing again. Native SQLite and
+SQLite-WASM cursor fixtures plus a shipping Chromium OPFS owner/reopen fixture
+cover retained progress beyond an unresolved prefix. Runtime review and remaining
+lifecycle proofs are outstanding; Windows range-vault and installed acceptance
+remain open.
+Startup migration now retains the existing owner across bounded slices and yields
+until READY. Ordinary path opens cannot advance migration. Explicit fresh setup
+uses the owned upgrader before publication. Native subprocess interruption and
+PWA worker cancellation/reopen fixtures preserve committed progress and the
+original pin. Non-Unix startup is wired before runtime exposure; Linux path-helper
+proof does not establish Windows execution.
+PWA startup also yields safely when its first budget expires before bootstrap
+creates a receipt. Native maintenance uses one annotation-specific thread owner;
+reset and process exit stop and join its bounded current slice. Controlled-callback
+tests cover dirty arrivals, busy deferral, latched refusal and restart. Real binding
+and SQLite proofs remain separate from installed runtime acceptance.
+No new quote editor is included.
+
 Saved URL recovery now distinguishes absent targets from deleted items. The
 owner reviews every URL, edits its title or description, and explicitly confirms
 one complete replacement. Original targets, URLs and remaining archived content
@@ -1500,3 +1552,16 @@ An explicit transfer-acceptance build selects the matching frontend mode for iso
 ### Transfer acceptance preview delivery, October 3, 2026
 
 The explicit PWA transfer-acceptance preview command stages a clean committed source, records its build identity and checks existing preview OAuth configuration before deployment. It reuses the approved Vercel preview callback relay without changing production builds. A configured deployment, successful sign-in and installed browser durability still require actual acceptance evidence.
+
+### Linked URL projection
+
+Compact feed and item-detail cards preserve the stored linked article URL
+independently from the post source URL. Missing links do not fabricate article
+fetch targets. Existing reader, pinning and item-change fetch flows can therefore
+request the stored publisher instead of the social post; response images and
+existing optional summarization remain governed by their existing settings. This
+exact correction was explicitly approved on 2026-10-04; no cadence, credential or
+AI-setting change is introduced. The original selection complaint remains
+unattributed.
+
+Friends activity uses the shared loading indicator while the directory loads and hides the directory heading until results are available.

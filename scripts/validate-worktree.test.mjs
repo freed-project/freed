@@ -367,6 +367,13 @@ test("feature plan runs native clippy and tests for native shell changes", () =>
   assert.ok(labels.includes("desktop social provider e2e"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
+  const custody = plan.find((item) => item.label === "native rust Linux credential acceptance");
+  assert.equal(Boolean(custody), process.platform === "linux");
+  if (custody) {
+    assert.ok(custody.args.includes("linux_platform_vault"));
+    assert.ok(custody.args.includes("--ignored"));
+    assert.ok(custody.args.includes("--exact"));
+  }
   assert.equal(
     isDesktopNativeSurface("packages/desktop/src-tauri/src/lib.rs"),
     true,
@@ -444,6 +451,13 @@ test("parseArgs supports printing the full plan without executing", () => {
   const parsed = parseArgs(["--mode", "feature", "--plan-only"]);
 
   assert.equal(parsed.planOnly, true);
+});
+
+test("feature plan runs dependency tree regressions when the checker or tests change", () => {
+  for (const file of ["scripts/check-installed-tree.mjs", "scripts/check-installed-tree.test.mjs"]) {
+    const labels = describePlan(buildValidationPlan("feature", [file]));
+    assert.deepEqual(labels, ["root typecheck", "installed dependency tree tests"]);
+  }
 });
 
 test("feature plan for validation runner changes runs only runner tests", () => {
@@ -544,6 +558,11 @@ test("mixed feature plans retain repository configuration coverage", () => {
 
 test("feature plan routes tooling smoke workflow and helper changes through focused tests", () => {
   const paths = [
+    ".github/workflows/nightly-fixture-acceptance.yml",
+    "scripts/nightly-fixture-acceptance.mjs",
+    "scripts/test-helpers/nightly-fixture-preload.mjs",
+    "scripts/test-helpers/nightly-fixture-supervisor.py",
+    "scripts/test-helpers/nightly_fixture_darwin.py",
     ".github/workflows/ci.yml",
     ".github/workflows/tooling-nightly.yml",
     "scripts/measure-tooling-smoke.mjs",
@@ -934,6 +953,7 @@ test("feature plan isolates pull request publication from tag publisher host sui
     "scripts/task-decisions.mjs",
     "scripts/task-decisions.test.mjs",
     "scripts/worktree-add.sh",
+    "scripts/worktree-add.test.mjs",
     "scripts/worktree-cleanup.sh",
   ]) {
     assert.equal(isPullRequestPublisherToolingPath(filePath), true, filePath);
@@ -946,6 +966,7 @@ test("feature plan isolates pull request publication from tag publisher host sui
       "--test",
       "scripts/worktree-publish.test.mjs",
       "scripts/task-decisions.test.mjs",
+      "scripts/worktree-add.test.mjs",
     ]);
     assert.equal(
       plan.some((item) => item.label === "release publisher tests"),
@@ -1270,5 +1291,22 @@ test("cloud release workflow and entrypoint run their focused authority tests", 
     const plan=buildValidationPlan("feature", [changed]);
     assert.ok(plan.some(item => item.label === "cloud release request tests"));
     assert.ok(FOCUSED_FEATURE_VALIDATION_PATHS.has(changed));
+  }
+});
+
+
+test("preview process changes run scoped cleanup proof without product suites", () => {
+  for (const file of [
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/lib/preview-processes.py",
+    "scripts/worktree-preview.test.mjs",
+  ]) {
+    const plan = buildValidationPlan("feature", [file]);
+    assert.deepEqual(describePlan(plan), ["root typecheck", "worktree preview process tests"]);
+    assert.deepEqual(plan[1].args, [
+      "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
+    ]);
   }
 });
