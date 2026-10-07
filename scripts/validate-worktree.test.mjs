@@ -1310,3 +1310,14 @@ test("preview process changes run scoped cleanup proof without product suites", 
     ]);
   }
 });
+
+
+test("controller proposal paths run their bounded publication contract", () => {
+  for (const file of [
+    ".github/workflows/controller-repair-proposal.yml",
+    "scripts/publish-controller-repair.mjs",
+    "scripts/publish-controller-repair.test.mjs",
+  ]) {
+    assert.ok(describePlan(buildValidationPlan("feature", [file])).includes("controller repair proposal tests"));
+  }
+});
