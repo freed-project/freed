@@ -18,12 +18,13 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import {
-  AUTOMATION_CONTROL_SCHEMA_VERSION,
-  automationControlPaths,
-  readTaskManifest,
-} from "./automation-control.mjs";
+
+// Pure path classification and validation planning also run on Windows.
+// Load the host-specific control code only for operations that need it;
+// those operations retain the control module's unsupported-host refusal.
+const requireControl = createRequire(import.meta.url);
 
 // Desktop files that drive provider WebViews: capture orchestration, auth,
 // session/cookie state, and the injected extractor scripts.
@@ -665,6 +666,8 @@ export function validateProviderRiskApproval(
     requireControlTask = true,
   } = {},
 ) {
+  const { AUTOMATION_CONTROL_SCHEMA_VERSION } =
+    requireControl("./automation-control.mjs");
   const errors = [];
   if (!record || typeof record !== "object" || Array.isArray(record)) {
     throw new Error("Provider risk approval must be a JSON object.");
@@ -1040,6 +1043,8 @@ export function validateProviderRiskApproval(
 }
 
 function readRecoveredControlState(stateRoot) {
+  const { automationControlPaths, readTaskManifest } =
+    requireControl("./automation-control.mjs");
   const manifest = readTaskManifest({ stateRoot });
   const eventsPath = automationControlPaths(stateRoot).events;
   const events = existsSync(eventsPath)

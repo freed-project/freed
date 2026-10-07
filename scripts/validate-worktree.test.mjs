@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 
 import { FOCUSED_FEATURE_VALIDATION_PATHS } from "./lib/tooling-smoke-plan.mjs";
 import {
@@ -27,6 +28,25 @@ import {
   releaseIdentityValidationArgsForArtifact,
   REPO_ROOT,
 } from "./validate-worktree.mjs";
+
+test("pure planner imports on Windows while unsupported actor approval stays refused", () => {
+  const code = [
+    'import assert from "node:assert/strict";',
+    'Object.defineProperty(process, "platform", { value: "win32" });',
+    "const planner = await import(" + JSON.stringify(new URL("./validate-worktree.mjs", import.meta.url).href) + ");",
+    "const providers = await import(" + JSON.stringify(new URL("./lib/provider-visible-paths.mjs", import.meta.url).href) + ");",
+    'assert.deepEqual(planner.describePlan(planner.buildValidationPlan("feature", ["scripts/check-installed-tree.mjs"])), ["installed dependency tree tests"]);',
+    'assert.deepEqual(providers.providerIdsForPath("packages/desktop/src/lib/fb-capture.ts"), ["facebook"]);',
+    'assert.throws(() => providers.validateProviderRiskApproval({}, []), /Unsupported automation actor host platform: win32/);',
+  ].join("\n");
+  const result = spawnSync(process.execPath, ["--input-type=module", "--eval", code], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    timeout: 10_000,
+  });
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr);
+});
 
 test("parseArgs accepts mode and changed files", () => {
   const parsed = parseArgs([
