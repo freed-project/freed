@@ -187,7 +187,8 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
 ]);
 
 const RETIRED_AUTOMERGE_RUNTIME_GUARD_PATHS = new Set([
-  "packages/desktop/vite.config.js",
+  // vite.config.js was tsc output, now untracked, so it can never appear in a
+  // changed-file set. vite.config.ts carries the trigger.
   "packages/desktop/vite.config.ts",
   "packages/pwa/package.json",
   "packages/pwa/vite.config.ts",
