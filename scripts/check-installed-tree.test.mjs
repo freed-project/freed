@@ -1,94 +1,106 @@
 import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import {
   findInstalledTreeDrift,
   formatFindings,
+  runNpmCi,
 } from "./check-installed-tree.mjs";
 
-test("the real repository tree matches its own lockfile", async () => {
-  const { readFileSync } = await import("node:fs");
-  const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
-  const findings = findInstalledTreeDrift(lock);
-  assert.deepEqual(
-    findings,
-    [],
-    `Installed tree drifted from package-lock.json:\n${formatFindings(findings)}`,
-  );
+function fixture(t, packages = {}) {
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "freed-installed-tree-"));
+  t.after(() => rmSync(rootDir, { recursive: true, force: true }));
+  for (const [entryPath, manifest] of Object.entries(packages)) {
+    const directory = path.join(rootDir, entryPath);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, "package.json"), JSON.stringify(manifest));
+  }
+  return (packages) => findInstalledTreeDrift({ packages }, { rootDir });
+}
+
+test("matching root, nested and workspace dependencies pass", (t) => {
+  const packages = {
+    "node_modules/typescript": { version: "5.9.3" },
+    "node_modules/parent/node_modules/child": { version: "2.0.0" },
+    "packages/desktop/node_modules/@vitejs/plugin-react": { version: "6.1.0" },
+    "website/node_modules/tailwindcss": { version: "4.1.18" },
+  };
+  assert.deepEqual(fixture(t, packages)(packages), []);
 });
 
-test("a version mismatch is reported against the locked version", () => {
-  // typescript is a real installed dependency, so the only thing that differs
-  // from the live tree here is the version this synthetic lock claims.
-  const findings = findInstalledTreeDrift({
-    packages: {
-      "node_modules/typescript": { version: "0.0.0-not-installed" },
-    },
+test("the fast-xml-parser v4 install is rejected against the v5 lock", (t) => {
+  const check = fixture(t, {
+    "node_modules/fast-xml-parser": { version: "4.5.3" },
   });
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].kind, "mismatch");
-  assert.equal(findings[0].expected, "0.0.0-not-installed");
-  assert.notEqual(findings[0].actual, null);
+  const findings = check({
+    "node_modules/fast-xml-parser": { version: "5.10.1" },
+  });
+  assert.deepEqual(findings, [{
+    entryPath: "node_modules/fast-xml-parser",
+    expected: "5.10.1",
+    actual: "4.5.3",
+    kind: "mismatch",
+  }]);
 });
 
-test("an absent package is reported as missing rather than mismatched", () => {
-  const findings = findInstalledTreeDrift({
-    packages: {
-      "node_modules/@freed/package-that-does-not-exist": { version: "1.2.3" },
-    },
+test("workspace-local version drift is reported", (t) => {
+  const check = fixture(t, {
+    "packages/pwa/node_modules/undici": { version: "7.0.0" },
   });
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].kind, "missing");
-  assert.equal(findings[0].actual, null);
+  assert.deepEqual(check({
+    "packages/pwa/node_modules/undici": { version: "8.10.2" },
+  }), [{
+    entryPath: "packages/pwa/node_modules/undici",
+    expected: "8.10.2",
+    actual: "7.0.0",
+    kind: "mismatch",
+  }]);
 });
 
-test("an absent optional dependency is not drift", () => {
-  // The lockfile carries every platform's prebuilt binary. npm installs only
-  // the matching one, so the rest are legitimately absent on any given machine.
-  const findings = findInstalledTreeDrift({
-    packages: {
-      "node_modules/@esbuild/some-other-platform": {
-        version: "0.28.2",
-        optional: true,
-        os: ["aix"],
-        cpu: ["ppc64"],
-      },
-      "node_modules/@freed/optional-in-dev": {
-        version: "1.0.0",
-        devOptional: true,
-      },
-    },
-  });
-  assert.deepEqual(findings, []);
+test("absent root and workspace dependencies are reported as missing", (t) => {
+  const check = fixture(t);
+  const packages = {
+    "node_modules/required": { version: "1.2.3" },
+    "packages/desktop/node_modules/@vitejs/plugin-react": { version: "6.1.0" },
+  };
+  assert.deepEqual(check(packages), Object.entries(packages).map(([entryPath, entry]) => ({
+    entryPath, expected: entry.version, actual: null, kind: "missing",
+  })));
 });
 
-test("an installed optional dependency at the wrong version is still drift", () => {
-  const findings = findInstalledTreeDrift({
-    packages: {
-      "node_modules/typescript": { version: "0.0.0-wrong", optional: true },
+test("absent optional dependencies are not drift, including workspace installs", (t) => {
+  const check = fixture(t);
+  assert.deepEqual(check({
+    "node_modules/@esbuild/some-other-platform": {
+      version: "0.28.2", optional: true, os: ["aix"], cpu: ["ppc64"],
     },
-  });
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].kind, "mismatch");
+    "packages/desktop/node_modules/@esbuild/some-other-platform": {
+      version: "0.28.2", optional: true, os: ["aix"], cpu: ["ppc64"],
+    },
+    "node_modules/@freed/optional-in-dev": { version: "1.0.0", devOptional: true },
+  }), []);
 });
 
-test("workspace links and bundled entries are not install targets", () => {
-  const findings = findInstalledTreeDrift({
-    packages: {
-      // The root project entry carries a version but no install path.
-      "": { version: "26.9.1400" },
-      // Workspace symlinks resolve to the repo, not to an installed copy.
-      "node_modules/@freed/shared": { resolved: "packages/shared", link: true },
-      // Bundled dependencies live inside their parent's tree.
-      "node_modules/nope/node_modules/bundled": {
-        version: "9.9.9",
-        inBundle: true,
-      },
-      // Entries without a version cannot be compared.
-      "node_modules/versionless": { resolved: "https://example.invalid/x.tgz" },
-    },
-  });
-  assert.deepEqual(findings, []);
+test("installed optional dependencies must match their locked versions", (t) => {
+  const entryPath = "packages/desktop/node_modules/@esbuild/test-platform";
+  const check = fixture(t, { [entryPath]: { version: "0.27.0" } });
+  assert.deepEqual(check({ [entryPath]: { version: "0.28.2", optional: true } }), [{
+    entryPath, expected: "0.28.2", actual: "0.27.0", kind: "mismatch",
+  }]);
+});
+
+test("workspace metadata, links, bundled and versionless entries are excluded", (t) => {
+  const check = fixture(t);
+  assert.deepEqual(check({
+    "": { version: "26.9.1400" },
+    "packages/desktop": { version: "26.9.1400" },
+    "node_modules/@freed/shared": { resolved: "packages/shared", link: true },
+    "node_modules/nope/node_modules/bundled": { version: "9.9.9", inBundle: true },
+    "node_modules/versionless": { resolved: "https://example.invalid/x.tgz" },
+  }), []);
 });
 
 test("findings render one readable line per package and summarize the rest", () => {
@@ -97,26 +109,31 @@ test("findings render one readable line per package and summarize the rest", () 
     { entryPath: "node_modules/b", expected: "1.0.0", actual: null, kind: "missing" },
     { entryPath: "node_modules/c", expected: "2.0.0", actual: null, kind: "unreadable" },
   ];
-
   const full = formatFindings(findings);
   assert.match(full, /^ {2}a: installed 4\.0\.0, lockfile pins 5\.0\.0$/m);
   assert.match(full, /^ {2}b: not installed, lockfile pins 1\.0\.0$/m);
   assert.match(full, /^ {2}c: manifest unreadable, lockfile pins 2\.0\.0$/m);
-
   const capped = formatFindings(findings, { limit: 1 });
   assert.equal(capped.split("\n").length, 2);
   assert.match(capped, /and 2 more/);
 });
 
-test("the fast-xml-parser drift that motivated this check is caught", () => {
-  // The exact shape of the real failure: lockfile pins v5, tree holds v4, and
-  // nothing else in the build notices.
-  const findings = findInstalledTreeDrift({
-    packages: {
-      "node_modules/fast-xml-parser": { version: "4.5.3" },
-    },
-  });
-  assert.equal(findings.length, 1);
-  assert.equal(findings[0].kind, "mismatch");
-  assert.match(formatFindings(findings), /fast-xml-parser: installed/);
+test("repair launches npm through a shell only on Windows", () => {
+  for (const platform of ["win32", "linux", "darwin"]) {
+    const calls = [];
+    runNpmCi({ platform, spawn: (...args) => { calls.push(args); return { status: 0 }; } });
+    assert.equal(calls.length, 1);
+    const [command, args, options] = calls[0];
+    assert.equal(command, "npm");
+    assert.deepEqual(args, ["ci"]);
+    assert.equal(options.shell, platform === "win32");
+    assert.equal(options.stdio, "inherit");
+    assert.ok(path.isAbsolute(options.cwd));
+  }
+});
+
+test("repair propagates launch and install failures", () => {
+  const error = new Error("npm unavailable");
+  assert.throws(() => runNpmCi({ spawn: () => ({ error }) }), (actual) => actual === error);
+  assert.throws(() => runNpmCi({ spawn: () => ({ status: 1 }) }), /npm ci exited with status 1/);
 });

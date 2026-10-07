@@ -28,7 +28,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Lock entries that describe a workspace rather than an installed package. */
 function isInstalledPackageEntry(entryPath, entry) {
-  if (!entryPath.startsWith("node_modules/")) return false;
+  // npm can place dependencies inside workspace directories as well as at root.
+  if (!/(^|\/)node_modules\//.test(entryPath)) return false;
   // Workspace symlinks carry a `link` flag and resolve to a local directory.
   if (entry.link === true) return false;
   // Bundled dependencies ship inside their parent and have no own install path.
@@ -50,8 +51,8 @@ function isInstalledPackageEntry(entryPath, entry) {
  * optional entry is not drift. A wrong *version* of one that did install still
  * is, so the version comparison below applies to optional entries too.
  */
-function inspectEntry(entryPath, entry) {
-  const manifestPath = path.join(root, entryPath, "package.json");
+function inspectEntry(entryPath, entry, rootDir) {
+  const manifestPath = path.join(rootDir, entryPath, "package.json");
   if (!existsSync(manifestPath)) {
     if (entry.optional === true || entry.devOptional === true) return null;
     return { entryPath, expected: entry.version, actual: null, kind: "missing" };
@@ -84,15 +85,14 @@ function inspectEntry(entryPath, entry) {
 /**
  * Collect every drift finding between the lockfile and the installed tree.
  *
- * Exported for the test, which supplies a synthetic lock object rather than
- * installing fixtures on disk.
+ * Tests supply a temporary root so checks never depend on the developer install.
  */
-export function findInstalledTreeDrift(lock) {
+export function findInstalledTreeDrift(lock, { rootDir = root } = {}) {
   const entries = Object.entries(lock?.packages ?? {});
   const findings = [];
   for (const [entryPath, entry] of entries) {
     if (!isInstalledPackageEntry(entryPath, entry)) continue;
-    const finding = inspectEntry(entryPath, entry);
+    const finding = inspectEntry(entryPath, entry, rootDir);
     if (finding) findings.push(finding);
   }
   return findings;
@@ -122,9 +122,14 @@ function readLock() {
   return JSON.parse(readFileSync(lockPath, "utf8"));
 }
 
-function runNpmCi() {
+export function runNpmCi({ platform = process.platform, spawn = spawnSync } = {}) {
   console.log("[check-installed-tree] Running npm ci to match the lockfile.");
-  const result = spawnSync("npm", ["ci"], { cwd: root, stdio: "inherit" });
+  // npm is a .cmd shim on Windows, matching run-workspace-fanout.mjs.
+  const result = spawn("npm", ["ci"], {
+    cwd: root,
+    stdio: "inherit",
+    shell: platform === "win32",
+  });
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error(`npm ci exited with status ${String(result.status)}.`);

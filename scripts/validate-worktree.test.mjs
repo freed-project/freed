@@ -446,6 +446,13 @@ test("parseArgs supports printing the full plan without executing", () => {
   assert.equal(parsed.planOnly, true);
 });
 
+test("feature plan runs dependency tree regressions when the checker or tests change", () => {
+  for (const file of ["scripts/check-installed-tree.mjs", "scripts/check-installed-tree.test.mjs"]) {
+    const labels = describePlan(buildValidationPlan("feature", [file]));
+    assert.deepEqual(labels, ["root typecheck", "installed dependency tree tests"]);
+  }
+});
+
 test("feature plan for validation runner changes runs only runner tests", () => {
   const labels = describePlan(
     buildValidationPlan("feature", [

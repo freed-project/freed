@@ -1486,6 +1486,15 @@ export function buildValidationPlan(mode, changedFiles) {
     addCommand(plan, retiredAutomergeRuntimeGuardTestsCommand());
   }
 
+  if (changedFiles.some((file) => [
+    "scripts/check-installed-tree.mjs",
+    "scripts/check-installed-tree.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("installed dependency tree tests", [
+      "--test", path.join("scripts", "check-installed-tree.test.mjs"),
+    ]));
+  }
+
   if (validateRunnerChanged) {
     addCommand(
       plan,
