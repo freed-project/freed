@@ -854,6 +854,46 @@ test("historical immutable backport requires exact latest identity and reachable
   }
 });
 
+test("pinned historical backport admits an applied patch across lane baselines", async (t) => {
+  const reviewed = "8f179b4ef898e1e3025b3a7ae5a4407561459474";
+  const file = ".github/workflows/ci.yml";
+  for (const scenario of ["applied", "missing", "conflicting", "mode drift"]) {
+    await t.test(scenario, (t) => {
+      const cwd = makeTempRepo();
+      t.after(() => rmSync(cwd, { recursive: true, force: true }));
+      const baseline = "lane: main\n\n# independent control\n\nsnapshot: old\n";
+      writeRepoFile(cwd, file, baseline);
+      commitAll(cwd, "chore: shared baseline");
+      git(cwd, ["branch", "-f", "dev", "HEAD"]);
+      writeRepoFile(cwd, file, baseline.replace("snapshot: old", "snapshot: pinned"));
+      commitAll(cwd, "fix: backport immutable snapshot controls (#1746)");
+      const backport = git(cwd, ["rev-parse", "HEAD"]);
+      git(cwd, ["checkout", "dev"]);
+      let contents = baseline.replace("lane: main", "lane: dev");
+      if (scenario !== "missing") contents = contents.replace("snapshot: old",
+        scenario === "conflicting" ? "snapshot: different" : "snapshot: pinned");
+      writeRepoFile(cwd, file, contents);
+      if (scenario === "mode drift") chmodSync(path.join(cwd, file), 0o755);
+      commitAll(cwd, "fix: evolve dev controls independently");
+      const realExec = childProcess.execFileSync;
+      const mock = t.mock.method(childProcess, "execFileSync", (command, args, options) => {
+        if (command !== "git" || options?.cwd !== cwd) return realExec(command, args, options);
+        const result = realExec(command, args.map((arg) => arg.replaceAll(reviewed, backport)), options);
+        return args[0] === "log" && args[1] === "-1" && typeof result === "string"
+          ? result.replace(`${backport}\0`, `${reviewed}\0`) : result;
+      });
+      syncBuiltinESMExports();
+      try {
+        const files = listMainBackflowDiffFiles({ devRef: "dev", mainRef: "main", cwd });
+        assert.equal(files.includes(file), scenario !== "applied");
+      } finally {
+        mock.mock.restore();
+        syncBuiltinESMExports();
+      }
+    });
+  }
+});
+
 test("validate-main-backflow rejects an unapproved backport to an older dev blob", (t) => {
   const cwd = makeTempRepo();
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
@@ -1266,6 +1306,10 @@ test("validate-main-backflow ignores release-only main metadata", (t) => {
   writeCargoLock(cwd, "26.4.2002", { dependencyVersion: "1.5.0" });
   commitAll(cwd, "feat: shared dependency update");
   git(cwd, ["checkout", "main"]);
+  writeCargoLock(cwd, "26.4.1999", { dependencyVersion: "1.5.0" });
+  commitAll(cwd, "chore: promote dev into main for production release");
+  // A later promotion restores the exact dev snapshot with a version-only
+  // delta. Its provenance must survive the subsequent release bump.
   writeCargoLock(cwd, "26.4.2002", { dependencyVersion: "1.5.0" });
   commitAll(cwd, "chore: promote dev into main for production release");
 

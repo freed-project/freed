@@ -470,7 +470,7 @@ export const FeedItem = memo(function FeedItem({
 
             </div>
 
-            <div ref={compactTextAreaRef} className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${photoMedia ? "feed-card-photo-copy" : ""} ${photoLayout ? "justify-end" : "justify-center"}`} style={{ padding: summary ? 0 : compact ? photoSizing.padding / 2 : cardDensity.textInset }}>
+            <div ref={compactTextAreaRef} className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${photoMedia ? "feed-card-photo-copy" : ""} ${photoMedia ? "justify-end" : "justify-center"}`} style={{ padding: summary ? 0 : compact ? photoSizing.padding / 2 : cardDensity.textInset }}>
               {!summary && item.content.linkPreview?.title && (
                 <h3 className={`min-w-0 shrink-0 break-words font-semibold ${photoLayout ? "m-0 truncate leading-[1.6] " + (compact && narrow ? "text-xs" : "text-sm") : cardDensity.title} ${photoMedia ? "text-white drop-shadow" : ""}`}>
                   {item.content.linkPreview.title}

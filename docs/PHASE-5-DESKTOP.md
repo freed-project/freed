@@ -592,6 +592,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
 - **Blank-state testing escape hatch** — Desktop empty states now offer a lightweight sample-data section below the primary blank-state prompt, so fresh installs can seed realistic data without detouring into Settings
 - **Fingerprinted sample-data cleanup** - New sample batches carry an internal marker across feeds, items, people, and accounts, so accidental sample population can be cleared without matching on names, URLs, or content patterns
+- **Development sample opt-out** - `FREED_AUTO_SEED_SAMPLE_DATA=0` disables automatic sample population in native development and feature previews while preserving hot reload, native APIs, existing records, and manual sample controls.
 - **Explicit local-only primary authority** - A provider-free Freed Desktop establishes signed Library authority and a durable local writer admission during startup, so ordinary mutations and sample-data cleanup work without configuring cloud sync. Existing cloud and follower authority remain fail-closed.
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 - **Live sidebar snap preview** — During desktop resize drag, the expanded card still tracks the grab rail directly, while compact and closed thresholds now animate in place so the sidebar snaps to the icon rail or slides offscreen before mouseup
@@ -976,7 +977,7 @@ export async function captureDomFeed(
 - [x] System tray shows sync status
 - [x] App runs in background after window close
 - [x] Auto-updater checks GitHub Releases on launch and in the background, then installs updates in-app
-- [x] Desktop Settings > Updates embeds a compact scrolling preview of the latest five changelog cards with a full changelog link
+- [x] Desktop Settings > Updates shows the latest ten individual release builds with their complete notes in a scrolling list and a full changelog link; same-day builds remain separate
 - [x] Desktop Settings includes an in-app Newsletter section that completes protected signup without opening the marketing site or exposing the Brevo credential
 - [x] CI/CD release pipeline builds for macOS (ARM + Intel), Windows, Linux on tag push
 - [x] Native Library Core changes compile on Windows during pull request and dev integration validation, before release packaging
@@ -1857,3 +1858,22 @@ thresholds are provisional. A six-example labeled evaluation compares raw accura
 Brier score, decision coverage, accepted accuracy and latency. It is a smoke corpus,
 not a representative benchmark. Library scores remain session-local and do not
 change feed filters. See [setup and evaluation](JEV-CLASSIFICATION-PREVIEW.md#local-kev).
+
+### Linux Library credential custody
+
+Freed Desktop uses an existing unlocked Secret Service default collection on
+Linux for its per-Library actor, authority, and pending handoff keys. The adapter
+uses an encrypted D-Bus session and never requests an unlock prompt or creates a
+collection. Missing services, locked collections, ambiguous entries, and corrupt envelopes
+fail closed. There is no fallback to a session-only key store. Linux users must provision and unlock
+a persistent desktop vault before opening a Library.
+
+The `linux_platform_vault` native acceptance test starts a private D-Bus
+session and GNOME Keyring with synthetic data. It checks key separation,
+persistence after process and daemon restart, locked and unavailable vault
+refusal, corruption, and duplicate entries. Run it from `packages/desktop/src-tauri`
+with `cargo test --test linux_platform_vault isolated_linux_vault -- --ignored --exact`.
+Linux native feature and integration gates run it explicitly. It requires
+`dbus-daemon`, `dbus-send`, and `gnome-keyring-daemon` on `PATH`; it does
+not use the login session's vault. This credential test does not establish
+installed multi-Desktop/PWA convergence or authorize a Library activation.

@@ -797,7 +797,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
   const fullChangelogUrl = getSettingsChangelogUrl(selectedReleaseChannel);
   const visibleChangelogPreview = (changelogPreview ?? [])
     .filter((release) => selectedReleaseChannel === "dev" || release.channel === "production")
-    .slice(0, 5);
+    .slice(0, 10);
 
   const runUpdateCheck = useCallback(async () => {
     if (!checkForUpdates) return;

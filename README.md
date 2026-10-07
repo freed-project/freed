@@ -244,6 +244,14 @@ npm run typecheck  # Type-check all packages
 
 Freed is open source. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+For Freed Desktop development without automatic sample data, set
+`FREED_AUTO_SEED_SAMPLE_DATA=0` in `packages/desktop/.env.local` and restart the
+dev server, or run `FREED_AUTO_SEED_SAMPLE_DATA=0 npm run tauri:dev` from
+`packages/desktop`. Hot reload and native APIs stay enabled. The flag also
+disables automatic seeding in Desktop feature previews. Clear existing samples
+through Settings; manual sample population still works. See the
+[Desktop development guide](packages/desktop/README.md#development).
+
 Areas where we need help:
 
 - Desktop app UI
