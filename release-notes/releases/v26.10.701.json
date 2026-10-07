@@ -3,8 +3,12 @@
   "version": "26.10.701",
   "channel": "production",
   "dayKey": "26.10.7",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against selected dev source 809b0670b8d62b68a44258b9beb493b7542d5fb4 and its production promotion. Library activation approval remains a separate exact-proposal decision.",
+    "Generated PR-number provenance omits squash commits whose subjects lack PR suffixes, including Linux support PR2163 and migration-test repair PR2168. Preserve their verified links in tracked website closeout; this limitation is not a claim that they are absent from the selected source.",
+    "dev700 installed Linux evidence retains its own release identity; production installed verification remains pending."
+  ],
   "generatedAt": "2026-10-07T22:54:07.236Z",
   "model": "heuristic",
   "source": {
@@ -190,29 +194,27 @@
     ]
   },
   "release": {
-    "deck": "Freed Desktop can join an existing Library as a consumer device, joined devices report synchronization progress, and capture, login, and scraping platform work",
+    "deck": "Linux Library keys and more reliable joined-device sync",
     "features": [
-      "Freed Desktop can join an existing Library as a consumer device",
-      "Desktop and PWA devices can catch up through incremental operations",
-      "Joined devices report synchronization progress"
+      "Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts.",
+      "Freed Desktop can join an existing Library as a consumer device.",
+      "Desktop and PWA devices catch up through incremental operations and report synchronization progress."
     ],
     "fixes": [
-      "Reader, feed, and header polish",
-      "Desktop retains sync ownership until canceled work has settled",
-      "Drive credentials refresh during long PWA transfers, and sync status reports active stages and the last successful completion",
-      "Capture and scraper reliability fixes",
-      "Show Library backup preparation before downloading an update",
-      "Isolate parallel Jev budget test ledgers",
-      "Avoid counting every checkpoint record during routine Library sync checks",
-      "Show elapsed backup time in the update notification and Settings",
-      "Update security dependencies and reduce Darwin filesystem admission overhead"
+      "Locked or unavailable Linux vaults return an error instead of replacing Library keys.",
+      "Desktop retains sync ownership until canceled work has settled.",
+      "Drive credentials refresh during long PWA transfers; sync status reports active stages and the last successful completion.",
+      "Routine Library sync checks avoid counting every checkpoint record.",
+      "Annotation upgrades resume in bounded pages without losing the saved migration position.",
+      "Update notifications and Settings show Library backup preparation and elapsed time.",
+      "Desktop Settings shows the ten newest individual releases with complete notes.",
+      "Descriptions in sidebar tiles without media are centered."
     ],
     "followUps": [
-      "Sync, cloud, and pairing infrastructure",
-      "Release workflow and build-system work",
-      "Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled",
-      "Reader, sidebar, and settings UX work"
+      "Primary transfer and recovery remain disabled in ordinary builds. Synthetic acceptance uses the separate transfer-acceptance app and a matching-source PWA.",
+      "This release does not include the later strict Desktop viewer work or authorize a real Primary handoff.",
+      "Upgraded local Library catalogs require a compatible successor build; recovery preserves local state and proceeds forward rather than downgrading the database."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.701\n\nFreed Desktop can join an existing Library as a consumer device, joined devices report synchronization progress, and capture, login, and scraping platform work\n\n### Features\n\n- Freed Desktop can join an existing Library as a consumer device\n- Desktop and PWA devices can catch up through incremental operations\n- Joined devices report synchronization progress\n\n### Fixes\n\n- Reader, feed, and header polish\n- Desktop retains sync ownership until canceled work has settled\n- Drive credentials refresh during long PWA transfers, and sync status reports active stages and the last successful completion\n- Capture and scraper reliability fixes\n- Show Library backup preparation before downloading an update\n- Isolate parallel Jev budget test ledgers\n- Avoid counting every checkpoint record during routine Library sync checks\n- Show elapsed backup time in the update notification and Settings\n- Update security dependencies and reduce Darwin filesystem admission overhead\n\n### Follow-ups\n\n- Sync, cloud, and pairing infrastructure\n- Release workflow and build-system work\n- Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled\n- Reader, sidebar, and settings UX work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.701\n\nLinux Library keys and more reliable joined-device sync\n\n### Features\n\n- Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts\n- Freed Desktop can join an existing Library as a consumer device\n- Desktop and PWA devices catch up through incremental operations and report synchronization progress\n\n### Fixes\n\n- Locked or unavailable Linux vaults return an error instead of replacing Library keys\n- Desktop retains sync ownership until canceled work has settled\n- Drive credentials refresh during long PWA transfers; sync status reports active stages and the last successful completion\n- Routine Library sync checks avoid counting every checkpoint record\n- Annotation upgrades resume in bounded pages without losing the saved migration position\n- Update notifications and Settings show Library backup preparation and elapsed time\n- Desktop Settings shows the ten newest individual releases with complete notes\n- Descriptions in sidebar tiles without media are centered\n\n### Follow-ups\n\n- Primary transfer and recovery remain disabled in ordinary builds. Synthetic acceptance uses the separate transfer-acceptance app and a matching-source PWA\n- This release does not include the later strict Desktop viewer work or authorize a real Primary handoff\n- Upgraded local Library catalogs require a compatible successor build; recovery preserves local state and proceeds forward rather than downgrading the database\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
