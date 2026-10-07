@@ -67,6 +67,7 @@ function assertContract(contract) {
   const expectedKeys = [
     "agentQueryProfile",
     "agentQueryProtocol",
+    "annotationStorageSchemaVersions",
     "applicationId",
     "capabilityProfiles",
     "checkpointDatasetSchemaId",
@@ -91,7 +92,10 @@ function assertContract(contract) {
     "nativeCommandErrorCodes",
     "nativeCommandProtocolVersion",
     "nativeCommands",
+    "nativeStorageSchemaVersion",
     "operationReplication",
+    "pendingPreferenceQueryPrograms",
+    "pendingPreferenceStorageSchemaVersion",
     "preferenceWritePolicies",
     "protocolVersion",
     "queries",
@@ -157,6 +161,9 @@ function assertContract(contract) {
     contract.applicationId !== 1_179_796_804 ||
     contract.contractVersion !== 1 ||
     contract.schemaVersion !== 1 ||
+    contract.nativeStorageSchemaVersion !== 2 ||
+    JSON.stringify(contract.annotationStorageSchemaVersions) !== "[4,5]" ||
+    contract.pendingPreferenceStorageSchemaVersion !== 3 ||
     contract.protocolVersion !== 2 ||
     contract.nativeCommandProtocolVersion !== 1 ||
     contract.localActorProtocolVersion !== 2 ||
@@ -436,13 +443,17 @@ function assertContract(contract) {
       throw new TypeError("SQLite mutation program registry is invalid");
     }
   }
+  if (Object.keys(contract.pendingPreferenceQueryPrograms).sort().join(",") !==
+      "array_nodes_v1,canonical_object_extras_v1,latest_node_v1,pending_object_extras_v1,replacement_barrier_v1,selection_ancestors_v1,source_v1" ||
+      Object.values(contract.pendingPreferenceQueryPrograms).some(sql => typeof sql !== "string" || !sql.startsWith("SELECT "))) {
+    throw new TypeError("SQLite pending preference query registry is invalid");
+  }
   if (
     Object.keys(contract.localReconciliationPrograms).join(",") !==
-      "content_checkpoint_reconcile_v1" ||
-    typeof contract.localReconciliationPrograms
-      .content_checkpoint_reconcile_v1 !== "string" ||
-    contract.localReconciliationPrograms.content_checkpoint_reconcile_v1
-      .length === 0
+      "content_checkpoint_reconcile_v1,pending_preferences_added_v1,pending_preferences_removed_v1" ||
+    Object.values(contract.localReconciliationPrograms).some(
+      (sql) => typeof sql !== "string" || sql.length === 0,
+    )
   ) {
     throw new TypeError("SQLite local reconciliation registry is invalid");
   }
@@ -548,7 +559,7 @@ function assertContract(contract) {
         typeof field.name !== "string" ||
         !/^[a-z][A-Za-z0-9]*$/.test(field.name) ||
         field.name <= previousField ||
-        !["boolean", "integer", "text"].includes(field.kind) ||
+        !["boolean", "integer", "real", "text"].includes(field.kind) ||
         typeof field.nullable !== "boolean" ||
         !Array.isArray(field.enumValues) ||
         field.enumValues.some((value) => typeof value !== "string") ||
@@ -799,7 +810,15 @@ function checkpointImportPrograms(contract) {
   );
 }
 
-function typescriptSource(contract, schemaSql, schemaDigest) {
+function localSchemaCatalog(sqlText) {
+  return sqlText.split(";").map(s => s.trim()).filter(Boolean).map(sql => {
+    const match = /^CREATE (TABLE|INDEX) (library_[a-z0-9_]+)\s/.exec(sql);
+    if (!match) throw new Error("Local schema declaration is unsupported");
+    return { type: match[1].toLowerCase(), name: match[2], sql };
+  });
+}
+
+function typescriptSource(contract, schemaSql, schemaDigest, localSql, localDigest, preferenceSql, preferenceDigest, annotationSql, annotationDigests, annotationCoverageSql) {
   const entries = JSON.stringify(contract.checkpointRecords, null, 2)
     .replaceAll('"registryKey"', "registryKey")
     .replaceAll('"primaryKey"', "primaryKey")
@@ -858,6 +877,20 @@ export const LIBRARY_CORE_CONTENT_RANGE_MAXIMUM_APPEND_BYTES = ${contract.limits
 export const LIBRARY_CORE_FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS = ${contract.limits.followerIntentPageRecords} as const;
 export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_MEMBERS = ${contract.limits.operationTransactionMembers} as const;
 export const LIBRARY_CORE_OPERATION_TRANSACTION_MAXIMUM_BYTES = ${contract.limits.operationTransactionBytes} as const;
+export const LIBRARY_CORE_LOCAL_STORAGE_SCHEMA_VERSION = ${contract.nativeStorageSchemaVersion} as const;
+export const LIBRARY_CORE_LOCAL_SCHEMA_SHA256 = ${JSON.stringify(localDigest)} as const;
+export const LIBRARY_CORE_LOCAL_SCHEMA_SQL = ${JSON.stringify(localSql)} as const;
+export const LIBRARY_CORE_LOCAL_SCHEMA_CATALOG = ${JSON.stringify(localSchemaCatalog(localSql), null, 2)} as const;
+/** Dormant pending-preference extension. Definition does not activate migration. */
+export const LIBRARY_CORE_PENDING_PREFERENCE_STORAGE_SCHEMA_VERSION = ${contract.pendingPreferenceStorageSchemaVersion} as const;
+export const LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SHA256 = ${JSON.stringify(preferenceDigest)} as const;
+export const LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_SQL = ${JSON.stringify(preferenceSql)} as const;
+export const LIBRARY_CORE_PENDING_PREFERENCE_SCHEMA_CATALOG = ${JSON.stringify(localSchemaCatalog(preferenceSql), null, 2)} as const;
+export const LIBRARY_CORE_ANNOTATION_STORAGE_SCHEMA_VERSIONS = ${JSON.stringify(contract.annotationStorageSchemaVersions)} as const;
+export const LIBRARY_CORE_ANNOTATION_SCHEMA_SHA256 = ${JSON.stringify(annotationDigests)} as const;
+export const LIBRARY_CORE_ANNOTATION_COVERAGE_SQL = ${JSON.stringify(annotationCoverageSql)} as const;
+export const LIBRARY_CORE_ANNOTATION_SCHEMA_SQL = ${JSON.stringify(annotationSql)} as const;
+export const LIBRARY_CORE_ANNOTATION_SCHEMA_CATALOG = ${JSON.stringify(localSchemaCatalog(annotationSql), null, 2)} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256 = ${JSON.stringify(schemaDigest)} as const;
 export const LIBRARY_CORE_NORMALIZED_SCHEMA_SQL = ${JSON.stringify(schemaSql)} as const;
 export const LIBRARY_CORE_PREFERENCE_WRITE_POLICIES = ${JSON.stringify(contract.preferenceWritePolicies, null, 2)} as const;
@@ -910,6 +943,8 @@ export const LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS = ${JSON.stringify(contract.m
 export type LibraryCoreSqliteMutationProgramId = keyof typeof LIBRARY_CORE_SQLITE_MUTATION_PROGRAMS;
 
 export const LIBRARY_CORE_SQLITE_LOCAL_MUTATION_PROGRAMS = ${JSON.stringify(contract.localMutationPrograms, null, 2)} as const;
+export const LIBRARY_CORE_PENDING_PREFERENCE_QUERY_PROGRAMS = ${JSON.stringify(contract.pendingPreferenceQueryPrograms, null, 2)} as const;
+
 export const LIBRARY_CORE_SQLITE_LOCAL_RECONCILIATION_PROGRAMS = ${JSON.stringify(contract.localReconciliationPrograms, null, 2)} as const;
 export const LIBRARY_CORE_SQLITE_CONTENT_WORK_PROGRAMS = ${JSON.stringify(contract.contentWorkPrograms, null, 2)} as const;
 
@@ -937,7 +972,9 @@ type LibraryCoreSqliteQueryRowFieldValue<
     ? Field["integerValues"] extends readonly []
       ? number
       : Field["integerValues"][number]
-    : Field["enumValues"] extends readonly []
+    : Field["kind"] extends "real"
+      ? number
+      : Field["enumValues"] extends readonly []
       ? string
       : Field["enumValues"][number];
 type LibraryCoreSqliteQueryRowValue<
@@ -984,6 +1021,9 @@ function libraryCoreGeneratedQueryRowValue(
       return input === 1;
     }
     return undefined;
+  }
+  if (field.kind === "real") {
+    return typeof input === "number" && Number.isFinite(input) ? input : undefined;
   }
   if (field.kind === "integer") {
     return Number.isSafeInteger(input) &&
@@ -1081,7 +1121,7 @@ function rustVariant(value) {
     .join("");
 }
 
-function rustSource(contract, schemaDigest) {
+function rustSource(contract, schemaDigest, nativeSchemaDigest, preferenceSchemaDigest, annotationDigests) {
   const rustString = (value) =>
     JSON.stringify(value).replaceAll("\\u0000", "\\0");
   const recordVariants = contract.checkpointRecords
@@ -1172,6 +1212,8 @@ ${rows}
         `    (${JSON.stringify(mutationId)}, ${program.maximumRows}, ${JSON.stringify(program.entityType)}, ${JSON.stringify(program.targetExistsSql)}, ${JSON.stringify(program.sql)}),`,
     )
     .join("\n");
+  const pendingPreferenceQueryPrograms = Object.entries(contract.pendingPreferenceQueryPrograms)
+    .map(([id,sql]) => `    (${JSON.stringify(id)}, ${JSON.stringify(sql)}),`).join("\n");
   const localReconciliationPrograms = Object.entries(
     contract.localReconciliationPrograms,
   )
@@ -1238,6 +1280,23 @@ pub const CONTENT_RANGE_MAXIMUM_APPEND_BYTES: usize = ${contract.limits.contentR
 pub const FOLLOWER_INTENT_PAGE_MAXIMUM_RECORDS: usize = ${contract.limits.followerIntentPageRecords};
 pub const OPERATION_TRANSACTION_MAXIMUM_MEMBERS: usize = ${contract.limits.operationTransactionMembers};
 pub const OPERATION_TRANSACTION_MAXIMUM_BYTES: usize = ${contract.limits.operationTransactionBytes};
+pub const NATIVE_STORAGE_SCHEMA_VERSION: u32 = ${contract.nativeStorageSchemaVersion};
+pub const NORMALIZED_NATIVE_SCHEMA_SHA256: &str =
+    ${JSON.stringify(nativeSchemaDigest)};
+pub const NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL: &str =
+    include_str!("normalized_native_schema_v2.sql");
+/// Dormant definitions; no open or migration route activates this extension yet.
+pub const PENDING_PREFERENCE_STORAGE_SCHEMA_VERSION: u32 = ${contract.pendingPreferenceStorageSchemaVersion};
+pub const PENDING_PREFERENCE_SCHEMA_SHA256: &str =
+    ${JSON.stringify(preferenceSchemaDigest)};
+pub const PENDING_PREFERENCE_SCHEMA_EXTENSION_SQL: &str =
+    include_str!("normalized_local_preferences_schema_v3.sql");
+pub const ANNOTATION_STORAGE_SCHEMA_VERSION: u32 = 4;
+pub const ANNOTATION_RECOVERY_STORAGE_SCHEMA_VERSION: u32 = 5;
+pub const ANNOTATION_SCHEMA_SHA256: &str = ${JSON.stringify(annotationDigests[0])};
+pub const ANNOTATION_RECOVERY_SCHEMA_SHA256: &str = ${JSON.stringify(annotationDigests[1])};
+pub const ANNOTATION_COVERAGE_SQL: &str = include_str!("normalized_local_annotation_coverage.sql");
+pub const ANNOTATION_SCHEMA_EXTENSION_SQL: &str = include_str!("normalized_local_annotations_schema_v4.sql");
 pub const NORMALIZED_SCHEMA_SHA256: &str =
     ${JSON.stringify(schemaDigest)};
 pub const NORMALIZED_SCHEMA_SQL: &str =
@@ -1348,6 +1407,10 @@ pub const SQLITE_LOCAL_MUTATION_PROGRAMS: &[(&str, usize, &str, &str, &str)] = &
 ${localMutationPrograms}
 ];
 
+pub const PENDING_PREFERENCE_QUERY_PROGRAMS: &[(&str, &str)] = &[
+${pendingPreferenceQueryPrograms}
+];
+
 pub const SQLITE_LOCAL_RECONCILIATION_PROGRAMS: &[(&str, &str)] = &[
 ${localReconciliationPrograms}
 ];
@@ -1389,6 +1452,7 @@ ${queryPrograms}
 pub enum SqliteQueryRowFieldKind {
     Boolean,
     Integer,
+    Real,
     Text,
 }
 
@@ -1483,10 +1547,26 @@ async function update(path, contents) {
 const contract = JSON.parse(await readFile(sourcePath, "utf8"));
 const schemaSql = await readFile(schemaPath, "utf8");
 const schemaDigest = createHash("sha256").update(schemaSql).digest("hex");
+const nativeSchemaExtension = await readFile(resolve(root,
+  "packages/library-core-native/src/normalized_native_schema_v2.sql"), "utf8");
+const nativeSchemaDigest = createHash("sha256")
+  .update(schemaSql).update(nativeSchemaExtension).digest("hex");
+const preferenceSchemaExtension = await readFile(resolve(root,
+  "packages/library-core-native/src/normalized_local_preferences_schema_v3.sql"), "utf8");
+const preferenceSchemaDigest = createHash("sha256")
+  .update(schemaSql).update(nativeSchemaExtension).update(preferenceSchemaExtension).digest("hex");
+const annotationSql = await readFile(resolve(root,
+  "packages/library-core-native/src/normalized_local_annotations_schema_v4.sql"), "utf8");
+const annotationCoverageSql = await readFile(resolve(root,
+  "packages/library-core-native/src/normalized_local_annotation_coverage.sql"), "utf8");
+const annotationDigests = [
+  createHash("sha256").update(schemaSql).update(annotationSql).digest("hex"),
+  createHash("sha256").update(schemaSql).update(nativeSchemaExtension).update(annotationSql).digest("hex"),
+];
 assertContract(contract);
 await update(
   typescriptPath,
-  typescriptSource(contract, schemaSql, schemaDigest),
+  typescriptSource(contract, schemaSql, schemaDigest, nativeSchemaExtension, nativeSchemaDigest, preferenceSchemaExtension, preferenceSchemaDigest, annotationSql, annotationDigests, annotationCoverageSql),
 );
-await update(rustPath, rustSource(contract, schemaDigest));
+await update(rustPath, rustSource(contract, schemaDigest, nativeSchemaDigest, preferenceSchemaDigest, annotationDigests));
 await update(libraryServicePath, libraryServiceSource(contract, schemaDigest));

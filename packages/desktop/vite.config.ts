@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import pkg from "./package.json" with { type: "json" };
 import { getBuildMetadata } from "../../scripts/lib/build-metadata.mjs";
 import { assertNoRetiredAutomergeRollupBundle } from "../../scripts/lib/retired-automerge-runtime.mjs";
+import { jevPreviewPlugin } from "./dev/jev-preview-server.mjs";
 
 // Resolve workspace packages directly from their TypeScript source so that
 // worktrees don't need to build dist/ artifacts before running the dev server.
@@ -67,13 +68,14 @@ const rejectRetiredDesktopLibraryAssets = {
 
 const buildMetadata = getBuildMetadata(pkg.version);
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // Development and production-React test servers must not replace each
   // other's optimized dependency graph when the complete suite runs both.
   cacheDir: process.env.FREED_E2E_PERF === "1"
     ? rootFile("node_modules/.vite-feed-perf")
     : undefined,
   define: {
+    __LIBRARY_TRANSFER_ACCEPTANCE__: mode === "library-transfer-acceptance" || mode === "test",
     __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
     __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
     __BUILD_CHANNEL__: JSON.stringify(buildMetadata.channel),
@@ -106,6 +108,7 @@ export default defineConfig({
     ],
   },
   plugins: [
+    jevPreviewPlugin(),
     ...(process.env.VITE_TEST_TAURI
       ? [{
           name: "desktop-mock-bootstrap",
@@ -186,4 +189,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

@@ -42,6 +42,11 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     ".github/dependabot.yml",
     ".github/workflows/main-release-validation.yml",
     ".github/workflows/release.yml",
+    ".github/workflows/cloud-release-request.yml",
+    ".github/workflows/cloud-release-inbox.yml", ".github/workflows/cloud-release-policy-probe.yml",
+    "scripts/cloud-release-request.mjs",
+    "scripts/cloud-release-request.test.mjs", "scripts/cloud-release-policy.mjs", "scripts/cloud-release-policy.test.mjs", ".github/workflows/cloud-release-policy-response.yml",
+
     ".agents/skills/freed-library-core/SKILL.md",
     ".agents/skills/freed-ship-build/SKILL.md",
     "docs/LIBRARY-CORE-CONTRACT.md",
@@ -73,6 +78,10 @@ export const FOCUSED_FEATURE_VALIDATION_PATHS = Object.freeze(
     "scripts/lib/retired-automerge-runtime.d.mts",
     "scripts/lib/retired-automerge-runtime.mjs",
     "scripts/lib/tooling-smoke-plan.mjs",
+    "scripts/lib/webkit-test-custody.mjs",
+    "scripts/lib/webkit-test-custody.d.mts",
+    "scripts/lib/webkit-test-custody-adapter.m",
+    "scripts/webkit-test-custody.test.mjs",
     "scripts/post-perf-comment.mjs",
     "scripts/post-perf-comment.test.mjs",
     "scripts/prepare-release-notes.mjs",
@@ -411,6 +420,25 @@ export function selectNativeAcceptance(
       [...literals].some((literal) => literalMatches(literal, file)),
   );
   return Object.freeze({ required: reached.length > 0, files: reached });
+}
+
+// Preview cleanup has real Darwin signaling contracts, independent of the
+// observe-only actor lane and its Windows compile selection.
+export function selectPreviewNativeAcceptance(changedFiles) {
+  const files = [...new Set(changedFiles.map(toPosix))].filter(Boolean);
+  const inputs = new Set([
+    "scripts/lib/preview-processes.py",
+    "scripts/lib/worktree-runtime.sh",
+    "scripts/worktree-processes.sh",
+    "scripts/worktree-preview.sh",
+    "scripts/worktree-preview.test.mjs",
+    "scripts/task-decisions.test.mjs",
+    "scripts/plan-tooling-smoke.mjs",
+    "scripts/lib/tooling-smoke-plan.mjs",
+  ]);
+  return files.length === 0 || files.some((file) =>
+    GLOBAL_INVALIDATION_PATHS.has(file) || inputs.has(file),
+  );
 }
 
 export const DURATIONS_FILE = "scripts/tooling-smoke-durations.json";

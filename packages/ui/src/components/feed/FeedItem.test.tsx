@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { FeedItem as FeedItemType } from "@freed/shared";
+import { projectLibraryCoreFeedCardV1, libraryCoreFeedCardToItemV1 } from "@freed/shared/library-core";
 import { PlatformProvider, type PlatformConfig } from "../../context/PlatformContext.js";
 import { useDebugStore, type RuntimeMemorySnapshot } from "../../lib/debug-store.js";
 import { FeedItem } from "./FeedItem";
@@ -259,6 +260,62 @@ describe("FeedItem card text previews", () => {
 });
 
 describe("FeedItem story media", () => {
+  it("does not request untyped ordinary media as a lazy image thumbnail", () => {
+    const html = renderToStaticMarkup(
+      <PlatformProvider value={{ ...platformConfig, feedMediaPreviews: "lazy-thumbnails" }}>
+        <FeedItem item={makeItem({ contentType: "post", content: { mediaTypes: [] } })} compact />
+      </PlatformProvider>,
+    );
+    expect(html).not.toContain('src="https://example.com/story.jpg"');
+  });
+
+  it.each(["facebook", "x", "instagram"] as const)("renders mapped %s images as lazy thumbnails without video metadata", (platform) => {
+    const item = libraryCoreFeedCardToItemV1(projectLibraryCoreFeedCardV1(makeItem({
+      globalId: `${platform}:thumbnail-fixture`, platform, contentType: "post",
+    })));
+    const render = (mediaType: "image" | "video" | "link") => renderToStaticMarkup(
+      <PlatformProvider value={{ ...platformConfig, feedMediaPreviews: "lazy-thumbnails" }}>
+        <FeedItem item={{ ...item, content: { ...item.content, mediaTypes: [mediaType] } }} compact />
+      </PlatformProvider>,
+    );
+    expect(render("image")).toContain('loading="lazy"');
+    expect(render("image")).toContain('decoding="async"');
+    expect(render("image")).toContain('src="https://example.com/story.jpg"');
+    expect(render("video")).not.toContain('src="https://example.com/story.jpg"');
+    expect(render("video")).not.toContain("<video");
+    expect(render("link")).not.toContain('src="https://example.com/story.jpg"');
+  });
+
+  it("sheds lazy thumbnails under pressure and retains reader selection after image failure", async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const onClick = vi.fn();
+    const item = makeItem({ contentType: "post" });
+    const render = () => root.render(
+      <PlatformProvider value={{ ...platformConfig, feedMediaPreviews: "lazy-thumbnails" }}>
+        <FeedItem item={item} compact onClick={onClick} />
+      </PlatformProvider>,
+    );
+    try {
+      setMemoryPressure("high");
+      await act(async () => { render(); });
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      await act(async () => { setMemoryPressure("normal"); });
+      const image = container.querySelector("img[src='https://example.com/story.jpg']");
+      expect(image).toBeInstanceOf(HTMLImageElement);
+      await act(async () => { image?.dispatchEvent(new Event("error", { bubbles: true })); });
+      expect(container.querySelector("img[src='https://example.com/story.jpg']")).toBeNull();
+      await act(async () => { container.querySelector('[role="button"]')?.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+      expect(onClick).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => { root.unmount(); });
+      container.remove();
+      (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
+    }
+  });
+
   it("limits sample thumbnail overrides to samples and explicit preview mode", () => {
     const sample = makeItem({
       contentType: "post",

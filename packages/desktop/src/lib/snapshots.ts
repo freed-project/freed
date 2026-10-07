@@ -13,6 +13,7 @@ import {
 } from "./sqlite-library";
 import { isBackgroundRuntimeDeferredError, runBackgroundJob } from "./background-runtime-coordinator.js";
 import { log } from "./logger.js";
+import { isDesktopHandoffPaused, runFactoryResetSensitiveDesktopOperation } from "./factory-reset-guard";
 
 export type SnapshotReason = "auto" | "manual";
 
@@ -33,6 +34,7 @@ let snapshotTimer: ReturnType<typeof setTimeout> | null = null;
 let snapshotUnsubscribe: (() => void) | null = null;
 let lastSnapshotAt = 0;
 let snapshotManagerStarted = false;
+let snapshotManagerGeneration = 0;
 let snapshotResetInProgress = false;
 const activeSnapshotOperations = new Set<Promise<unknown>>();
 const snapshotListeners = new Set<() => void>();
@@ -46,7 +48,7 @@ function trackSnapshotOperation<T>(operation: () => Promise<T>): Promise<T> {
     return Promise.reject(new Error("Snapshots are being reset"));
   }
   let tracked: Promise<T>;
-  tracked = Promise.resolve().then(operation).finally(() => activeSnapshotOperations.delete(tracked));
+  tracked = runFactoryResetSensitiveDesktopOperation(operation).finally(() => activeSnapshotOperations.delete(tracked));
   activeSnapshotOperations.add(tracked);
   return tracked;
 }
@@ -166,16 +168,21 @@ export function subscribeToSnapshots(listener: () => void): () => void {
 }
 
 export async function startSnapshotManager(): Promise<void> {
-  if (!isTauri() || snapshotManagerStarted || !isSqliteLibraryActive()) return;
+  if (!isTauri() || snapshotManagerStarted || !isSqliteLibraryActive() || isDesktopHandoffPaused()) return;
+  const generation = ++snapshotManagerGeneration;
+  const cancelled = () => generation !== snapshotManagerGeneration || isDesktopHandoffPaused();
   const existing = await listSnapshots();
+  if (cancelled()) return;
   lastSnapshotAt = existing[0]?.createdAt ?? 0;
   if (existing.length === 0) await createSnapshot("auto");
+  if (cancelled()) return;
   snapshotUnsubscribe = subscribeDesktopLibraryRuntime(scheduleAutoSnapshot);
   snapshotManagerStarted = true;
   scheduleAutoSnapshot();
 }
 
 export function stopSnapshotManager(): void {
+  snapshotManagerGeneration += 1;
   if (snapshotTimer) {
     clearTimeout(snapshotTimer);
     snapshotTimer = null;

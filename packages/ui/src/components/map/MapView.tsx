@@ -144,6 +144,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const { geographicMapMode = "online" } = usePlatform();
   const searchCorpusVersion = useAppStore((state) => state.searchCorpusVersion);
   const selectedPersonId = useAppStore((state) => state.selectedPersonId);
+  const selectedAccountId = useAppStore((state) => state.selectedAccountId);
   const setSelectedPerson = useAppStore((state) => state.setSelectedPerson);
   const setSelectedAccount = useAppStore((state) => state.setSelectedAccount);
   const setSelectedItem = useAppStore((state) => state.setSelectedItem);
@@ -156,7 +157,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
   const [rangeSelection, setRangeSelection] = useState<LocationTimeRange | null>(null);
 
   const locationCandidates = useLibraryMapCandidates(searchCorpusVersion);
-  const { resolvedItems } = useResolvedLocationCandidates(locationCandidates, {
+  const { resolvedItems, resolvingCount } = useResolvedLocationCandidates(locationCandidates, {
     resolveNamedLocations: geographicMapMode !== "local-showcase",
   });
   const rawTimeBounds = useMemo(() => getLocationTimelineBounds(resolvedItems), [resolvedItems]);
@@ -259,8 +260,10 @@ export function MapView({ viewportInsets }: MapViewProps) {
   }, [timeBounds]);
 
   const focusedMarker = useMemo(
-    () => markers.find((marker) => marker.friend?.id === selectedPersonId) ?? null,
-    [markers, selectedPersonId]
+    () => markers.find((marker) => selectedPersonId
+      ? marker.friend?.id === selectedPersonId
+      : Boolean(selectedAccountId && marker.accountId === selectedAccountId)) ?? null,
+    [markers, selectedAccountId, selectedPersonId]
   );
 
   const rangeDuration = timeBounds ? Math.max(1, timeBounds.endAt - timeBounds.startAt) : 1;
@@ -394,6 +397,8 @@ export function MapView({ viewportInsets }: MapViewProps) {
 
       <MapSurface
         markers={markers}
+        cameraContentSettled={resolvingCount === 0}
+        cameraContentKey={JSON.stringify([effectiveMode, effectiveTimeRange])}
         focusedMarkerKey={focusedMarker?.key ?? null}
         themeId={themeId}
         viewportInsets={viewportInsets}

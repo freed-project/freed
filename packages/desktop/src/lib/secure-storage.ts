@@ -1,9 +1,9 @@
 /**
- * Encrypted device-local key-value store for API keys
+ * Device-local key-value store for existing provider API keys
  *
- * Uses tauri-plugin-store which encrypts the JSON file with a device-specific
- * key. API keys never enter Library Core records or checkpoints. They stay on
- * the device where they were entered.
+ * Uses the default tauri-plugin-store file store, which does not encrypt values.
+ * API keys never enter Library Core records or checkpoints. Jev uses its native
+ * OS-vault adapter instead. Existing keys require a separately verified migration.
  *
  * Synchronized provider, model, and processing preferences use typed Library
  * Core preference operations. Only raw API key strings live here.
@@ -19,8 +19,7 @@ let _store: Store | null = null;
 
 async function getStore(): Promise<Store> {
   if (!_store) {
-    // "secure.json" is an encrypted JSON file stored in the Tauri app data dir.
-    // The plugin handles encryption transparently.
+    // The historical filename does not imply encryption. This is a local JSON store.
     _store = await load("secure.json", { defaults: {}, autoSave: true });
   }
   return _store;
@@ -45,7 +44,7 @@ export const secureStorage = {
 
   /**
    * Persist an API key for the given provider.
-   * The key is encrypted at rest by tauri-plugin-store.
+   * This existing provider path uses local file persistence.
    */
   async setApiKey(provider: ApiKeyProvider, key: string): Promise<void> {
     await scheduleSideEffect({

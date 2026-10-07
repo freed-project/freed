@@ -14,6 +14,20 @@ keeps search, count, and sort above one divider, with results scrolling below.
 Contact tracking, outreach, and reconnection controls are withheld until the
 underlying feature is available.
 
+The Jev section in AI settings provides People I can help and Make something
+together for bounded local-post evaluation. It reads exact Account-to-Person
+links for relationship context and keeps unresolved authors labeled Relationship
+unknown. Matching compares explicit requests or invitations with skills the
+reader declares; identity records and relationship notes stay local. Results are
+ephemeral and add no Friends writer or outreach action. The browser preview also
+provides authored examples. See the [Jev evaluation runbook](JEV-CLASSIFICATION-PREVIEW.md).
+
+GLiClass Base is an optional local provider for post signals in this evaluation
+view. Capability matching still requires the Jev API and an explicit provider
+switch. Selecting GLiClass never silently sends matching or classification text
+to Jev. The local signal labels and thresholds remain experimental.
+
+
 Care levels map to Connection at one or two, Friend at three or four, and Fam
 at five. Editable identity details, directory cards, collapsed selection cards,
 and the identity editor share a keyboard-accessible rating control with category
@@ -40,6 +54,18 @@ The Friends, Map, and feed audience controls share one device-local preference.
 All content is the default. Changes carry between views and ordinary app sessions.
 The demo resets this choice on reload. Theme and the demo welcome display state
 are the only presentation preferences retained between visits.
+
+Map retains manual pan and zoom after its initial framing. Initial framing waits
+for named locations to settle unless the reader has already moved the camera.
+Later content or audience changes reframe only when no eligible marker is visible,
+after any active gesture and location batch finish. Layout changes and an empty
+filter keep the camera; explicit profile focus and Fit All remain available.
+Synthetic camera and stale-geocoder regressions cover this policy. Installed
+MapLibre gesture acceptance remains pending.
+
+Map header counts use the resolved, time-filtered snapshot from MapView.
+Unrelated Desktop runtime events preserve that snapshot; an empty map explicitly
+sets zero counts. Fit All and profile focus do not change count ownership.
 
 Recent activity cards in identity and account sidebars open the selected post
 in the unified feed reader. Their separate provider buttons open the same post
@@ -946,3 +972,177 @@ fresh paginated read without the old sync token or partial incremental results.
 Unrelated HTTP 400 failures still propagate, and a failed full read does not
 retry recursively. The current synchronization schedule and credentials remain
 unchanged. Browser and native-adapter fixtures cover this boundary.
+
+Desktop Person root recovery now has a source-pinned editor that preserves complete ordered records, starts existing people from current values, refuses tombstones and leaves absent people's avatar URLs empty. Signing snapshots selected values before key access and uses the normal registered builder; existing recovery linkage owns durable retries. Focused tests cover tag review, immutable inputs and response loss. The Desktop headless workflow verifies explicit confirmation and exact retry after a simulated lost response; native IPC is mocked. PWA uses the same Person form and a bounded source-pinned loader; its recovery action snapshots selected roots and retains finalized bytes across retries. Installed acceptance remains pending. Friend replacement recovery remains unfinished.
+
+Person recovery reads the complete editable root through person_root_v1 on native and PWA SQLite. The query preserves up to 4,096 tags within the canonical 65,536-byte root limit, rejects overflow before returning a partial record, and excludes child history. Both recovery loaders use this query instead of the truncated display detail.
+
+Ordinary Person and Friend editor reads also use the complete root. Bounded history and account context must match its generation and revision before an editable record is returned; stale combinations fail instead of losing tags outside the display window.
+
+Friend recovery admission now refuses selected Account IDs with deletion tombstones inside the same transaction that creates the replacement intent and recovery link. A previously committed replacement still returns its exact receipt after later deletion. The complete Friend recovery editor remains unfinished.
+
+A native-produced Friend archive with a signed enrollment certificate now verifies through PWA recovery without substituting the original transaction. The test covers deleted-account refusal, unchanged archived bytes, and exact retry after a later deletion and revision change. Successor admission uses synthetic local receipts; this is not installed handoff or OPFS evidence.
+
+Desktop now exposes a Friend recovery form that reviews the Person and complete bounded account selection before signing one replacement. Omission and account-move effects require confirmation; no images load in the form. The action snapshots selected roots before key access and uses the existing atomic recovery link. Complete oversized-record coverage remains unfinished.
+
+Friend account construction and validation now use UTF-8 binary ID order on Desktop and PWA, matching native verification. Shared mixed-case and Unicode vectors cover locale and UTF-16 ordering differences. Existing signed envelopes are not reordered or rewritten.
+
+PWA Settings now exposes the shared Friend recovery form. Desktop and PWA share one bounded, revision-pinned context reader. The browser action verifies the original scope, snapshots selected values before key access, and retains the finalized replacement across ambiguous responses. Focused tests cover retry identity and absence of ordinary enqueue. Desktop headless browser coverage now verifies both review steps, complete account-page review, confirmation reset, omission warnings and identical signed-envelope retry after a simulated lost response. The rendered form was inspected. Native IPC and signing are mocked in this workflow. A separate PWA browser harness verifies the platform editor wrapper at phone width, including one retained action across response loss, locked editing and completed account review. Its verification and signing boundaries are mocked; the full PWA Settings/archive workflow, oversized-context coverage and installed acceptance remain pending.
+
+Friend recovery now reads complete Account roots through `account_root_v1` on both runtimes. Native SQLite and browser SQLite tests preserve a 20,000-character field and reject oversized roots; optional roster fields retain their types. This closes the Account display-field limit. Linked-account paging is described below; installed acceptance remains unfinished.
+
+The registered Person account-ID page query now reads through the existing index with a revision-bound cursor. Native and browser SQLite tests enumerate 130 links; Friend recovery no longer depends on the Person display projection. The shared editor now reviews large current-link sets in eight-account pages, starts them unselected, and retains at most 64 selections. Every current page and archived account requires review. Stale pages block submission; the final replacement remains one bounded signed transaction.
+
+PWA archive verification now has a separate read-only path for the former locale-based Friend account order. A real Ed25519 test verifies untouched historical bytes and rejects reuse through normal assembly, signing and verification. New replacements remain strictly ordered. PWA WASM SQLite coverage now verifies a signed historical enrollment and out-of-order original, commits a correctly ordered fresh replacement, refuses deleted selections without writes, and returns the same durable link after revision changes while preserving archive bytes. Successor admission is synthetic; this is not cloud, OPFS or installed-build proof.
+
+
+Account deletion recovery now uses the existing paged deletion review on Desktop
+and PWA. It retains every original ordered target, including duplicates and
+currently absent Accounts, and reads current labels at the reviewed Library
+revision. Explicit confirmation covers account details and links changed before
+Primary acceptance. It removes Library records without deleting provider accounts
+or linked people. New signatures use the ordinary Account removal builder; the
+existing recovery transaction owns intent and linkage atomicity. Ambiguous retries
+retain the same signed bytes. Focused loader, signing and component tests cover both
+platforms; a Desktop Settings browser test covers confirmation and response loss
+with mocked native commands. This is not installed or OPFS acceptance.
+
+
+Full Account recovery now has a native and browser write guard against Account
+tombstones. It runs after exact durable-link lookup and before enqueue, so a
+fresh replacement cannot recreate a deleted Account and a later deletion does
+not invalidate an existing replacement receipt. Native signed fixtures and a
+PWA WASM SQLite test with real historical enrollment and operation signatures
+cover refusal without writes, unchanged archives and exact retry. These checks do not prove installed or OPFS behavior.
+
+
+Full Account recovery is available in Desktop and PWA Settings. The shared form
+reviews one complete record at a time, starts from current details when present,
+and offers archived details, contact-field edits, unlinking and avatar clearing.
+Every original ordered target remains, including duplicates. Changes clear the
+explicit whole-record confirmation. Missing records start without avatar URLs;
+the SQLite boundary refuses deleted Accounts. Selected person links must exist
+at the reviewed source before signing.
+
+The loader uses complete `account_root_v1` rows, with at most the registered
+Account member limit and 64 KiB per root. Field edits cannot retain an oversized
+root. Original and finalized transaction byte limits remain enforced. This is a
+bounded design, not measured global renderer memory admission. Both platforms
+reuse ordinary Account member builders, retain finalized bytes on ambiguous
+responses and use atomic recovery linkage. Desktop browser coverage exercises
+Settings entry, complete review, field edits, confirmation and exact retry with
+mocked native commands. Installed and OPFS acceptance remain separate.
+
+
+Reach-out recovery now refuses a replacement when the original event ID remains
+in current history, independently on native and browser write boundaries. The
+whole transaction refuses without intent or linkage writes; an existing replacement
+receipt remains available on retry. Missing history does not prove failure because
+only the latest 20 events are retained. Desktop and PWA now provide explicit reach-out editors.
+
+
+Reach-out recovery compares each archived event with last-synced recent history,
+requires every event to be visited and confirmed, and preserves historical dates
+while signing a new action. Revised values are snapshotted before signing and
+response-loss retry reuses the exact replacement. No message or provider request
+is sent. Focused editor and signing tests pass; full feature, installed acceptance
+and maximum legal detail coverage remain separate requirements.
+
+
+Preference recovery now enforces the original object assignment paths inside
+native and browser write transactions. Added, dropped or collapsed object paths
+refuse before intent writes, while durable replacement receipts remain available
+on retry. Historical import coverage remains unfinished.
+
+
+Native fresh preference writes now use the generated field policy, with shared
+vectors proving nested field, array and map behavior against the PWA sanitizer.
+Unsupported writes refuse without preference or actor-counter changes; historical
+signature inspection remains separate. Finite fractional weights now validate and
+read consistently on both platforms, using the existing binary64 wire encoding.
+Stored preference nodes and signed archive bytes remain unchanged. Recovery treats
+encoded numbers as scalar assignments, including fractional-to-integer changes.
+Historical canonical import coverage remains unfinished.
+
+Preference recovery now has shared read-only comparison context. Both platform
+loaders preserve member order and compare exact assignment paths against one
+source-fenced snapshot, distinguishing stored settings from defaults. Arrays
+remain whole assignments and empty groups remain in the original patch. The
+Desktop and PWA Settings forms now connect this context to signing adapters. They
+retain every ordered patch, snapshot inputs before asynchronous work, and reuse
+the normal preference member builders. The PWA checks original assignment scope
+before signing and retains the exact request after an ambiguous response.
+
+The preference recovery form requires review of every setting and explicit
+confirmation. It compares archived and current values, preserves whole-array
+assignments and empty groups, and clears confirmation whenever a value changes.
+After signing, the form locks its inputs and retries the same replacement after
+an ambiguous response. Focused platform tests and the Desktop browser workflow
+pass. Installed Mac acceptance and full multi-device convergence remain pending.
+
+
+PWA historical preference verification now matches the native historical field
+policy while fresh writes retain the current policy. Archive review preserves
+authenticated old fields, and incremental catch-up checks the authority-signed
+acceptance receipt before materializing them. Historical constructions cannot
+be finalized or reused as fresh verified transactions. Shared cryptographic and
+PWA SQLite tests cover unchanged bytes, mixed-member completeness, device-local
+exclusions, tampering, mismatched receipts and exact retry. Live cloud joining across versions and installed Mac acceptance remain unverified.
+
+The Rust historical validator and shared verifier also pass the same 32 policy
+cases, covering all historical sections and device-local exclusions. This is
+policy parity; installed Mac proof remains separate.
+
+A signed historical preference fixture now comes from published native source
+`v26.9.1700-dev`. Current native SQLite and PWA preserve its envelope and acceptance
+receipt, replay duplicate pages, and match its final revision, actor frontier and
+checkpoint digest. The original zero-operation descriptor remains intact; the
+tests explicitly check current carried-frontier normalization at that baseline.
+Checkpoint admission is synthetic, and this does not prove live cloud joining
+or an installed build.
+
+Preference recovery now reads only the selected setting through a source-bound
+query shared by native SQLite and the PWA. The form retains one current value,
+requires each comparison before confirmation, cancels abandoned reads and keeps
+the same prepared edit after response loss. Group summaries cannot be used as
+replacement values. Native/PWA fixture tests cover oversized unrelated trees,
+exact values and invalid rows; a headless Desktop workflow verifies two scoped
+reads and identical retry submissions. Ordinary startup still has the global
+preference snapshot limit, and installed Mac acceptance remains incomplete.
+
+Primary ranking now retrieves only the weights needed by each bounded candidate
+batch. Native SQLite and PWA share a grouped read with exact source checks;
+Desktop uses it without retaining a full weight map for the pass. Tests cover
+large candidate scopes, long literal IDs, stale chunks, numeric validation and
+preference changes during an in-flight batch. Startup still uses the global
+preference snapshot, and installed Mac acceptance remains incomplete.
+
+Ranking invalidation now compares a compact, indexed preference revision and
+materialization generation instead of the renderer's full weight-map identity.
+Native and PWA expose the same bounded marker. Preference changes during a pass
+and checkpoint replacement request another pass; item-only writes do not change
+the marker. Failed completion reads remain retryable. Startup's whole-preference
+snapshot limit still needs removal.
+
+### Jev spending admission
+
+Jev requests require saved device-local spending limits. Defaults are $1 per
+UTC day and $10 per UTC calendar month; an optional lifetime limit never resets.
+All enabled limits apply before transport. A durable SQLite transaction reserves
+$0.002752512 per request: Jev 1.13's conservative 65,536-token interpretation of the published 64k ceiling at
+$0.042 per million, with free output. This conservative allowance is not a bill.
+Reservation precedes credential access. Even missing-key failures retain the
+allowance without implying provider contact or billing. No refund is inferred
+for success, cancellation, timeout, or uncertain outcomes;
+retries reserve again and duplicate request IDs are rejected. Default limits
+permit at most 363 requests daily and 3,633 monthly, even when actual short
+requests cost less. At a limit, settings offers local GLiClass when available, or a limit change.
+
+The ledger is under the compiled app's config directory, outside Library
+snapshots. Ordinary app replacement and Library restore do not reset it; a
+missing established ledger, corruption, or a backwards clock blocks requests.
+Removing an entire device profile removes its history; other clients/devices
+and vendor price changes are outside this local estimate-based allowance. The
+ledger is bounded to 100,000 reservations and then fails closed. Browser preview
+paid transport is disabled because it lacks the native ledger. Pricing evidence:
+https://docs.typesafe.ai/models (verified 2026-10-02).

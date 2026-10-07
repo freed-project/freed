@@ -1,3 +1,7 @@
+import type { LibraryCoreReapplyConsumerIntentV1, LibraryCoreRecoveryReissueReceiptV1 } from "@freed/shared/library-core";
+import type {
+  LibraryCoreConsumerRecoveryStatusV1, LibraryCorePrepareConsumerRecoveryV1, LibraryCoreCommitConsumerRecoveryV1,
+} from "@freed/shared/library-core";
 import type {
   LibraryCoreNormalizedQueryExecutor,
   LibraryCoreSqliteQueryRequest,
@@ -54,6 +58,13 @@ interface ClientGeneration {
   readonly openTask: Promise<void>;
 }
 
+const localChangeListeners=new Set<() => void>();
+/** Hints only; subscribers read the existing bounded local change feed. */
+export function subscribePwaLibraryCoreLocalChanges(listener: () => void): () => void {
+  localChangeListeners.add(listener);
+  return () => { localChangeListeners.delete(listener); };
+}
+
 let clientGeneration: ClientGeneration | null = null;
 let resetTask: Promise<void> | null = null;
 
@@ -68,7 +79,9 @@ function clearClientGeneration(active: PwaLibraryCoreSqliteClient): void {
 }
 
 function createClientGeneration(): ClientGeneration {
-  const active = new PwaLibraryCoreSqliteClient(clearClientGeneration);
+  const active = new PwaLibraryCoreSqliteClient(clearClientGeneration,() => {
+    if (clientGeneration?.client === active) for (const listener of localChangeListeners) listener();
+  });
   const generation = Object.freeze({
     client: active,
     openTask: active
@@ -220,6 +233,14 @@ export async function readPwaNormalizedCheckpointReceipt(): Promise<LibraryCoreN
   );
 }
 
+/** Explicit audit: cancellation never retries or replaces the active worker. */
+export async function auditPwaNormalizedReplica(signal: AbortSignal) {
+  signal.throwIfAborted();
+  const active = await openClient();
+  signal.throwIfAborted();
+  return active.auditNormalizedReplica(signal);
+}
+
 export async function describePwaNormalizedCheckpointExport(): Promise<LibraryCoreNormalizedCheckpointExportDescriptorV2> {
   return runReplaySafeRead((active) =>
     active.describeNormalizedCheckpointExport(),
@@ -248,6 +269,17 @@ export async function appendPwaNormalizedCheckpointStagePage(
   return active.appendNormalizedCheckpointStagePage(page);
 }
 
+export async function preparePwaNormalizedPredecessorCheckpointRead(stageId: string) {
+  return runReplaySafeRead(active => active.preparePredecessorCheckpointRead(stageId));
+}
+
+export async function activatePwaNormalizedPredecessorCheckpoint(
+  activation: LibraryCoreActivateNormalizedCheckpointStageV2, successorStageId: string,
+): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
+  const active = await openClient();
+  return active.activateVerifiedPredecessorCheckpoint(activation, successorStageId);
+}
+
 export async function activatePwaNormalizedCheckpointStage(
   activation: LibraryCoreActivateNormalizedCheckpointStageV2,
 ): Promise<LibraryCoreNormalizedCheckpointActivationReceiptV2> {
@@ -274,6 +306,23 @@ export async function importPwaNormalizedOperationPage(
 ): Promise<LibraryCoreNormalizedOperationImportReceiptV2> {
   const active = await openClient();
   return active.importNormalizedOperationPage(imported);
+}
+
+/** Mutations are never automatically replayed after an ambiguous worker response. */
+export async function reapplyPwaConsumerIntent(input: LibraryCoreReapplyConsumerIntentV1): Promise<LibraryCoreRecoveryReissueReceiptV1> {
+  return (await openClient()).reapplyConsumerIntent(input);
+}
+
+export async function readPwaConsumerRecoveryStatus(): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return runReplaySafeRead(active => active.consumerRecoveryStatus());
+}
+
+export async function preparePwaConsumerRecoveryRequest(recovery: LibraryCorePrepareConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return (await openClient()).prepareConsumerRecovery(recovery);
+}
+
+export async function commitPwaConsumerRecoveryRequest(recovery: LibraryCoreCommitConsumerRecoveryV1): Promise<LibraryCoreConsumerRecoveryStatusV1> {
+  return (await openClient()).commitConsumerRecovery(recovery);
 }
 
 export async function readPwaFollowerActorEnrollmentContext(): Promise<LibraryCoreFollowerActorEnrollmentContextV2> {

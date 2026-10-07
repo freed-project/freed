@@ -3,7 +3,7 @@
  *
  * Uses Tauri backend to bypass CORS restrictions. RSS parsing and
  * normalization delegate to @freed/capture-rss; only the HTTP transport
- * layer lives here because it must go through Tauri's fetch_url IPC.
+ * layer lives here because it must go through Tauri's fetch_rss_url IPC.
  */
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
@@ -81,10 +81,10 @@ export type SocialProviderRefreshResult = {
 type ProviderWriterBlock = { stage: string; detail: string };
 
 async function providerWriterBlock(): Promise<ProviderWriterBlock | null> {
-  if (readLibraryCoreDesktopRole() === "follower") {
+  if (readLibraryCoreDesktopRole() !== "primary") {
     return {
       stage: "follower",
-      detail: "Provider sync is disabled on this follower Freed Desktop.",
+      detail: "Provider sync requires verified Primary authority on this Freed Desktop.",
     };
   }
   if (!isSqliteLibraryActive()) return null;
@@ -135,7 +135,7 @@ async function fetchUrl(url: string): Promise<string> {
     }
     return response.text();
   }
-  return invoke<string>("fetch_url", { url });
+  return invoke<string>("fetch_rss_url", { url });
 }
 
 /** Result of fetching and parsing a single RSS feed */
@@ -816,7 +816,14 @@ async function readEnabledRssFeeds(): Promise<RssFeed[]> {
   return feeds;
 }
 
-export async function refreshRssFeeds(
+export function refreshRssFeeds(
+  options: RssRefreshPlanOptions = {},
+): Promise<void> {
+  if (isFactoryResetInProgress()) return Promise.resolve();
+  return runFactoryResetSensitiveDesktopOperation(() => refreshRssFeedsInternal(options));
+}
+
+async function refreshRssFeedsInternal(
   options: RssRefreshPlanOptions = {},
 ): Promise<void> {
   if (isFactoryResetInProgress()) return;
@@ -847,7 +854,14 @@ export async function refreshRssFeeds(
 }
 
 /** Refresh only stale, retry-eligible RSS feeds. Social providers are siblings. */
-export async function refreshScheduledRssFeeds(
+export function refreshScheduledRssFeeds(
+  options: RssRefreshPlanOptions = {},
+): Promise<void> {
+  if (isFactoryResetInProgress()) return Promise.resolve();
+  return runFactoryResetSensitiveDesktopOperation(() => refreshScheduledRssFeedsInternal(options));
+}
+
+async function refreshScheduledRssFeedsInternal(
   options: RssRefreshPlanOptions = {},
 ): Promise<void> {
   if (isFactoryResetInProgress()) return;

@@ -29,13 +29,13 @@ use crate::{
     export_normalized_follower_result_page_v1, export_normalized_follower_result_page_v2,
     export_normalized_operation_page_v2, export_pinned_normalized_checkpoint_page_v2,
     finalize_normalized_checkpoint_stage_v2, get_content_state_v1,
-    ingest_normalized_follower_intent_page_v1, load_or_create_normalized_actor_id_v2, lower_hex,
+    ingest_normalized_follower_intent_page_v1, load_normalized_local_actor_id_v2, lower_hex,
     normalized_primary_follower_actor_transport_state_v1, normalized_primary_mutation_context_v1,
     page_eviction_candidates_v1, page_hydration_candidates_v1, query_normalized_json_v1,
-    reassign_normalized_writer_epoch_v2, set_content_policy_v1, sign_library_core_operation_digest,
-    ActorKeyStore, AuthorityKeyStore, BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1,
-    ContentStateRequestV1, EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1,
-    LibraryCoreProcessLease, NormalizedCheckpointExportSessionV2, NormalizedCheckpointRecordV2,
+    set_content_policy_v1, sign_library_core_operation_digest, ActorKeyStore, AuthorityKeyStore,
+    BeginNormalizedCheckpointStageV2, ContentPolicyMutationV1, ContentStateRequestV1,
+    EvictionCandidatePageRequestV1, HydrationCandidatePageRequestV1, LibraryCoreProcessLease,
+    NormalizedCheckpointExportSessionV2, NormalizedCheckpointRecordV2,
     NormalizedFollowerIntentStagePageV1, NormalizedFollowerResultPageRequestV1,
     NormalizedFollowerResultPageRequestV2, NormalizedOperationExportRequestV2,
     NormalizedSqliteError, PinnedNormalizedCheckpointExportRequestV2, ProcessLeaseIdentity,
@@ -297,52 +297,26 @@ struct PrimaryActorIdentityReceiptV1 {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct ReassignWriterEpochCommandV2 {
-    accepted_at_ms: i64,
-    canonical_source_control_json: String,
-    installation_witness: String,
-    target_writer_id: String,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RetireActorCommandV1 {
     actor_id: String,
     reason: String,
     retired_at_ms: i64,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WriterCausalTipReceiptV1 {
-    actor_id: String,
-    sequence: i64,
-    operation_id: String,
-    chain_digest: String,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct WriterAuthorityReceiptV2 {
-    library_id: String,
-    epoch: i64,
-    epoch_id: String,
-    authority_key_id: String,
-    authority_public_key: String,
-    observed_frontier: Vec<WriterCausalTipReceiptV1>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ReassignWriterEpochReceiptV2 {
-    authority: WriterAuthorityReceiptV2,
-    canonical_epoch_certificate_json: String,
-    transition_certificate_digest: String,
-}
-
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct EmptyCommandPayload {}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct CloudWriterObservationV1 {
+    library_id: String,
+    local_writer_id: String,
+    active_writer_id: String,
+    storage_epoch: String,
+    control_revision: String,
+    verified_at_ms: i64,
+}
 
 /// Native normalized Library authority owned by one inherited data-root descriptor.
 struct LibraryCoreSidecarAuthority {
@@ -486,6 +460,14 @@ fn start_command_loop(
     database: BoundSqliteDatabase,
     credentials: MountedPrimaryCredentials,
 ) -> Result<(), LibraryCoreSidecarError> {
+    // A prior process's cloud observation cannot authorize this process.
+    let connection = database
+        .open(normalized_sqlite_open_flags(false))
+        .map_err(|_| failure("command_storage_failed"))?;
+    connection
+        .execute("DELETE FROM library_local_cloud_writer_admission;", [])
+        .map_err(|_| failure("command_storage_failed"))?;
+    drop(connection);
     let request = unsafe { File::from_raw_fd(COMMAND_REQUEST_FD) };
     let response = unsafe { File::from_raw_fd(COMMAND_RESPONSE_FD) };
     std::thread::Builder::new()
@@ -633,13 +615,115 @@ fn run_command_loop(
     }
 }
 
+// A staged checkpoint is not authority to replace the Library named by the
+// mounted credentials. Check persisted stage identity on every resumed command.
+fn assert_mounted_checkpoint_stage(
+    connection: &rusqlite::Connection,
+    credentials: &MountedPrimaryCredentials,
+    stage_id: &str,
+) -> Result<(), &'static str> {
+    let matches: bool = connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM library_checkpoint_stages
+             WHERE stage_id = ?1 AND library_id = ?2);",
+            rusqlite::params![stage_id, credentials.library_id],
+            |row| row.get(0),
+        )
+        .map_err(|_| "command_failed")?;
+    if !matches {
+        return Err("request_invalid");
+    }
+    Ok(())
+}
+
+fn cloud_writer_allowed(
+    connection: &rusqlite::Connection,
+    credentials: &MountedPrimaryCredentials,
+) -> Result<bool, &'static str> {
+    let key = Ed25519KeyPair::from_pkcs8(&credentials.actor_key_pkcs8)
+        .map_err(|_| "credential_invalid")?;
+    connection
+        .query_row(
+            "SELECT EXISTS(
+           SELECT 1 FROM library_local_cloud_writer_admission AS admission
+           JOIN library_meta AS meta ON meta.singleton_id = 1
+           JOIN library_active_authority AS active ON active.active_key = 'active'
+           JOIN library_actors AS actor ON actor.actor_id = admission.local_writer_id
+           WHERE admission.singleton_id = 1
+             AND admission.local_writer_id = admission.active_writer_id
+             AND admission.authority_epoch_id = meta.authority_epoch
+             AND active.epoch_id = meta.authority_epoch AND active.library_id = meta.library_id
+             AND actor.authority_epoch_id = meta.authority_epoch
+             AND actor.actor_kind = 'desktop' AND actor.retired_at IS NULL
+             AND (active.writer_id = actor.actor_id OR active.writer_id = 'primary:desktop')
+             AND actor.public_key = ?1 AND meta.library_id = ?2);",
+            rusqlite::params![lower_hex(key.public_key().as_ref()), credentials.library_id],
+            |row| row.get(0),
+        )
+        .map_err(|_| "command_failed")
+}
+
 fn execute_native_command_v1(
     connection: &mut rusqlite::Connection,
     credentials: &MountedPrimaryCredentials,
     command_id: &str,
     payload: Value,
 ) -> Result<Value, &'static str> {
+    if matches!(
+        command_id,
+        "commit_transaction_v1"
+            | "countersign_follower_actor_request_v2"
+            | "ingest_follower_intent_page_v1"
+            | "primary_mutation_context_v1"
+            | "retire_actor_v1"
+            | "sign_operation_v1"
+    ) && !cloud_writer_allowed(connection, credentials)?
+    {
+        return Err("credential_invalid");
+    }
     match command_id {
+        "cloud_writer_clear_v1" => {
+            serde_json::from_value::<EmptyCommandPayload>(payload)
+                .map_err(|_| "request_invalid")?;
+            connection
+                .execute("DELETE FROM library_local_cloud_writer_admission;", [])
+                .map_err(|_| "command_failed")?;
+            Ok(json!({"allowed": false}))
+        }
+        "cloud_writer_observe_v1" => {
+            let observation: CloudWriterObservationV1 =
+                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            if observation.library_id != credentials.library_id
+                || !valid_digest(&observation.local_writer_id)
+                || !valid_digest(&observation.active_writer_id)
+                || !valid_digest(&observation.storage_epoch)
+                || observation.control_revision.is_empty()
+                || observation.control_revision.len() > 512
+                || observation.verified_at_ms < 0
+            {
+                return Err("request_invalid");
+            }
+            connection
+                .execute(
+                    "INSERT INTO library_local_cloud_writer_admission
+                 (singleton_id, local_writer_id, active_writer_id, authority_epoch_id,
+                  control_revision, verified_at) VALUES (1, ?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(singleton_id) DO UPDATE SET
+                   local_writer_id=excluded.local_writer_id,
+                   active_writer_id=excluded.active_writer_id,
+                   authority_epoch_id=excluded.authority_epoch_id,
+                   control_revision=excluded.control_revision, verified_at=excluded.verified_at;",
+                    rusqlite::params![
+                        observation.local_writer_id,
+                        observation.active_writer_id,
+                        observation.storage_epoch,
+                        observation.control_revision,
+                        observation.verified_at_ms
+                    ],
+                )
+                .map_err(|_| "command_failed")?;
+            Ok(json!({"allowed": cloud_writer_allowed(connection, credentials)?}))
+        }
         "agent_query_v1" => {
             let command: AgentQueryCommandV1 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
@@ -651,6 +735,7 @@ fn execute_native_command_v1(
         "append_checkpoint_stage_v2" => {
             let command: AppendCheckpointStageCommandV2 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            assert_mounted_checkpoint_stage(connection, credentials, &command.stage_id)?;
             encode_command_result(
                 append_normalized_checkpoint_stage_page_v2(
                     connection,
@@ -663,6 +748,9 @@ fn execute_native_command_v1(
         "begin_checkpoint_stage_v2" => {
             let command: BeginNormalizedCheckpointStageV2 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            if command.library_id != credentials.library_id {
+                return Err("request_invalid");
+            }
             encode_command_result(
                 begin_normalized_checkpoint_stage_v2(connection, &command)
                     .map_err(normalized_command_error)?,
@@ -812,6 +900,7 @@ fn execute_native_command_v1(
         "finalize_checkpoint_stage_v2" => {
             let command: FinalizeCheckpointStageCommandV2 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
+            assert_mounted_checkpoint_stage(connection, credentials, &command.stage_id)?;
             encode_command_result(
                 finalize_normalized_checkpoint_stage_v2(connection, &command.stage_id)
                     .map_err(normalized_command_error)?,
@@ -825,7 +914,8 @@ fn execute_native_command_v1(
         "primary_actor_identity_v1" => {
             let command: PrimaryActorIdentityCommandV1 =
                 serde_json::from_value(payload).map_err(|_| "request_invalid")?;
-            let actor_id = load_or_create_normalized_actor_id_v2(
+            let actor_id = load_normalized_local_actor_id_v2(
+                connection,
                 &credentials.library_id,
                 &command.installation_witness,
                 &MountedActorKeyStore(credentials),
@@ -873,42 +963,6 @@ fn execute_native_command_v1(
         }
         "query_v1" => {
             query_normalized_json_v1(connection, payload).map_err(normalized_command_error)
-        }
-        "reassign_writer_epoch_v2" => {
-            let command: ReassignWriterEpochCommandV2 =
-                serde_json::from_value(payload).map_err(|_| "request_invalid")?;
-            let reassigned = reassign_normalized_writer_epoch_v2(
-                connection,
-                &command.canonical_source_control_json,
-                &command.target_writer_id,
-                &command.installation_witness,
-                &MountedActorKeyStore(credentials),
-                &MountedAuthorityKeyStore(credentials),
-                command.accepted_at_ms,
-            )
-            .map_err(normalized_command_error)?;
-            encode_command_result(ReassignWriterEpochReceiptV2 {
-                authority: WriterAuthorityReceiptV2 {
-                    library_id: reassigned.authority.library_id,
-                    epoch: reassigned.authority.epoch,
-                    epoch_id: reassigned.authority.epoch_id,
-                    authority_key_id: reassigned.authority.authority_key_id,
-                    authority_public_key: reassigned.authority.authority_public_key,
-                    observed_frontier: reassigned
-                        .authority
-                        .observed_frontier
-                        .into_iter()
-                        .map(|tip| WriterCausalTipReceiptV1 {
-                            actor_id: tip.actor_id,
-                            sequence: tip.sequence,
-                            operation_id: tip.operation_id,
-                            chain_digest: tip.chain_digest,
-                        })
-                        .collect(),
-                },
-                canonical_epoch_certificate_json: reassigned.canonical_certificate_json,
-                transition_certificate_digest: reassigned.transition_certificate_digest,
-            })
         }
         "retire_actor_v1" => {
             let command: RetireActorCommandV1 =
@@ -1707,6 +1761,14 @@ mod tests {
                 ],
             )
             .expect("insert Primary actor");
+        connection
+            .execute(
+                "INSERT INTO library_local_cloud_writer_admission
+             (singleton_id, local_writer_id, active_writer_id, authority_epoch_id,
+              control_revision, verified_at) VALUES (1, ?1, ?1, ?2, 'fixture-control', 1000);",
+                rusqlite::params![actor_id, epoch_id],
+            )
+            .expect("fixture cloud admission");
         (epoch_id, actor_id, actor_public_key)
     }
 
@@ -1902,6 +1964,19 @@ mod tests {
             Err("command_unknown")
         );
 
+        // Retired takeover must fail before decoding a payload or touching state.
+        let changes = connection.total_changes();
+        assert_eq!(
+            execute_native_command_v1(
+                &mut connection,
+                &credentials,
+                "reassign_writer_epoch_v2",
+                json!({})
+            ),
+            Err("command_unknown")
+        );
+        assert_eq!(connection.total_changes(), changes);
+
         let mut oversized = tempfile::tempfile().expect("temporary frame");
         oversized
             .write_all(
@@ -1917,6 +1992,135 @@ mod tests {
             read_command_frame(&mut oversized),
             Err(failure("command_invalid"))
         );
+    }
+
+    #[test]
+    fn cloud_writer_observation_fences_canonical_commands_and_binds_the_mounted_key() {
+        let mut connection = rusqlite::Connection::open_in_memory().expect("database");
+        crate::install_normalized_schema_v1(&connection).expect("schema");
+        let credentials = test_primary_credentials(&"a".repeat(64));
+        let (epoch, actor, _) = install_primary_context(&connection, &credentials);
+        assert!(cloud_writer_allowed(&connection, &credentials).unwrap());
+        execute_native_command_v1(
+            &mut connection,
+            &credentials,
+            "cloud_writer_clear_v1",
+            json!({}),
+        )
+        .expect("clear prior observation");
+        for command in [
+            "commit_transaction_v1",
+            "countersign_follower_actor_request_v2",
+            "ingest_follower_intent_page_v1",
+            "primary_mutation_context_v1",
+            "retire_actor_v1",
+            "sign_operation_v1",
+        ] {
+            assert_eq!(
+                execute_native_command_v1(&mut connection, &credentials, command, json!({})),
+                Err("credential_invalid")
+            );
+        }
+        let observation = json!({"libraryId":credentials.library_id,"localWriterId":actor,
+            "activeWriterId":actor,"storageEpoch":epoch,"controlRevision":"verified-control",
+            "verifiedAtMs":2000});
+        assert_eq!(
+            execute_native_command_v1(
+                &mut connection,
+                &credentials,
+                "cloud_writer_observe_v1",
+                observation.clone()
+            )
+            .unwrap(),
+            json!({"allowed":true})
+        );
+        let other_key = test_primary_credentials(&credentials.library_id);
+        assert!(!cloud_writer_allowed(&connection, &other_key).unwrap());
+        for field in ["activeWriterId", "storageEpoch"] {
+            let mut changed = observation.clone();
+            changed[field] = json!("f".repeat(64));
+            assert_eq!(
+                execute_native_command_v1(
+                    &mut connection,
+                    &credentials,
+                    "cloud_writer_observe_v1",
+                    changed
+                )
+                .unwrap(),
+                json!({"allowed":false})
+            );
+            assert!(!cloud_writer_allowed(&connection, &credentials).unwrap());
+        }
+    }
+
+    #[test]
+    fn checkpoint_commands_are_fenced_to_the_mounted_library() {
+        let mut connection = rusqlite::Connection::open_in_memory().expect("database");
+        crate::install_normalized_schema_v1(&connection).expect("schema");
+        let credentials = test_primary_credentials(&"a".repeat(64));
+        let foreign = BeginNormalizedCheckpointStageV2 {
+            stage_id: "foreign-stage".into(),
+            library_id: "b".repeat(64),
+            authority_epoch: "c".repeat(64),
+            source_revision: 1,
+            expected_record_count: 1,
+            created_at: 1000,
+        };
+        assert_eq!(
+            execute_native_command_v1(
+                &mut connection,
+                &credentials,
+                "begin_checkpoint_stage_v2",
+                serde_json::to_value(&foreign).expect("request"),
+            ),
+            Err("request_invalid")
+        );
+        let count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM library_checkpoint_stages;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("stage count");
+        assert_eq!(count, 0);
+
+        // A stage persisted by an earlier process must not bypass mounted identity.
+        begin_normalized_checkpoint_stage_v2(&connection, &foreign).expect("foreign fixture");
+        for (command, payload) in [
+            (
+                "append_checkpoint_stage_v2",
+                json!({"stageId": foreign.stage_id, "records": []}),
+            ),
+            (
+                "finalize_checkpoint_stage_v2",
+                json!({"stageId": foreign.stage_id}),
+            ),
+        ] {
+            assert_eq!(
+                execute_native_command_v1(&mut connection, &credentials, command, payload,),
+                Err("request_invalid")
+            );
+        }
+        let mut owned = foreign.clone();
+        owned.stage_id = "owned-stage".into();
+        owned.library_id = credentials.library_id.clone();
+        execute_native_command_v1(
+            &mut connection,
+            &credentials,
+            "begin_checkpoint_stage_v2",
+            serde_json::to_value(&owned).expect("owned request"),
+        )
+        .expect("matching mounted identity");
+        assert_mounted_checkpoint_stage(&connection, &credentials, &owned.stage_id)
+            .expect("matching resumed stage");
+        let count: i64 = connection
+            .query_row(
+                "SELECT count(*) FROM library_checkpoint_stages;",
+                [],
+                |row| row.get(0),
+            )
+            .expect("preserved stage count");
+        assert_eq!(count, 2);
     }
 
     #[test]

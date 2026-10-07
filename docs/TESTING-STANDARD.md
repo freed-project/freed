@@ -64,7 +64,14 @@ Shard budget is distributed across the selected suites by highest averages.
 The cap is a maximum: stop adding shards to a completed measurement once its
 predicted work fits five minutes per shard. Unknown or capped timings retain
 the available budget. This prevents a five-minute general suite from launching
-16 copies of dependency setup. Within each suite, complete per-file or per-test timings from `scripts/tooling-smoke-durations.json` replace source-size weights. Partial timing sets are ignored rather than mixing seconds with bytes. Every shard uploads JUnit timings so a completed integration run can refresh the exact units that need balancing.
+16 copies of dependency setup. Within each suite, valid per-file or per-test
+timings from `scripts/tooling-smoke-durations.json` replace source-size weights.
+Unknown units use source size scaled by the measured units' total seconds per
+source weight; without valid timings, all units use source size. Capped or
+failed measurements are excluded. Rounded-zero timings receive a 1 ms
+scheduling floor, which is never recorded as elapsed time. Every shard uploads
+JUnit timings so a completed integration run can refresh the exact units that
+need balancing.
 
 ## Platform routing
 
@@ -87,6 +94,46 @@ its own native lane.
 ## Timeouts
 
 Shards run with a per-test timeout of 5 minutes. `node --test` defaults to no timeout, which let one blocked test pin a shard until the job-level timeout with no useful signal. Any tooling test slower than this in a blocking lane is a defect, not a long test.
+
+The nightly self-improve shard additionally runs under a test-only external
+supervisor. Imported synchronous subprocess calls and `spawn` operations have a 30-second deadline, test
+callbacks have an independent 5-minute deadline, and the shard has a 60-minute
+outer deadline. Deadline detection adds at most one polling interval under
+normal scheduling (20 milliseconds); child cleanup has a separate 5-second
+budget. A blocked JavaScript event loop cannot disable these deadlines.
+Timeout diagnostics identify the active test and operation. The supervisor
+fails the shard even when an imported function would swallow a subprocess error.
+The supervisor keeps Git automatic maintenance in the foreground within its
+child environment, preserving inherited Git configuration and maintenance work.
+Local transport strips Git configuration parameters before `receive-pack`, so
+the child environment also sets Git's test-only `GIT_TEST_MAINT_AUTO_DETACH=false`
+default. Explicit remote configuration still takes precedence and any resulting
+orphan still fails the shard. The regression covers commit, local push and clone,
+including maintenance traces and matching Git versions for transport helpers.
+It does not change repository or global configuration, or exempt Git descendants
+from orphan detection.
+
+On Linux, a private subreaper adopts orphaned descendants and signals captured
+process generations through pidfds. On macOS, a private kernel responsibility
+anchor identifies descendants even after their intermediate parent exits;
+cleanup signals captured PID-version audit tokens. The Darwin supervisor reaps
+its direct children and requires nonchildren, including zombies, to disappear
+after their parents or launchd reap them. Zombies first seen without responsibility
+are accounted for through immutable parent unique IDs. A prelaunch process
+inventory distinguishes existing outside lifetimes; missing ancestry blocks
+successful cleanup until the unresolved zombie disappears. Uncertain processes
+are never signal targets. It does not claim Linux subreaper
+semantics on macOS. Both paths remove their private temporary fixture directory
+only after cleanup succeeds. Unrelated processes and shared process groups are
+never cleanup targets. An orphan fails the shard even if tests otherwise pass.
+Unavailable confinement fails before launch; cleanup failure retains the fixture
+and reports failure. This is test infrastructure, not production lifecycle authority.
+
+The `Nightly fixture supervision` workflow exercises failing actual shards,
+healthy nightly fixtures and the measurement command on Linux and macOS.
+Run `node scripts/nightly-fixture-acceptance.mjs` for the healthy execution checks.
+Direct `node --test scripts/nightly-self-improve.test.mjs` does not install the
+external supervisor; use the shard runner when validating these guarantees.
 
 ## Performance gates
 
@@ -209,3 +256,30 @@ fit that target.
 
 After measurements and platform cache changes are pending. Do not substitute
 summed test durations or a projected saving for end-to-end release evidence.
+
+
+### macOS headless WebKit custody fixture
+
+The mandatory macOS OPFS suite retains real nonextractable Ed25519 CryptoKeys,
+IndexedDB persistence, native WebKit wrapping/unwrapping, and restart signing.
+The actor-vault case additionally requires signing-only key usage and refusal
+of PKCS8 and JWK private export before and after restart. A wrong synthetic
+profile wrapping key must fail without replacing the actor; restoring the
+original fixture key must recover the same identity.
+
+Playwright 1.62.0's macOS embedder lacks the Cocoa master-key delegate required
+for CryptoKey serialization. The test-only `webkit-test-custody` helper supplies
+only those missing callbacks in the verified headless `org.webkit.Playwright`
+binary. It never replaces an existing callback or intercepts cryptography,
+CryptoKey serialization/export, IndexedDB, or product code. Each owned synthetic temporary profile has permissions 0700 and a distinct
+random fixture wrapping key with permissions 0600;
+missing/corrupt reopen keys are refused. Each launch needs a fresh load receipt.
+The adapter source and browser binary hashes are logged, and another Playwright
+version requires renewed source review. The launcher and library are confined
+to test subprocesses and never linked into or launched with Freed.
+
+This fixture proves native wrapping/persistence and JavaScript nonextractability.
+Its profile-local test wrapping key is not Keychain custody or protection from
+same-user filesystem reads, and it does not prove physical Safari/iOS acceptance.
+No real vault, profile, credential or Library enters the fixture. A failed or
+missing adapter is a failed gate; the macOS job is not skipped or substituted.

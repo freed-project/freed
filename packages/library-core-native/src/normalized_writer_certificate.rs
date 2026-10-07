@@ -47,13 +47,13 @@ pub struct WriterEpochReassignment {
     pub transition_certificate_digest: String,
 }
 
-fn digest_value(domain: &str, value: &Value) -> Result<String, String> {
+pub(crate) fn digest_value(domain: &str, value: &Value) -> Result<String, String> {
     let input = encode_operation_digest_input(domain, value, MAX_CERTIFICATE_BYTES)
         .map_err(|_| format!("Library Core {domain} digest input is invalid"))?;
     Ok(lower_hex(&Sha256::digest(input)))
 }
 
-fn authority_key_id(authority_public_key: &str) -> Result<String, String> {
+pub(crate) fn authority_key_id(authority_public_key: &str) -> Result<String, String> {
     digest_value(
         "authority-key",
         &json!({
@@ -63,7 +63,7 @@ fn authority_key_id(authority_public_key: &str) -> Result<String, String> {
     )
 }
 
-fn epoch_signature_input(epoch_id: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn epoch_signature_input(epoch_id: &str) -> Result<Vec<u8>, String> {
     encode_signature_input(
         "epoch-transition-certificate",
         &json!({ "certificate_digest": epoch_id }),
@@ -72,7 +72,7 @@ fn epoch_signature_input(epoch_id: &str) -> Result<Vec<u8>, String> {
     .map_err(|_| "Library Core epoch signature input is invalid".to_string())
 }
 
-fn possession_signature_input(epoch_id: &str, key_id: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn possession_signature_input(epoch_id: &str, key_id: &str) -> Result<Vec<u8>, String> {
     encode_signature_input(
         "authority-key-possession",
         &json!({

@@ -55,3 +55,14 @@ describe("Library Core fractional number codec", () => {
     ).toThrow("must decode to finite numbers");
   });
 });
+
+it("preserves a literal __proto__ map key without changing object prototypes", () => {
+  const original = JSON.parse('{"__proto__":{"score":0.125}}');
+  const encoded = encodeLibraryCoreFractionalNumbersV1(original);
+  expect(Object.getPrototypeOf(encoded)).toBe(Object.prototype);
+  expect(Object.hasOwn(encoded as object, "__proto__")).toBe(true);
+  const decoded = decodeLibraryCoreFractionalNumbersV1(encoded);
+  expect(Object.getPrototypeOf(decoded)).toBe(Object.prototype);
+  expect(Object.hasOwn(decoded as object, "__proto__")).toBe(true);
+  expect(decoded).toEqual(original);
+});

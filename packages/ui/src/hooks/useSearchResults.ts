@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   normalizeLibraryCoreFeedBrowseFilterV1,
   type FeedItem,
@@ -14,6 +14,17 @@ import {
   type SearchLibraryItems,
 } from "../context/PlatformContext.js";
 
+export type SearchFailureCode =
+  | "INVALID_QUERY"
+  | "SEARCH_UNAVAILABLE"
+  | "CURSOR_STALE"
+  | "SOURCE_INVALID"
+  | "SQLITE_FAILURE"
+  | "QUERY_CAPACITY"
+  | "QUERY_DEADLINE"
+  | "QUERY_CANCELLED"
+  | "QUERY_FAILED";
+
 export interface SearchResults {
   /** The bounded visible search window retained by React. */
   filteredItems: FeedItem[];
@@ -23,6 +34,11 @@ export interface SearchResults {
   resultCount: number;
   /** The governed SQLite search path refused or failed this query. */
   searchUnavailable?: boolean;
+  /** Bounded diagnostic only; never retains native messages or Library content. */
+  failureCode?: SearchFailureCode;
+  /** Presentation may be retained; pending results do not admit bulk actions. */
+  status?: "idle" | "loading" | "refreshing" | "ready" | "failed";
+  resultsCurrent?: boolean;
 }
 
 interface RankedSearchItem {
@@ -32,6 +48,10 @@ interface RankedSearchItem {
 
 interface PersistentSearchResult {
   readonly requestKey: string;
+  readonly contextKey: string;
+  readonly searcher: SearchLibraryItems;
+  readonly searchCorpusVersion: number;
+  readonly resultSourceVersion: number;
   readonly result: SearchResults;
 }
 
@@ -41,8 +61,31 @@ Object.freeze(EMPTY_SEARCH_ITEMS);
 const EMPTY_BROWSE_RESULT: SearchResults = Object.freeze({
   filteredItems: EMPTY_SEARCH_ITEMS,
   isSearching: false,
+  status: "idle",
+  resultsCurrent: false,
   resultCount: 0,
 });
+
+function searchFailureCode(error: unknown): SearchFailureCode {
+  const message = typeof error === "string" ? error : error instanceof Error ? error.message : "";
+  switch (message) {
+    case "QUERY_CAPACITY":
+    case "QUERY_DEADLINE":
+    case "QUERY_CANCELLED":
+    case "CURSOR_STALE":
+      return message;
+    case "normalized search cursor is stale or mismatched":
+    case "SQLite Library search cursor did not advance":
+      return "CURSOR_STALE";
+    case "normalized query source identity is invalid":
+    case "SQLite Library changed while optimistic fields were loading":
+      return "SOURCE_INVALID";
+    case "normalized search query identity is invalid":
+      return "INVALID_QUERY";
+    default:
+      return message.startsWith("normalized SQLite failure: ") ? "SQLITE_FAILURE" : "QUERY_FAILED";
+  }
+}
 
 function priorityValue(item: FeedItem): number {
   return item.priority ?? 0;
@@ -128,10 +171,13 @@ export function useSearchResults(
   const { searchLibraryItems } = usePlatform();
   const trimmedQuery = searchQuery.trim();
   const searchQueryValid = isLibraryCoreSearchQueryV1(trimmedQuery);
-  const normalizedFilter = useMemo(
-    () => normalizeLibraryCoreFeedBrowseFilterV1(activeFilter),
-    [activeFilter],
-  );
+  const candidate = normalizeLibraryCoreFeedBrowseFilterV1(activeFilter);
+  const signature = JSON.stringify(candidate);
+  const stableFilter = useRef({ signature, input: activeFilter, normalized: candidate });
+  if (stableFilter.current.signature !== signature) stableFilter.current = { signature, input: activeFilter, normalized: candidate };
+  const normalizedFilter = stableFilter.current.normalized;
+  const stableActiveFilter = stableFilter.current.input;
+  const contextKey = JSON.stringify([trimmedQuery, normalizedFilter, identityMode]);
   const requestKey = useMemo(
     () =>
       JSON.stringify([
@@ -151,9 +197,7 @@ export function useSearchResults(
   );
   const [persistentResult, setPersistentResult] =
     useState<PersistentSearchResult | null>(null);
-  const [persistentFailedKey, setPersistentFailedKey] = useState<string | null>(
-    null,
-  );
+  const [persistentFailedKey, setPersistentFailedKey] = useState<{ requestKey: string; searcher: SearchLibraryItems; failureCode: SearchFailureCode } | null>(null);
 
   useEffect(() => {
     if (!trimmedQuery || !searchQueryValid || !searchLibraryItems) {
@@ -164,26 +208,28 @@ export function useSearchResults(
 
     let cancelled = false;
     const controller = new AbortController();
-    setPersistentResult(null);
+    setPersistentResult(previous => previous?.searcher === searchLibraryItems && previous.contextKey === contextKey
+      && previous.searchCorpusVersion <= searchCorpusVersion && previous.resultSourceVersion <= resultSourceVersion ? previous : null);
     setPersistentFailedKey(null);
 
     readSearchResults({
       searcher: searchLibraryItems,
       searchCorpusVersion,
       trimmedQuery,
-      activeFilter,
+      activeFilter: stableActiveFilter,
       identityMode,
       signal: controller.signal,
     })
       .then((result) => {
         if (!cancelled) {
-          setPersistentResult({ requestKey, result });
+          setPersistentResult({ requestKey, contextKey, searcher: searchLibraryItems, searchCorpusVersion, resultSourceVersion, result });
           setPersistentFailedKey(null);
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (!cancelled && !controller.signal.aborted) {
-          setPersistentFailedKey(requestKey);
+          setPersistentResult(null);
+          setPersistentFailedKey({ requestKey, searcher: searchLibraryItems, failureCode: searchFailureCode(error) });
         }
       });
 
@@ -192,7 +238,9 @@ export function useSearchResults(
       controller.abort();
     };
   }, [
-    activeFilter,
+    stableActiveFilter,
+    contextKey,
+    resultSourceVersion,
     identityMode,
     normalizedFilter,
     requestKey,
@@ -210,23 +258,27 @@ export function useSearchResults(
       isSearching: true,
       resultCount: 0,
       searchUnavailable: true,
+      failureCode: !searchQueryValid ? "INVALID_QUERY" : "SEARCH_UNAVAILABLE",
+      status: "failed",
+      resultsCurrent: false,
     };
   }
 
-  if (persistentFailedKey === requestKey) {
+  if (persistentFailedKey?.requestKey === requestKey && persistentFailedKey.searcher === searchLibraryItems) {
     return {
       filteredItems: EMPTY_SEARCH_ITEMS,
       isSearching: true,
       resultCount: 0,
       searchUnavailable: true,
+      failureCode: persistentFailedKey.failureCode,
+      status: "failed",
+      resultsCurrent: false,
     };
   }
 
-  return persistentResult?.requestKey === requestKey
-    ? persistentResult.result
-    : {
-        filteredItems: EMPTY_SEARCH_ITEMS,
-        isSearching: true,
-        resultCount: 0,
-      };
+  const retained = persistentResult?.contextKey === contextKey && persistentResult.searcher === searchLibraryItems
+    && persistentResult.searchCorpusVersion <= searchCorpusVersion && persistentResult.resultSourceVersion <= resultSourceVersion ? persistentResult : null;
+  const current = retained?.requestKey === requestKey;
+  return retained ? { ...retained.result, status: current ? "ready" : "refreshing", resultsCurrent: current }
+    : { filteredItems: EMPTY_SEARCH_ITEMS, isSearching: true, resultCount: 0, status: "loading", resultsCurrent: false };
 }

@@ -181,6 +181,53 @@ impl LibraryCoreContentVault {
         transaction.commit().map_err(store_error)
     }
 
+    /// Local bytes only. The caller verifies canonical range and whole-content digests.
+    pub(crate) fn read_annotation_object(&self, key: &str, length: usize) -> Result<Vec<u8>, String> {
+        if !(1..=65_536).contains(&length) { return Err("annotation range exceeds its bound".into()); }
+        self.read_bounded_object(key, length as i64, 0, length as i64).map_err(|error| error.to_string())
+    }
+
+    fn read_bounded_object(&self, storage_key: &str, expected_length: i64, offset: i64, maximum_bytes: i64) -> Result<Vec<u8>, LibraryCoreStorageError> {
+        let name = c_name(storage_key)?;
+        // Do not wait for a FIFO peer before the descriptor type check below.
+        let descriptor = unsafe {
+            libc::openat(
+                self.directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW | libc::O_NONBLOCK,
+            )
+        };
+        if descriptor < 0 {
+            return Err(io::Error::last_os_error().into());
+        }
+        let mut file = unsafe { File::from_raw_fd(descriptor) };
+        let metadata = file.metadata()?;
+        if !metadata.is_file()
+            || metadata.mode() & 0o777 != 0o600
+            || metadata.uid() != self.owner
+            || metadata.nlink() != 1
+            || i64::try_from(metadata.len()).ok() != Some(expected_length)
+        {
+            return Err(LibraryCoreStorageError::from(
+                "verified content range object is invalid".to_string(),
+            ));
+        }
+        let byte_count = usize::try_from(
+            (expected_length - offset).min(maximum_bytes),
+        )
+        .map_err(|_| {
+            LibraryCoreStorageError::from("content range read length is invalid".to_string())
+        })?;
+        let mut bytes = vec![0u8; byte_count];
+        file.seek(SeekFrom::Start(
+            u64::try_from(offset).map_err(|_| {
+                LibraryCoreStorageError::from("content range read offset is invalid".to_string())
+            })?,
+        ))?;
+        file.read_exact(&mut bytes)?;
+        Ok(bytes)
+    }
+
     pub(crate) fn read_range_v1(
         &self,
         connection: &Connection,
@@ -225,52 +272,8 @@ impl LibraryCoreContentVault {
                 "content range read offset is outside the range".to_string(),
             ));
         }
-        let name = c_name(&proof.1)?;
-        let descriptor = unsafe {
-            libc::openat(
-                self.directory.as_raw_fd(),
-                name.as_ptr(),
-                libc::O_RDONLY | libc::O_CLOEXEC | libc::O_NOFOLLOW,
-            )
-        };
-        if descriptor < 0 {
-            return Err(io::Error::last_os_error().into());
-        }
-        let mut file = unsafe { File::from_raw_fd(descriptor) };
-        let metadata = file.metadata()?;
-        if !metadata.is_file()
-            || metadata.mode() & 0o777 != 0o600
-            || metadata.uid() != self.owner
-            || metadata.nlink() != 1
-            || i64::try_from(metadata.len()).ok() != Some(proof.0)
-        {
-            return Err(LibraryCoreStorageError::from(
-                "verified content range object is invalid".to_string(),
-            ));
-        }
-        let byte_count = usize::try_from(
-            (proof.0 - request.range_offset).min(request.maximum_bytes),
-        )
-        .map_err(|_| {
-            LibraryCoreStorageError::from("content range read length is invalid".to_string())
-        })?;
-        let mut bytes = vec![0u8; byte_count];
-        file.seek(SeekFrom::Start(
-            u64::try_from(request.range_offset).map_err(|_| {
-                LibraryCoreStorageError::from("content range read offset is invalid".to_string())
-            })?,
-        ))?;
-        file.read_exact(&mut bytes)?;
-        connection
-            .execute(
-                "UPDATE library_device_content_availability
-                 SET last_accessed_at = ?2
-                 WHERE content_digest = ?1 COLLATE BINARY
-                   AND last_accessed_at < ?2
-                   AND (last_accessed_at = 0 OR ?2 - last_accessed_at >= 60000);",
-                rusqlite::params![request.content_digest, request.accessed_at],
-            )
-            .map_err(store_error)?;
+        let bytes = self.read_bounded_object(&proof.1, proof.0, request.range_offset, request.maximum_bytes)?;
+        mark_content_accessed(connection, &request.content_digest, request.accessed_at)?;
         let next_range_offset =
             request.range_offset + i64::try_from(bytes.len()).expect("bounded read");
         Ok(ContentRangeReadResponseV1 {
@@ -844,6 +847,23 @@ fn clear_errno() {
     unsafe { *libc::__error() = 0 };
 }
 
+/// Coalesced local recency only. Call after the authenticated read snapshot closes.
+pub(crate) fn mark_content_accessed(
+    connection: &Connection,
+    digest: &str,
+    accessed_at: i64,
+) -> Result<(), LibraryCoreStorageError> {
+    connection.execute(
+        "UPDATE library_device_content_availability
+         SET last_accessed_at = ?2
+         WHERE content_digest = ?1 COLLATE BINARY
+           AND last_accessed_at < ?2
+           AND (last_accessed_at = 0 OR ?2 - last_accessed_at >= 60000);",
+        rusqlite::params![digest, accessed_at],
+    ).map_err(store_error)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -863,6 +883,31 @@ mod tests {
         let connection = Connection::open_in_memory().expect("database");
         install_normalized_schema_v1(&connection).expect("schema");
         (fixture, vault, connection)
+    }
+
+    #[test]
+    fn annotation_fifo_is_refused_without_waiting_for_a_writer() {
+        use std::os::unix::ffi::OsStrExt;
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let (fixture, vault, _) = fixture();
+        let path = std::ffi::CString::new(fixture.path().join("vault/quote.fifo").as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let (send, receive) = mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            send.send(vault.read_annotation_object("quote.fifo", 1)).unwrap();
+        });
+        let result = receive.recv_timeout(Duration::from_secs(2));
+        if result.is_err() {
+            // Release a regressed blocking open so a failing test cannot strand a thread.
+            let peer = unsafe { libc::open(path.as_ptr(), libc::O_RDWR | libc::O_NONBLOCK | libc::O_CLOEXEC) };
+            assert!(peer >= 0);
+            reader.join().unwrap();
+            unsafe { libc::close(peer); }
+            panic!("annotation vault open waited for a FIFO writer");
+        }
+        reader.join().unwrap();
+        assert!(result.unwrap().unwrap_err().contains("invalid"));
     }
 
     fn insert_canonical_range(connection: &Connection, content_digest: &str) {

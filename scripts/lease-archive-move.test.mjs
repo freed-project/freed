@@ -1,7 +1,7 @@
 import "./test-helpers/lease-archive-python-runtime.mjs";
 
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import childProcess, { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -21,6 +21,8 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -30,6 +32,16 @@ import {
   readPinnedLeaseArchiveHelperSource,
   resolveLeaseArchivePythonRuntime,
 } from "./lib/automation-control.mjs";
+
+import {
+  readDarwinFilesystemIdentity,
+  readDarwinFilesystemIdentities,
+  inspectAutomationKernelGuardFilesystemPaths,
+  inspectAutomationKernelGuardCutover,
+  resolveAutomationKernelGuardFilesystemType,
+} from "./lib/automation-kernel-guard-contract.mjs";
+
+import { installAutomationKernelGuardCutoverFixture } from "./test-helpers/automation-kernel-guard.mjs";
 
 const helperPath = path.join(
   import.meta.dirname,
@@ -3659,4 +3671,960 @@ test("private lease state batch binds transient parent mutations across launches
     assert.notEqual(terminal.status, 0);
     assert.match(String(terminal.stderr), /full inventory identity changed/);
   });
+});
+
+// Tier 1: syscall identity, response framing and path-generation admission.
+// Only the syscall is synthetic; the directory and inherited descriptor are real.
+test("Darwin filesystem identity binds path generations and bounded helper receipts", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-fs-identity-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  chmodSync(root, 0o755);
+  const receipt = (fd, device, inode) =>
+    Buffer.from(
+      JSON.stringify({
+        protocol: "freed-lease-archive-move-v1",
+        platform: "darwin",
+        device,
+        inode,
+        filesystemType: "apfs",
+        local: true,
+      }),
+    );
+  assert.equal(
+    readDarwinFilesystemIdentity(root, { query: receipt }).filesystemType,
+    "apfs",
+  );
+  assert.equal(lstatSync(root).mode & 0o777, 0o755);
+  const missing = path.join(root, "missing");
+  let missingQueried = false;
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(missing, {
+        query: () => {
+          missingQueried = true;
+        },
+      }),
+    /ENOENT/,
+  );
+  assert.equal(missingQueried, false);
+  assert.equal(existsSync(missing), false);
+  for (const value of [
+    null,
+    Buffer.alloc(0),
+    Buffer.alloc(4097),
+    Buffer.from("{"),
+    Buffer.from([0xff]),
+    Buffer.from("{}"),
+    Buffer.from("null"),
+  ]) {
+    assert.throws(
+      () => readDarwinFilesystemIdentity(root, { query: () => value }),
+      /Darwin filesystem query failed/,
+    );
+  }
+  for (const patch of [
+    { device: "0" },
+    { inode: "0" },
+    { local: "true" },
+    { filesystemType: "" },
+    { filesystemType: "apfs\0junk" },
+    { filesystemType: "x".repeat(16) },
+    { extra: true },
+    { platform: "linux" },
+    { protocol: "unknown" },
+  ]) {
+    assert.throws(
+      () =>
+        readDarwinFilesystemIdentity(root, {
+          query: (...args) =>
+            Buffer.from(
+              JSON.stringify({ ...JSON.parse(receipt(...args)), ...patch }),
+            ),
+        }),
+      /receipt identity\/shape mismatch/,
+    );
+  }
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(root, {
+        query: () => {
+          throw new Error("helper unavailable");
+        },
+      }),
+    /helper unavailable/,
+  );
+  for (const field of ["dev", "ino"]) {
+    for (const phase of [1, 2]) {
+      let calls = 0;
+      assert.throws(
+        () =>
+          readDarwinFilesystemIdentity(root, {
+            query: receipt,
+            fstat: (...args) => {
+              const stats = fstatSync(...args);
+              if (++calls === phase) stats[field] += 1n;
+              return stats;
+            },
+          }),
+        /generation mismatch/,
+      );
+    }
+  }
+  if (process.platform === "linux") {
+    assert.throws(
+      () => readDarwinFilesystemIdentity(root),
+      /filesystem identity helper failed:.*requires a Darwin/s,
+    );
+  }
+  const moved = `${root}-old`;
+  t.after(() => rmSync(moved, { recursive: true, force: true }));
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(root, {
+        query: (...args) => {
+          renameSync(root, moved);
+          mkdirSync(root);
+          return receipt(...args);
+        },
+      }),
+    /generation mismatch after query/,
+  );
+  rmSync(root, { recursive: true });
+  symlinkSync(moved, root);
+  assert.throws(
+    () => readDarwinFilesystemIdentity(root, { query: receipt }),
+    /ELOOP|too many levels of symbolic links/i,
+  );
+  rmSync(root);
+  renameSync(moved, root);
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(root, {
+        query: (...args) => {
+          renameSync(root, moved);
+          symlinkSync(moved, root);
+          return receipt(...args);
+        },
+      }),
+    /generation mismatch after query/,
+  );
+});
+
+test("Darwin filesystem syscall query preserves archive permissions and fails closed", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-fs-syscall-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  chmodSync(root, 0o755);
+  const fd = openSync(root, constants.O_RDONLY | constants.O_DIRECTORY);
+  t.after(() => closeSync(fd));
+  const stats = fstatSync(fd, { bigint: true });
+  const probe = (scenario, slot = 27, namedPath = root, descriptor = fd) =>
+    spawnSync(
+      pythonPath,
+      [
+        "-E",
+        "-I",
+        "-S",
+        "-c",
+        `
+import ctypes, os, runpy, sys
+ns = runpy.run_path(sys.argv[1], run_name="fixture")
+ns["platform"].system = lambda: "Darwin"
+scenario = sys.argv[3]
+class Query:
+    def __call__(self, fd, output):
+        assert fd == 3
+        if scenario == "error":
+            ctypes.set_errno(5)
+            return -1
+        value = ctypes.cast(output, ctypes.POINTER(ns["DarwinStatFs"])).contents
+        value.f_type = int(sys.argv[4])
+        value.f_fstypename = b"" if scenario == "missing" else (b"x" * 16 if scenario == "unterminated" else b"apfs")
+        if scenario == "garbage":
+            ctypes.memmove(ctypes.addressof(value) + ns["DarwinStatFs"].f_fstypename.offset, b"apfs" + bytes([0]) + b"junk", 9)
+        value.f_flags = 0 if scenario == "nonlocal" else ns["MNT_LOCAL"]
+        if scenario == "swap":
+            os.rename(sys.argv[2], sys.argv[2] + "-old")
+            os.mkdir(sys.argv[2])
+        return 0
+class Lib:
+    fstatfs = Query()
+ns["ctypes"].CDLL = lambda *a, **k: object() if scenario == "unavailable" else Lib()
+held = os.fstat(3)
+ns["filesystem_identity"]([str(held.st_dev + (1 if scenario == "device" else 0)), str(held.st_ino + (1 if scenario == "inode" else 0)), sys.argv[2]])
+`,
+        helperPath,
+        namedPath,
+        scenario,
+        String(slot),
+      ],
+      { stdio: ["ignore", "pipe", "pipe", descriptor] },
+    );
+  for (const slot of [0, 25, 26, 27, 0xffffffff]) {
+    const result = probe("ok", slot);
+    assert.equal(result.status, 0, result.stderr.toString());
+    assert.deepEqual(JSON.parse(result.stdout), {
+      protocol: "freed-lease-archive-move-v1",
+      platform: "darwin",
+      device: String(stats.dev),
+      inode: String(stats.ino),
+      filesystemType: "apfs",
+      local: true,
+    });
+  }
+  for (const scenario of [
+    "error",
+    "unavailable",
+    "missing",
+    "unterminated",
+    "garbage",
+    "device",
+    "inode",
+  ]) {
+    const result = probe(scenario);
+    assert.notEqual(result.status, 0, scenario);
+    assert.match(result.stderr.toString(), /filesystem-identity/);
+  }
+  const nonlocal = probe("nonlocal");
+  assert.equal(nonlocal.status, 0, nonlocal.stderr.toString());
+  assert.equal(JSON.parse(nonlocal.stdout).local, false);
+  const archive = runHelper(
+    "filesystem",
+    [String(stats.dev), String(stats.ino)],
+    [fd],
+  );
+  assert.notEqual(archive.status, 0);
+  assert.match(archive.stderr.toString(), /0700|private/);
+  const filePath = path.join(root, "marker");
+  writeFileSync(filePath, "marker", { mode: 0o600 });
+  const fileFd = openSync(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  t.after(() => closeSync(fileFd));
+  const fileResult = probe("ok", 27, filePath, fileFd);
+  assert.equal(fileResult.status, 0, fileResult.stderr.toString());
+  assert.equal(
+    JSON.parse(fileResult.stdout).inode,
+    String(fstatSync(fileFd, { bigint: true }).ino),
+  );
+  const fifo = path.join(root, "fifo");
+  assert.equal(spawnSync("mkfifo", [fifo]).status, 0);
+  const fifoFd = openSync(fifo, constants.O_RDONLY | constants.O_NONBLOCK);
+  t.after(() => closeSync(fifoFd));
+  assert.notEqual(probe("ok", 27, fifo, fifoFd).status, 0);
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity(fifo, {
+        query: () => {
+          throw new Error("FIFO must be rejected before the query");
+        },
+      }),
+    /descriptor is not a regular file or directory/,
+  );
+  t.after(() => rmSync(`${root}-old`, { recursive: true, force: true }));
+  assert.notEqual(probe("swap").status, 0);
+  rmSync(root, { recursive: true });
+  symlinkSync(`${root}-old`, root);
+  assert.notEqual(probe("ok").status, 0);
+});
+
+test("filesystem path admission rejects a different device even with the same APFS name", (t) => {
+  // /dev is an existing separate mount on Linux and Darwin; no mount mutation.
+  const root = path.parse(realpathSync(os.tmpdir())).root;
+  const candidate = "/dev";
+  if (lstatSync(root).dev === lstatSync(candidate).dev)
+    return t.skip("no separate fixture mount");
+  const result = inspectAutomationKernelGuardFilesystemPaths(
+    root,
+    [candidate],
+    { resolveFilesystemType: () => "apfs" },
+  );
+  assert.equal(result.ready, false);
+  assert.match(result.problems.join("\n"), /not on the admitted apfs/);
+});
+
+
+test("Darwin cutover filesystem admission queries regular markers as well as directories", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-cutover-query-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  installAutomationKernelGuardCutoverFixture(root);
+  const kinds = new Set();
+  const result = inspectAutomationKernelGuardCutover(root, {
+    resolveFilesystemType: (candidate) =>
+      resolveAutomationKernelGuardFilesystemType(candidate, {
+        platform: "darwin",
+        queryFilesystem: (namedPath) =>
+          readDarwinFilesystemIdentity(namedPath, {
+            query: (fd, device, inode) => {
+              kinds.add(fstatSync(fd).isFile() ? "file" : "directory");
+              return Buffer.from(
+                JSON.stringify({
+                  protocol: "freed-lease-archive-move-v1",
+                  platform: "darwin",
+                  device,
+                  inode,
+                  filesystemType: "apfs",
+                  local: true,
+                }),
+              );
+            },
+          }),
+      }),
+  });
+  assert.equal(result.ready, true, JSON.stringify(result.problems));
+  assert.deepEqual([...kinds].sort(), ["directory", "file"]);
+});
+
+
+test("descriptor-first admission rejects replacement before named validation without reading", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-open-admission-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const kind of ["identity", "helper"]) {
+    const candidate = path.join(root, kind);
+    writeFileSync(candidate, helperSource, { mode: 0o600 });
+    const originalLstat = fs.lstatSync;
+    const originalOpen = fs.openSync;
+    let descriptor;
+    let uses = 0;
+    let reads = 0;
+    const originalRead = fs.readSync;
+    const events = [];
+    const openMock = t.mock.method(fs, "openSync", (...args) => {
+      const opened = originalOpen(...args);
+      if (typeof args[1] === "number") {
+        events.push("open");
+        descriptor = opened;
+      }
+      return opened;
+    });
+    const lstatMock = t.mock.method(fs, "lstatSync", (...args) => {
+      events.push("lstat");
+      if (args[0] === candidate) {
+        renameSync(candidate, `${candidate}-old`);
+        writeFileSync(candidate, helperSource, { mode: 0o600 });
+      }
+      return originalLstat(...args);
+    });
+    const readMock = t.mock.method(fs, "readSync", (...args) => {
+      reads++;
+      return originalRead(...args);
+    });
+    syncBuiltinESMExports();
+    try {
+      assert.throws(() =>
+        kind === "identity"
+          ? readDarwinFilesystemIdentity(candidate, {
+              query: () => {
+                uses++;
+              },
+            })
+          : readPinnedLeaseArchiveHelperSource(candidate, {
+              expectedDigest: helperDigest,
+              checkpoint: () => {
+                uses++;
+              },
+            }),
+      );
+      assert.deepEqual(events, ["open", "lstat"]);
+      assert.equal(uses, 0);
+      assert.equal(reads, 0);
+      assert.throws(() => fstatSync(descriptor), { code: "EBADF" });
+    } finally {
+      readMock.mock.restore();
+      openMock.mock.restore();
+      lstatMock.mock.restore();
+      syncBuiltinESMExports();
+    }
+  }
+});
+
+test("descriptor-first helper admission refuses unsafe types and changed named generations", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-helper-admission-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const candidate = path.join(root, "helper");
+  writeFileSync(candidate, helperSource, { mode: 0o600 });
+  const link = path.join(root, "symlink");
+  symlinkSync(candidate, link);
+  const fifo = path.join(root, "fifo");
+  assert.equal(spawnSync("mkfifo", [fifo]).status, 0);
+  const socket = path.join(root, "socket");
+  assert.equal(
+    spawnSync(pythonPath, [
+      "-E",
+      "-I",
+      "-S",
+      "-c",
+      "import socket,sys; s=socket.socket(socket.AF_UNIX); s.bind(sys.argv[1]); s.close()",
+      socket,
+    ]).status,
+    0,
+  );
+  for (const unsafe of [link, fifo, socket, root, "/dev/null"]) {
+    let admitted = false;
+    assert.throws(() =>
+      readPinnedLeaseArchiveHelperSource(unsafe, {
+        expectedDigest: helperDigest,
+        checkpoint: () => {
+          admitted = true;
+        },
+      }),
+    );
+    assert.equal(admitted, false);
+  }
+  for (const mode of [0o660, 0o4600]) {
+    chmodSync(candidate, mode);
+    let admitted = false;
+    assert.throws(() =>
+      readPinnedLeaseArchiveHelperSource(candidate, {
+        expectedDigest: helperDigest,
+        checkpoint: () => {
+          admitted = true;
+        },
+      }),
+    );
+    assert.equal(admitted, false);
+  }
+  chmodSync(candidate, 0o600);
+  let queried = false;
+  assert.throws(
+    () =>
+      readDarwinFilesystemIdentity("/dev/null", {
+        query: () => {
+          queried = true;
+        },
+      }),
+    /not a regular file or directory/,
+  );
+  assert.equal(queried, false);
+  assert.throws(
+    () =>
+      readPinnedLeaseArchiveHelperSource(candidate, {
+        expectedDigest: helperDigest,
+        checkpoint: () => {
+          renameSync(candidate, `${candidate}-old`);
+          writeFileSync(candidate, helperSource, { mode: 0o600 });
+        },
+      }),
+    /changed during admission/,
+  );
+});
+
+// Tier 1: descriptor batch framing and atomic inspection admission. No host state.
+test("Darwin identity batches bind every slot and close all descriptors on faults", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-fs-batch-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const files = Array.from({ length: 33 }, (_, index) =>
+    path.join(root, String(index)),
+  );
+  for (const file of files) writeFileSync(file, "fixture");
+  const receipt = (entries) => ({
+    protocol: "freed-lease-archive-move-v1",
+    entries: entries.map((entry, index) => ({
+      protocol: "freed-lease-archive-move-v1",
+      platform: "darwin",
+      index,
+      device: entry.held.dev.toString(),
+      inode: entry.held.ino.toString(),
+      filesystemType: "apfs",
+      local: true,
+    })),
+  });
+  const encode = (entries) => Buffer.from(JSON.stringify(receipt(entries)));
+  const closed = (descriptors) => {
+    for (const fd of descriptors)
+      assert.throws(() => fstatSync(fd), { code: "EBADF" });
+  };
+  for (const count of [1, 31, 32]) {
+    let fds;
+    const result = readDarwinFilesystemIdentities(files.slice(0, count), {
+      query: (entries, bytes) => {
+        fds = entries.map((entry) => entry.descriptor);
+        const request = JSON.parse(bytes);
+        assert.deepEqual(
+          request.entries.map((entry) => entry.index),
+          Array.from({ length: count }, (_, index) => index),
+        );
+        assert.deepEqual(
+          request.entries.map((entry) => entry.inode),
+          entries.map((entry) => entry.held.ino.toString()),
+        );
+        return encode(entries);
+      },
+    });
+    assert.equal(result.length, count);
+    closed(fds);
+  }
+  for (const paths of [[], files, ["/" + "é".repeat(2048)], ["/" + "\ud800"]]) {
+    let opened = false;
+    assert.throws(() =>
+      readDarwinFilesystemIdentities(paths, {
+        open: () => {
+          opened = true;
+        },
+      }),
+    );
+    assert.equal(opened, false);
+  }
+  const faults = [
+    (r) => {
+      r.entries.reverse();
+    },
+    (r) => {
+      r.entries[1] = r.entries[0];
+    },
+    (r) => {
+      r.entries.pop();
+    },
+    (r) => {
+      r.entries[0].index = 4294967296;
+    },
+    (r) => {
+      r.entries[0].device = "9007199254740993";
+    },
+    (r) => {
+      r.entries[0].inode = "00";
+    },
+    (r) => {
+      r.entries[0].filesystemType = "é".repeat(4096);
+    },
+  ];
+  for (const fault of faults) {
+    const fds = [];
+    assert.throws(() =>
+      readDarwinFilesystemIdentities(files.slice(0, 2), {
+        query: (entries) => {
+          fds.push(...entries.map((entry) => entry.descriptor));
+          const response = receipt(entries);
+          fault(response);
+          return Buffer.from(JSON.stringify(response));
+        },
+      }),
+    );
+    closed(fds);
+  }
+  for (const bytes of [
+    Buffer.alloc(32 * 4096 + 1),
+    Buffer.from([0xff]),
+    Buffer.from("{}"),
+  ]) {
+    const fds = [];
+    assert.throws(() =>
+      readDarwinFilesystemIdentities([files[0]], {
+        query: (entries) => {
+          fds.push(entries[0].descriptor);
+          return bytes;
+        },
+      }),
+    );
+    closed(fds);
+  }
+  for (const failure of [
+    "last-open",
+    "early-replacement",
+    "spawn",
+    "postcheck",
+  ]) {
+    const fds = [];
+    let queried = false;
+    const moved = files[0] + "-old";
+    assert.throws(() =>
+      readDarwinFilesystemIdentities(files.slice(0, 3), {
+        open: (...args) => {
+          if (fds.length === 2 && failure === "last-open")
+            throw new Error("last open failed");
+          if (fds.length === 1 && failure === "early-replacement") {
+            renameSync(files[0], moved);
+            writeFileSync(files[0], "replacement");
+          }
+          const fd = openSync(...args);
+          fds.push(fd);
+          return fd;
+        },
+        query: (entries) => {
+          queried = true;
+          if (failure === "spawn") throw new Error("spawn failed");
+          if (failure === "postcheck") {
+            renameSync(files[0], moved);
+            writeFileSync(files[0], "replacement");
+          }
+          return encode(entries);
+        },
+      }),
+    );
+    closed(fds);
+    assert.equal(queried, ["spawn", "postcheck"].includes(failure));
+    if (existsSync(moved)) {
+      rmSync(files[0]);
+      renameSync(moved, files[0]);
+    }
+  }
+});
+
+test("Darwin filesystem inspections stream chunks without partial admission or device substitution", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-fs-inspection-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const files = Array.from({ length: 33 }, (_, index) =>
+    path.join(root, String(index)),
+  );
+  for (const file of files) writeFileSync(file, "fixture");
+  const observed = (entries) =>
+    Buffer.from(
+      JSON.stringify({
+        protocol: "freed-lease-archive-move-v1",
+        entries: entries.map((entry, index) => ({
+          protocol: "freed-lease-archive-move-v1",
+          platform: "darwin",
+          index,
+          device: entry.held.dev.toString(),
+          inode: entry.held.ino.toString(),
+          filesystemType: "apfs",
+          local: true,
+        })),
+      }),
+    );
+  for (const count of [31, 32, 33]) {
+    const chunks = [];
+    const result = inspectAutomationKernelGuardFilesystemPaths(
+      root,
+      files.slice(0, count),
+      {
+        platform: "darwin",
+        readFilesystemIdentities: (paths) => {
+          chunks.push(paths.length);
+          return readDarwinFilesystemIdentities(paths, { query: observed });
+        },
+      },
+    );
+    assert.equal(result.ready, true);
+    assert.deepEqual(chunks, [32, count - 30]); // baseline + root remain separate occurrences
+  }
+  for (const scenario of [
+    "second-chunk",
+    "device",
+    "nonlocal",
+    "unknown",
+    "missing-appears",
+  ]) {
+    let chunks = 0;
+    const missing = path.join(root, "new-directory");
+    const result = inspectAutomationKernelGuardFilesystemPaths(
+      root,
+      [...files, missing],
+      {
+        platform: "darwin",
+        readFilesystemIdentities: (paths) => {
+          chunks += 1;
+          if (chunks === 2 && scenario === "second-chunk")
+            throw new Error("second chunk failed");
+          const values = readDarwinFilesystemIdentities(paths, {
+            query: observed,
+          }).map((value) => ({ ...value }));
+          if (chunks === 2) {
+            if (scenario === "device")
+              values[0].device = String(BigInt(values[0].device) + 1n);
+            if (scenario === "nonlocal") values[0].local = false;
+            if (scenario === "unknown") values[0].filesystemType = "nfs";
+            if (scenario === "missing-appears") mkdirSync(missing);
+          }
+          return values;
+        },
+      },
+    );
+    assert.equal(result.ready, false, scenario);
+    assert.equal(result.device, null);
+    assert.equal(result.filesystemType, null);
+    assert.equal(chunks, 2);
+    if (existsSync(missing)) rmSync(missing, { recursive: true });
+  }
+  let resolverCalls = 0;
+  const injected = inspectAutomationKernelGuardFilesystemPaths(
+    root,
+    [files[0]],
+    {
+      platform: "darwin",
+      resolveFilesystemType: () => {
+        resolverCalls += 1;
+        return "apfs";
+      },
+      readFilesystemIdentities: () => {
+        throw new Error("must preserve injected resolver");
+      },
+    },
+  );
+  assert.equal(injected.ready, true);
+  assert.equal(resolverCalls, 3);
+});
+
+test("Darwin batch transport bounds slots and re-admits runtime and source each chunk", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-fs-transport-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const paths = Array.from({ length: 33 }, (_, index) =>
+    path.join(root, String(index)),
+  );
+  for (const file of paths) writeFileSync(file, "fixture");
+  const original = {
+    spawn: childProcess.spawnSync,
+    open: fs.openSync,
+    read: fs.readSync,
+    lstat: fs.lstatSync,
+  };
+  for (const scenario of [
+    "healthy",
+    "timeout",
+    "nonzero",
+    "source-drift",
+    "runtime-drift",
+  ]) {
+    let launches = 0;
+    const held = [];
+    const helperFds = new Set();
+    let sourceDriftHit = false;
+    let runtimeDriftHit = false;
+    try {
+      fs.openSync = (...args) => {
+        const fd = original.open(...args);
+        if (args[0] === helperPath) helperFds.add(fd);
+        if (args[0] === root || paths.includes(args[0])) held.push(fd);
+        return fd;
+      };
+      fs.readSync = (...args) => {
+        const result = original.read(...args);
+        if (
+          scenario === "source-drift" &&
+          launches === 1 &&
+          helperFds.has(args[0]) &&
+          result > 0
+        ) {
+          args[1][args[2]] ^= 1;
+          sourceDriftHit = true;
+        }
+        return result;
+      };
+      fs.lstatSync = (...args) => {
+        const result = original.lstat(...args);
+        if (
+          scenario === "runtime-drift" &&
+          launches === 1 &&
+          args[0] === process.env.FREED_TEST_LEASE_ARCHIVE_PYTHON_RUNTIME
+        ) {
+          result.mode |= 0o022;
+          runtimeDriftHit = true;
+        }
+        return result;
+      };
+      childProcess.spawnSync = (runtime, argv, options) => {
+        assert.equal(argv[7], "filesystem-identities");
+        assert.equal(options.timeout, 10_000);
+        assert.equal(options.maxBuffer, 32 * 4096);
+        const request = JSON.parse(options.input.subarray(Number(argv[5])));
+        assert.equal(options.stdio.length, request.entries.length + 3);
+        launches += 1;
+        held.push(...options.stdio.slice(3));
+        if (scenario === "timeout")
+          return {
+            error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }),
+            status: null,
+          };
+        if (scenario === "nonzero")
+          return { status: 1, stderr: "fixture refusal" };
+        return {
+          status: 0,
+          stdout: Buffer.from(
+            JSON.stringify({
+              protocol: request.protocol,
+              entries: request.entries.map((entry, index) => {
+                const stat = fstatSync(options.stdio[3 + index], {
+                  bigint: true,
+                });
+                assert.equal(entry.index, index);
+                assert.equal(entry.device, stat.dev.toString());
+                assert.equal(entry.inode, stat.ino.toString());
+                return {
+                  protocol: request.protocol,
+                  platform: "darwin",
+                  index,
+                  device: entry.device,
+                  inode: entry.inode,
+                  filesystemType: "apfs",
+                  local: true,
+                };
+              }),
+            }),
+          ),
+        };
+      };
+      syncBuiltinESMExports();
+      const result = inspectAutomationKernelGuardFilesystemPaths(root, paths, {
+        platform: "darwin",
+      });
+      assert.equal(
+        result.ready,
+        scenario === "healthy",
+        `${scenario}: ${result.problems}`,
+      );
+      assert.equal(launches, scenario === "healthy" ? 2 : 1);
+      assert.equal(sourceDriftHit, scenario === "source-drift");
+      assert.equal(runtimeDriftHit, scenario === "runtime-drift");
+      for (const fd of held)
+        assert.throws(() => fstatSync(fd), { code: "EBADF" });
+    } finally {
+      fs.openSync = original.open;
+      fs.readSync = original.read;
+      fs.lstatSync = original.lstat;
+      childProcess.spawnSync = original.spawn;
+      syncBuiltinESMExports();
+    }
+  }
+});
+
+test("Darwin batch child rejects malformed requests and emits no partial syscall receipt", (t) => {
+  const root = realpathSync(
+    mkdtempSync(path.join(os.tmpdir(), "freed-fs-child-")),
+  );
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const names = [path.join(root, "a"), path.join(root, "b")];
+  for (const name of names) writeFileSync(name, "fixture");
+  const fds = names.map((name) => openSync(name, constants.O_RDONLY));
+  t.after(() => fds.forEach(closeSync));
+  const request = () => ({
+    protocol: "freed-lease-archive-move-v1",
+    entries: fds.map((fd, index) => {
+      const stat = fstatSync(fd, { bigint: true });
+      return {
+        index,
+        path: names[index],
+        device: stat.dev.toString(),
+        inode: stat.ino.toString(),
+      };
+    }),
+  });
+  const child = (input, scenario = "healthy", descriptors = fds) =>
+    spawnSync(
+      pythonPath,
+      [
+        "-E",
+        "-I",
+        "-S",
+        "-c",
+        `
+import ctypes, os, runpy, sys
+ns = runpy.run_path(sys.argv[1], run_name="fixture")
+ns["platform"].system = lambda: "Darwin"
+scenario = sys.argv[2]
+class Query:
+    def __call__(self, fd, output):
+        assert 3 <= fd < 3 + int(sys.argv[4]), "descriptor must be fixed slot 3+i"
+        if scenario == "last-error" and fd == 4:
+            ctypes.set_errno(5)
+            return -1
+        value = ctypes.cast(output, ctypes.POINTER(ns["DarwinStatFs"])).contents
+        value.f_type = 999999
+        value.f_fstypename = b"apfs"
+        value.f_flags = ns["MNT_LOCAL"]
+        if scenario == "swap" and fd == 4:
+            name = sys.argv[3]
+            os.rename(name, name + "-old")
+            with open(name, "w") as replacement:
+                replacement.write("replacement")
+        return 0
+class Lib:
+    fstatfs = Query()
+ns["ctypes"].CDLL = lambda *a, **k: Lib()
+ns["filesystem_identities"]([])
+`,
+        helperPath,
+        scenario,
+        names[1],
+        String(descriptors.length),
+      ],
+      {
+        input,
+        stdio: ["pipe", "pipe", "pipe", ...descriptors],
+        timeout: 10_000,
+        maxBuffer: 32 * 4096,
+      },
+    );
+  const success = child(Buffer.from(JSON.stringify(request())));
+  assert.equal(success.status, 0, String(success.stderr));
+  const result = JSON.parse(success.stdout);
+  assert.deepEqual(
+    result.entries.map((entry) => entry.index),
+    [0, 1],
+  );
+  assert.deepEqual(
+    result.entries.map((entry) => entry.inode),
+    request().entries.map((entry) => entry.inode),
+  );
+  for (const count of [31, 32]) {
+    const value = request();
+    value.entries = Array.from({ length: count }, (_, index) => ({ ...value.entries[index % 2], index }));
+    const result = child(Buffer.from(JSON.stringify(value)), "healthy", Array.from({ length: count }, (_, index) => fds[index % 2]));
+    assert.equal(result.status, 0, String(result.stderr));
+    assert.deepEqual(JSON.parse(result.stdout).entries.map((entry) => entry.index), Array.from({ length: count }, (_, index) => index));
+  }
+  for (const mutate of [
+    (r) => {
+      r.entries = [];
+    },
+    (r) => {
+      r.entries = Array.from({ length: 33 }, () => r.entries[0]);
+    },
+    (r) => {
+      r.entries.reverse();
+    },
+    (r) => {
+      r.entries[1] = r.entries[0];
+    },
+    (r) => {
+      r.entries[0].index = 4294967296;
+    },
+    (r) => {
+      r.entries[0].index = true;
+    },
+    (r) => {
+      r.entries[0].fd = 3;
+    },
+    (r) => {
+      r.entries[0].device = "18446744073709551616";
+    },
+    (r) => {
+      r.entries[0].inode = "01";
+    },
+    (r) => {
+      r.entries[0].path = "/" + "é".repeat(2048);
+    },
+  ]) {
+    const value = request();
+    mutate(value);
+    const result = child(Buffer.from(JSON.stringify(value)));
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout.length, 0);
+  }
+  for (const input of [
+    Buffer.from([0xff]),
+    Buffer.from("é".repeat(524289)),
+    Buffer.from('{"protocol":1,"protocol":2,"entries":[]}'),
+  ]) {
+    const result = child(input);
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout.length, 0);
+  }
+  for (const scenario of ["last-error", "swap"]) {
+    const result = child(Buffer.from(JSON.stringify(request())), scenario);
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stdout.length, 0);
+  }
 });

@@ -10,6 +10,7 @@ import {
   runBackgroundJob,
 } from "./background-runtime-coordinator.js";
 import { waitForFactoryResetDrain } from "@freed/ui/lib/factory-reset";
+import { isDesktopHandoffPaused } from "./factory-reset-guard";
 
 const BATCH_SIZE = 100;
 const PROCESS_INTERVAL_MS = 5_000;
@@ -134,7 +135,7 @@ async function processNextBatch(): Promise<void> {
 }
 
 export function start(options: SemanticClassifierOptions = {}): void {
-  if (running || factoryResetDrainInProgress) return;
+  if (running || factoryResetDrainInProgress || isDesktopHandoffPaused()) return;
   isEnabled = options.isEnabled ?? (() => false);
   running = true;
   scheduled = isEnabled();
@@ -205,8 +206,9 @@ export function stop(): void {
 }
 
 /** Stop future classification and wait for any current document write to settle. */
-export async function stopAndDrain(): Promise<void> {
-  factoryResetDrainInProgress = true;
+export async function stopAndDrain(options: { resumable?: boolean } = {}): Promise<void> {
+  if (options.resumable && !isDesktopHandoffPaused()) throw new Error("Resumable classifier drain requires the handoff pause");
+  if (!options.resumable) factoryResetDrainInProgress = true;
   stop();
   await waitForFactoryResetDrain(
     () => Array.from(activeResetSensitiveOperations),

@@ -15,6 +15,7 @@ import {
   DEFAULT_MAX_JOBS,
   buildToolingSmokeMatrix,
   selectNativeAcceptance,
+  selectPreviewNativeAcceptance,
 } from "./lib/tooling-smoke-plan.mjs";
 import { REPO_ROOT, SUITE_NAMES } from "./lib/tooling-smoke-suites.mjs";
 
@@ -85,6 +86,7 @@ export function resolvePlan({ all, baseRef, changedFiles, maxJobs }) {
     ...buildToolingSmokeMatrix({ changedFiles: files, maxJobs }),
     files,
     native: selectNativeAcceptance(files),
+    previewNative: selectPreviewNativeAcceptance(files),
   };
 }
 
@@ -135,11 +137,15 @@ function main(argv) {
     `  native acceptance (macOS): ${plan.native.required ? "required" : "not applicable"}\n`,
   );
 
+  process.stderr.write(
+    `  preview process acceptance (macOS): ${plan.previewNative ? "required" : "not applicable"}\n`,
+  );
+
   const matrix = JSON.stringify({ include: plan.include });
   if (options.githubOutput && process.env.GITHUB_OUTPUT) {
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      `matrix=${matrix}\napplicable=${plan.applicable}\njob-count=${plan.jobCount}\nnative=${plan.native.required}\nreason=${plan.reason}\n`,
+      `matrix=${matrix}\napplicable=${plan.applicable}\njob-count=${plan.jobCount}\nnative=${plan.native.required}\npreview-native=${plan.previewNative}\nreason=${plan.reason}\n`,
     );
   }
   process.stdout.write(`${matrix}\n`);

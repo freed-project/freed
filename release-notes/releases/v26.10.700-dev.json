@@ -1,0 +1,77 @@
+{
+  "tag": "v26.10.700-dev",
+  "version": "26.10.700-dev",
+  "channel": "dev",
+  "dayKey": "26.10.7",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against the exact product source. Local ARM64 installed Library verification passed; signed artifact and multi-device acceptance remain separate release checks."
+  ],
+  "generatedAt": "2026-10-07T04:28:07.888Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.601-dev",
+    "previousPublishedDayTag": "v26.10.601-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "2721d818f6bd5e6fdd62203bb07e9fc761f4f2cf",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.601-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "066a72269649dbd06aaa4b3cecc12ce527af6d84",
+        "toInclusiveProductCommitSha": "2721d818f6bd5e6fdd62203bb07e9fc761f4f2cf"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:b5cf68676913e077188557342e70319ca1dadb18aea22983698d2a54ea2922f6",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.700-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.700-dev"
+    ],
+    "prNumbers": [
+      2161
+    ],
+    "commitSubjects": [
+      "feat: add Linux Library credentials and repair release admission",
+      "fix: preserve normal Library startup in transfer previews (#2161)",
+      "fix: show ten individual Desktop releases",
+      "fix: center descriptions in media-free sidebar tiles",
+      "docs: require tracked changelog release closeout"
+    ]
+  },
+  "release": {
+    "deck": "Linux Library keys and transfer preview startup",
+    "features": [
+      "Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts."
+    ],
+    "fixes": [
+      "Locked or unavailable Linux vaults return an error instead of replacing Library keys.",
+      "Transfer acceptance previews retain normal onboarding and Library selection without automatically creating a sample Library.",
+      "Desktop Settings shows the ten newest individual releases with complete notes.",
+      "Descriptions in sidebar tiles without media are centered."
+    ],
+    "followUps": [
+      "Primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.700-dev\n\nLinux Library keys and transfer preview startup\n\n### Features\n\n- Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts\n\n### Fixes\n\n- Locked or unavailable Linux vaults return an error instead of replacing Library keys\n- Transfer acceptance previews retain normal onboarding and Library selection without automatically creating a sample Library\n- Desktop Settings shows the ten newest individual releases with complete notes\n- Descriptions in sidebar tiles without media are centered\n\n### Follow-ups\n\n- Primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

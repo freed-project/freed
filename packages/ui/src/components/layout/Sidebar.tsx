@@ -23,7 +23,7 @@ import {
 import { MapPinIcon, RssIcon, BookmarkIcon, ArchiveIcon, UsersIcon, CopyIcon } from "../icons.js";
 import { getTopSourceItems, type SourceNavigationItem } from "../../lib/source-navigation.js";
 import { useIsMobile } from "../../hooks/useIsMobile.js";
-import { useLibraryFacetSummary, useLibraryRssItemSummary } from "../../hooks/useLibraryFacetSummary.js";
+import { useLibraryNavigationCounts } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryRssFeedPage } from "../../hooks/useLibraryRssFeedPage.js";
 import { SearchJumpField } from "./SearchJumpField.js";
 import { resolveAnimationIntensity } from "../../lib/animation-preferences.js";
@@ -706,12 +706,13 @@ export function Sidebar({
   const display = useAppStore((s) => s.preferences.display);
   const animationIntensity = resolveAnimationIntensity(display.animationIntensity);
   const health = useDebugStore((s) => s.health);
-  const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
+  const { facets: facetState, rss: rssState } = useLibraryNavigationCounts(searchCorpusVersion);
+  const libraryFacets = facetState.summary;
   const totalUnreadCount = libraryFacets.unreadCount;
   const totalItemCount = libraryFacets.totalCount;
   const unreadCountByPlatform = Object.fromEntries(libraryFacets.platformCounts.map(row => [row.platform, row.unreadCount]));
   const itemCountByPlatform = Object.fromEntries(libraryFacets.platformCounts.map(row => [row.platform, row.totalCount]));
-  const rssSummary = useLibraryRssItemSummary(searchCorpusVersion);
+  const rssSummary = rssState.summary;
   const rssUnreadCount = rssSummary?.unreadCount ?? 0;
   const rssItemCount = rssSummary?.totalCount ?? 0;
   const savedCount = libraryFacets.savedCount;
@@ -1914,6 +1915,8 @@ export function Sidebar({
       )}
 
       <aside
+        data-library-facets-status={facetState.status}
+        data-library-rss-status={rssState.status}
         data-testid="app-sidebar-mobile"
         data-open={mobileOpen ? "true" : "false"}
         className={`
@@ -1974,6 +1977,8 @@ export function Sidebar({
         <div className="relative h-full w-full overflow-visible">
           {renderMode !== "closed" || closedPreviewActive ? (
             <aside
+        data-library-facets-status={facetState.status}
+        data-library-rss-status={rssState.status}
               data-testid="app-sidebar"
               className="theme-floating-panel relative z-10 flex h-full min-h-0 shrink-0 flex-col overflow-hidden"
               style={{

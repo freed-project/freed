@@ -1,7 +1,7 @@
 {
   "name": "@freed/pwa",
   "private": true,
-  "version": "26.9.1400",
+  "version": "26.10.700",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,7 +15,8 @@
     "test:unit": "vitest run --maxWorkers=1",
     "test:unit:watch": "vitest",
     "test:ui": "node ../../node_modules/playwright/cli.js test --ui",
-    "test:headed": "node ../../node_modules/playwright/cli.js test --headed"
+    "test:headed": "node ../../node_modules/playwright/cli.js test --headed",
+    "build:transfer-acceptance": "tsc -b && vite build --config vite.config.ts --mode library-transfer-acceptance && node ../../scripts/validate-retired-automerge-runtime.mjs pwa && node ../../scripts/validate-pwa-optional-assets.mjs"
   },
   "dependencies": {
     "@freed/capture-save": "*",
@@ -30,7 +31,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
-    "undici": "^8.9.0",
+    "undici": "^8.10.2",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

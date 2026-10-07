@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
+import { scanLibraryCoreNormalizedBackgroundItemsV1, readLibraryCoreNormalizedItemDetailV1,
+  parseLibraryCoreItemScanResponseV1, parseLibraryCoreItemDetailResponseV1,
+  type LibraryCoreNormalizedReaderRuntime } from "@freed/shared/library-core";
 import type { LibraryMutationEvent } from "./library-types";
 import type { ConfirmFn } from "./outbox";
 import type { PlatformActions } from "./platform-actions";
@@ -138,6 +141,77 @@ describe("outbox processor", () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
+
+  // Tier 1: actual scan/detail mapping and scheduler must not rediscover an accepted effect.
+  it.each(["success", "failed-ack", "restart-after-failed-ack"] as const)(
+    "retains canonical seen state through refresh and %s", async (mode) => {
+      vi.useFakeTimers(); vi.setSystemTime(15_000);
+      const { startOutboxProcessor } = await loadOutbox();
+      let seenSyncedAt: number | null = null;
+      const source = { generationId: "a".repeat(64), projectionRevision: 1, transitionSequence: 1 };
+      const card = { archived: false, authorAvatarUrl: null, authorDisplayName: "Author", authorHandle: "author",
+        authorId: "author", capturedAt: 1, contentSignalTags: [], contentText: "synthetic", contentType: "post",
+        engagementComments: null, engagementLikes: null, eventConfidenceBasisPoints: null, eventStartsAt: null,
+        globalId: "x:synthetic", liked: false, likedAt: null, likedSyncedAt: null, linkPreviewTitle: null,
+        linkPreviewUrl: null, locationName: null, mediaTypes: [], mediaUrls: [], platform: "x", publishedAt: 1,
+        readAt: 70, readingTimeMinutes: null, saved: false, sourceUrl: "https://example.invalid/item", tags: [] };
+      const runtime = { randomId: () => "synthetic", query: async (request: any) => {
+        if (request.queryId === "background_item_page_v1") {
+          const parsed = parseLibraryCoreItemScanResponseV1({ queryId: request.queryId, schemaVersion: 1,
+            nextCursor: null, source, rows: [{ ...card, hidden: false, seenSyncedAt, rankingCareLevel: null,
+              rankingEngagementReposts: null, rankingEngagementViews: null, rssSource: null,
+              sampleDataFingerprint: null, topics: [] }] }, request);
+          if (!parsed.ok) throw new Error(parsed.error); return parsed.value;
+        }
+        if (request.queryId === "item_detail_v1") {
+          const parsed = parseLibraryCoreItemDetailResponseV1({ queryId: request.queryId, schemaVersion: 1,
+            source, item: { card, seenSyncedAt, contentBody: { storage: "inline", blobDigest: null },
+              preservedBody: { storage: "none", blobDigest: null }, mediaBlobDigests: [] } }, request);
+          if (!parsed.ok) throw new Error(parsed.error); return parsed.value;
+        }
+        if (request.queryId === "item_annotations_v1") return { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, source, highlights: [], tags: [] };
+        if (request.queryId === "item_annotation_edit_state_v1") return { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, source, pending: false, localSequence: 0 };
+        if (request.queryId === "optimistic_fields_v1") return { source, rows: [] };
+        throw new Error(`unexpected query ${request.queryId}`);
+      } } as LibraryCoreNormalizedReaderRuntime;
+      const scan = (visit: (items: readonly FeedItem[]) => void | Promise<void>) =>
+        scanLibraryCoreNormalizedBackgroundItemsV1(runtime, async items => { await visit(items); return "continue" as const; });
+      let subscriber: ((event: LibraryMutationEvent) => void) | null = null;
+      const markSeen = vi.fn(async () => true);
+      const actions = new Map([["x" as const, { markSeen, like: vi.fn(async () => true), unlike: vi.fn(async () => true), commentUrl: () => null }]]);
+      let attempts = 0;
+      let successfulAcknowledgements = 0;
+      const confirm = vi.fn(async (_id: string, stamp?: number) => {
+        if (stamp === undefined) throw new Error("scheduler omitted confirmation time");
+        attempts++;
+        if (mode !== "success" && attempts === 1) throw new Error("ack unavailable before commit");
+        seenSyncedAt = stamp; successfulAcknowledgements++;
+        const item = await readLibraryCoreNormalizedItemDetailV1(runtime, card.globalId);
+        requireSubscriber(subscriber)({ source: "item_patch", mutation: "CONFIRM_SEEN_SYNCED",
+          changedItemIds: [card.globalId], changedItems: [item!], requiresFullScan: false });
+      });
+      const start = () => startOutboxProcessor(scan, cb => { subscriber = cb; return () => {}; }, actions,
+        vi.fn(async () => {}), confirm);
+      let stop = start();
+      if (mode === "restart-after-failed-ack") {
+        await vi.advanceTimersByTimeAsync(500);
+        expect(attempts).toBe(1); stop(); stop = start();
+      }
+      await vi.runAllTimersAsync();
+      expect(markSeen).toHaveBeenCalledTimes(1);
+      expect(successfulAcknowledgements).toBe(1);
+      for (let i = 0; i < 20; i++) {
+        requireSubscriber(subscriber)(makeFullScanEvent()); await vi.runAllTimersAsync();
+        const item = await readLibraryCoreNormalizedItemDetailV1(runtime, card.globalId);
+        requireSubscriber(subscriber)({ source: "item_patch", mutation: "CONFIRM_SEEN_SYNCED",
+          changedItemIds: [card.globalId], changedItems: [item!], requiresFullScan: false });
+        await vi.runAllTimersAsync();
+      }
+      stop(); stop = start(); await vi.runAllTimersAsync(); stop();
+      expect(markSeen).toHaveBeenCalledTimes(1);
+      expect(successfulAcknowledgements).toBe(1);
+      expect(confirm.mock.calls.every(([, stamp]) => stamp === 15_000)).toBe(true);
+    });
 
   it("drains item patches without scanning the full item list", async () => {
     vi.useFakeTimers();

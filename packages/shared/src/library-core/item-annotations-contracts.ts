@@ -118,3 +118,25 @@ export function parseLibraryCoreItemAnnotationsResponseV1(
     }),
   };
 }
+
+/** Device-local exclusion is separate from the canonical annotation snapshot. */
+export interface LibraryCoreItemAnnotationEditStateRequestV1 {
+  readonly globalId: string;
+  readonly queryId: "item_annotation_edit_state_v1";
+  readonly schemaVersion: 1;
+}
+export interface LibraryCoreItemAnnotationEditStateResponseV1 extends LibraryCoreItemAnnotationEditStateRequestV1 {
+  readonly source: LibraryCoreFeedPageSourceV1;
+  readonly localSequence: number;
+  readonly pending: boolean;
+}
+export function parseLibraryCoreItemAnnotationEditStateRequestV1(value: unknown): LibraryCoreFeedPageParseResult<LibraryCoreItemAnnotationEditStateRequestV1> {
+  if (!closed(value, ["globalId", "queryId", "schemaVersion"]) || value.queryId !== "item_annotation_edit_state_v1") return { ok: false, error: "annotation edit state request is invalid" };
+  const parsed = parseLibraryCoreItemDetailRequestV1({ ...value, queryId: "item_detail_v1" });
+  return parsed.ok ? { ok: true, value: Object.freeze({ ...parsed.value, queryId: "item_annotation_edit_state_v1" }) } : parsed;
+}
+export function parseLibraryCoreItemAnnotationEditStateResponseV1(value: unknown, request: LibraryCoreItemAnnotationEditStateRequestV1): LibraryCoreFeedPageParseResult<LibraryCoreItemAnnotationEditStateResponseV1> {
+  if (!closed(value, ["globalId", "queryId", "schemaVersion", "source", "localSequence", "pending"]) || value.globalId !== request.globalId || value.queryId !== request.queryId || value.schemaVersion !== 1 || typeof value.pending !== "boolean" || typeof value.localSequence !== "number" || !Number.isSafeInteger(value.localSequence) || value.localSequence < 0) return { ok: false, error: "annotation edit state response is invalid" };
+  const source = parseLibraryCoreFeedPageSourceV1(value.source);
+  return source.ok ? { ok: true, value: Object.freeze({ ...request, source: source.value, localSequence: value.localSequence, pending: value.pending }) } : source;
+}

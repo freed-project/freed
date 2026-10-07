@@ -27,6 +27,7 @@ import {
   type LibraryCoreContentFetchCandidateV1,
   type LibraryCoreAnalysisCandidateBatchV1,
   type LibraryCorePriorityCandidateBatchV1,
+  type LibraryCoreFeedPageSourceV1,
   type LibraryCoreFacetSummaryV1,
 } from "@freed/shared/library-core";
 import {
@@ -159,13 +160,11 @@ const NORMALIZED_READER_RUNTIME = Object.freeze({
   randomId: () => crypto.randomUUID(),
 });
 
-export async function readLibraryCoreItemDetail(
-  globalId: string,
-): Promise<FeedItem | null> {
-  return readLibraryCoreNormalizedItemDetailV1(
-    NORMALIZED_READER_RUNTIME,
-    globalId,
-  );
+export function readLibraryCoreItemDetail(globalId: string): Promise<FeedItem | null>;
+export function readLibraryCoreItemDetail(globalId: string, withAnnotations: true): ReturnType<typeof readLibraryCoreNormalizedItemContentV1>;
+export async function readLibraryCoreItemDetail(globalId: string, withAnnotations = false) {
+  if (withAnnotations) return readLibraryCoreNormalizedItemContentV1(NORMALIZED_READER_RUNTIME, globalId, true);
+  return readLibraryCoreNormalizedItemDetailV1(NORMALIZED_READER_RUNTIME, globalId);
 }
 
 export async function pinLibraryCoreItemContent(
@@ -298,11 +297,13 @@ export async function readLibraryCoreAnalysisCandidateBatch(
 export async function readLibraryCorePriorityCandidateBatch(
   priorityComputedBeforeMs: number,
   maximumItems: number,
+  timeOnlySource?: LibraryCoreFeedPageSourceV1,
 ): Promise<LibraryCorePriorityCandidateBatchV1> {
   return readLibraryCoreNormalizedPriorityCandidateBatchV1(
     NORMALIZED_READER_RUNTIME,
     priorityComputedBeforeMs,
     maximumItems,
+    timeOnlySource,
   );
 }
 

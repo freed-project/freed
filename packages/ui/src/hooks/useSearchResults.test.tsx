@@ -154,6 +154,8 @@ describe("SQLite-streamed Library search", () => {
       filteredItems: [],
       isSearching: false,
       resultCount: 0,
+      resultsCurrent: false,
+      status: "idle",
     });
   });
 
@@ -261,14 +263,14 @@ describe("SQLite-streamed Library search", () => {
       query: "x".repeat(1_025),
     });
     expect(invalidSearch).not.toHaveBeenCalled();
-    expect(invalid.latest()?.searchUnavailable).toBe(true);
+    expect(invalid.latest()).toMatchObject({ searchUnavailable: true, failureCode: "INVALID_QUERY", status: "failed", resultsCurrent: false });
 
     await act(async () => root?.unmount());
     root = null;
     container?.remove();
     container = null;
     const absent = await render(platformConfig(), { query: "needle" });
-    expect(absent.latest()?.searchUnavailable).toBe(true);
+    expect(absent.latest()).toMatchObject({ searchUnavailable: true, failureCode: "SEARCH_UNAVAILABLE", status: "failed", resultsCurrent: false });
 
     await act(async () => root?.unmount());
     root = null;
@@ -281,6 +283,63 @@ describe("SQLite-streamed Library search", () => {
     });
     const rejected = await render(platformConfig(rejectedSearch));
     await settleUntil(() => rejected.latest()?.searchUnavailable === true);
-    expect(rejected.latest()?.searchUnavailable).toBe(true);
+    expect(rejected.latest()).toMatchObject({ searchUnavailable: true, failureCode: "QUERY_FAILED", status: "failed", resultsCurrent: false });
   });
+
+  it("admits a true zero only after SQLite search completes", async () => {
+    let complete!: () => void;
+    const search = vi.fn<NonNullable<PlatformConfig["searchLibraryItems"]>>(
+      () => new Promise<void>((resolve) => { complete = resolve; }),
+    );
+    const result = await render(platformConfig(search));
+    expect(result.latest()).toMatchObject({ status: "loading", resultsCurrent: false, filteredItems: [] });
+    await act(async () => complete());
+    expect(result.latest()).toMatchObject({ status: "ready", resultsCurrent: true, resultCount: 0, filteredItems: [] });
+    expect(result.latest()?.failureCode).toBeUndefined();
+  });
+
+  it.each([
+    ["QUERY_CAPACITY", "QUERY_CAPACITY"],
+    [new Error("QUERY_DEADLINE"), "QUERY_DEADLINE"],
+    ["QUERY_CANCELLED", "QUERY_CANCELLED"],
+    ["normalized search cursor is stale or mismatched", "CURSOR_STALE"],
+    [new Error("normalized query source identity is invalid"), "SOURCE_INVALID"],
+    ["normalized SQLite failure: private fixture row text", "SQLITE_FAILURE"],
+    [{ privateBody: "never retain this object" }, "QUERY_FAILED"],
+  ] as const)("clears partial matches and retains only bounded diagnostic %#", async (error, failureCode) => {
+    const search = vi.fn<NonNullable<PlatformConfig["searchLibraryItems"]>>(async (_query, _version, visit) => {
+      visit([{ item: item(1), score: 2 }]);
+      throw error;
+    });
+    const result = await render(platformConfig(search));
+    await settleUntil(() => result.latest()?.status === "failed");
+    expect(result.latest()).toEqual({
+      filteredItems: [], isSearching: true, resultCount: 0,
+      searchUnavailable: true, status: "failed", resultsCurrent: false, failureCode,
+    });
+  });
+
+  it("ignores obsolete rejection after the replacement query succeeds", async () => {
+    let rejectFirst!: (reason: unknown) => void;
+    let latest: SearchResults | null = null;
+    const search = vi.fn<NonNullable<PlatformConfig["searchLibraryItems"]>>((query, _version, visit) => {
+      if (query === "first") return new Promise<void>((_resolve, reject) => { rejectFirst = reject; });
+      visit([{ item: item(2), score: 1 }]);
+      return Promise.resolve();
+    });
+    const platform = platformConfig(search);
+    container = document.createElement("div");
+    root = createRoot(container);
+    const onResult = (value: SearchResults) => { latest = value; };
+    await act(async () => root?.render(<PlatformProvider value={platform}><Harness query="first" onResult={onResult} /></PlatformProvider>));
+    const firstSignal = search.mock.calls[0]?.[3]?.signal;
+    await act(async () => root?.render(<PlatformProvider value={platform}><Harness query="second" onResult={onResult} /></PlatformProvider>));
+    expect(firstSignal?.aborted).toBe(true);
+    expect(latest).toMatchObject({ status: "ready", resultsCurrent: true });
+    await act(async () => rejectFirst("QUERY_CANCELLED"));
+    expect(latest).toMatchObject({ status: "ready", resultsCurrent: true, resultCount: 1 });
+    expect(latest?.filteredItems[0]?.globalId).toBe("rss:item-002");
+    expect(latest?.failureCode).toBeUndefined();
+  });
+
 });

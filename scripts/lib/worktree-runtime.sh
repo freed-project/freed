@@ -198,16 +198,18 @@ write_process_metadata() {
   local command="$6"
   local log_path="$7"
   local preview_label="$8"
-  local abs_path worktree_id manifest
+  local abs_path worktree_id manifest identity
 
   ensure_runtime_dirs
 
   abs_path="$(resolve_worktree_path "${path}")"
   worktree_id="$(worktree_id_for_path "${abs_path}")"
   manifest="$(process_manifest_path "${pid}")"
+  identity="$(python3 "${SCRIPT_DIR}/lib/preview-processes.py" capture "${pid}")" || return 1
 
   {
     write_shell_var "PID" "${pid}"
+    write_shell_var "PROCESS_IDENTITY" "${identity}"
     write_shell_var "PROCESS_KIND" "${kind}"
     write_shell_var "TARGET" "${target}"
     write_shell_var "WORKTREE_ID" "${worktree_id}"
@@ -279,14 +281,8 @@ prune_runtime_state() {
     fi
   done
 
-  for manifest in "$(process_state_dir)"/*.env; do
-    unset PID
-    # shellcheck disable=SC1090
-    source "${manifest}"
-    if ! is_pid_running "${PID:-}"; then
-      rm -f "${manifest}"
-    fi
-  done
+  # A missing launcher can leave live children. Only verified stop may
+  # remove a process record; pruning a bare PID would lose that evidence.
 
   for manifest in "$(lock_state_dir)"/*.env; do
     unset LOCK_PID

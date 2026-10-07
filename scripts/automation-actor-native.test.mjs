@@ -1285,3 +1285,44 @@ test(
     assert.notEqual(provisionerResult.status, 0);
   },
 );
+
+// Exercise the production pinned transport and actual fstatfs ABI on hosted APFS.
+test(
+  "native kernel filesystem query admits bound APFS files and directories",
+  { skip: !darwinOnly },
+  async (t) => {
+    const {
+      inspectAutomationKernelGuardCutover,
+      readDarwinFilesystemIdentity,
+      resolveAutomationKernelGuardFilesystemType,
+    } = await import("./lib/automation-kernel-guard-contract.mjs");
+    const directory = await realpath(
+      await mkdtemp(path.join(os.tmpdir(), "freed-native-fs-")),
+    );
+    t.after(() => rm(directory, { recursive: true, force: true }));
+    await chmod(directory, 0o755);
+    const observed = readDarwinFilesystemIdentity(directory);
+    const held = await stat(directory, { bigint: true });
+    assert.equal(observed.filesystemType, "apfs", JSON.stringify(observed));
+    assert.equal(observed.local, true, JSON.stringify(observed));
+    assert.equal(observed.device, String(held.dev));
+    assert.equal(observed.inode, String(held.ino));
+    assert.equal(resolveAutomationKernelGuardFilesystemType(directory), "apfs");
+    t.diagnostic(JSON.stringify({ path: directory, ...observed }));
+    const marker = path.join(directory, "marker");
+    await writeFile(marker, "marker", { mode: 0o600 });
+    const fileObserved = readDarwinFilesystemIdentity(marker);
+    assert.equal(fileObserved.filesystemType, "apfs");
+    assert.equal(fileObserved.local, true);
+    assert.equal(
+      fileObserved.inode,
+      String((await stat(marker, { bigint: true })).ino),
+    );
+    t.diagnostic(JSON.stringify({ path: marker, ...fileObserved }));
+    const { installAutomationKernelGuardCutoverFixture } =
+      await import("./test-helpers/automation-kernel-guard.mjs");
+    installAutomationKernelGuardCutoverFixture(directory);
+    const cutover = inspectAutomationKernelGuardCutover(directory);
+    assert.equal(cutover.ready, true, JSON.stringify(cutover.problems));
+  },
+);

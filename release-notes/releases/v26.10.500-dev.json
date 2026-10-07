@@ -1,0 +1,75 @@
+{
+  "tag": "v26.10.500-dev",
+  "version": "26.10.500-dev",
+  "channel": "dev",
+  "dayKey": "26.10.5",
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed protected merged product 8cdc9c673b4fad80b18f5a02008dd44cd774412b. Retained the approved Friends loading, outbox ownership and Facebook disclosure release copy. Regenerated the source and activation receipt through prepare-release-notes with paid generation disabled; the transition delta remains empty. The prior preparatory merge was removed by squash and cannot serve as this release boundary. Signed packaging and installed verification remain separate checks."
+  ],
+  "generatedAt": "2026-10-06T03:51:28.089Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.403-dev",
+    "previousPublishedDayTag": "v26.10.403-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "8cdc9c673b4fad80b18f5a02008dd44cd774412b",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.403-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "2260591e820f599661d3e06f88e6da02f5a3cbd2",
+        "toInclusiveProductCommitSha": "8cdc9c673b4fad80b18f5a02008dd44cd774412b"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1",
+        "currentDigest": "sha256:87ced2658785f1d28753666537ab09bef76d45848f728aeb12343f22ee70d6d1"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:474528f00bc6c2bc9aa4b47d8c5d1543074a6deca7846c15af53024c4943f4b7",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.500-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.500-dev"
+    ],
+    "prNumbers": [
+      2135
+    ],
+    "commitSubjects": [
+      "chore: prepare v26.10.500-dev",
+      "docs: reconcile cloud release activation and deferred hardening (#2137)",
+      "docs: preserve ad capture exclusion research and handoff",
+      "fix: retain outbox ownership and refine loading and disclosures (#2135)"
+    ]
+  },
+  "release": {
+    "deck": "Clearer Friends loading and safer outbox ownership",
+    "features": [],
+    "fixes": [
+      "Show the shared loading indicator while Friends activity loads.",
+      "Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it.",
+      "Recognize standalone Sponsored disclosures on Facebook posts."
+    ],
+    "followUps": [
+      "Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups.",
+      "Broader Facebook paid-placement and nested organic classification remain outside this change.",
+      "Signed installed UI acceptance and passive deadline-path observation remain separate verification steps."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.500-dev\n\nClearer Friends loading and safer outbox ownership\n\n### Fixes\n\n- Show the shared loading indicator while Friends activity loads\n- Retain outbox ownership until timed-out work settles, preventing a replacement drain from overlapping it\n- Recognize standalone Sponsored disclosures on Facebook posts\n\n### Follow-ups\n\n- Hung outbox work can remain pending; cancellation and screen-lock admission are separate follow-ups\n- Broader Facebook paid-placement and nested organic classification remain outside this change\n- Signed installed UI acceptance and passive deadline-path observation remain separate verification steps\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

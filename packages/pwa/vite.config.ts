@@ -67,8 +67,9 @@ function configureDemoAvatarRoute(server: Pick<ViteDevServer, "middlewares">) {
   });
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   define: {
+    __LIBRARY_TRANSFER_ACCEPTANCE__: mode === "library-transfer-acceptance" || mode === "test",
     __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
     __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
     __BUILD_COMMIT_SHA__: JSON.stringify(buildMetadata.commitSha),
@@ -107,6 +108,15 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+    rolldownOptions: {
+      output: {
+        // Keep the already-eager corpus independent of automatic App partitioning.
+        // Both static chunks remain below the unchanged service-worker asset cap.
+        codeSplitting: {
+          groups: [{ name: "sample-corpus-data", test: /sample-corpus\.generated\.json$/ }],
+        },
+      },
+    },
   },
 
   plugins: [
@@ -193,4 +203,4 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     setupFiles: ["./src/vitest.setup.ts"],
   },
-});
+}));
