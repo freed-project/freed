@@ -27,10 +27,13 @@ fi
 
 TARGET="$1"
 PWA_BUILD_SCRIPT="build"
+PWA_FEATURE_PREVIEW="1"
 ACCEPTANCE_SOURCE_SHA=""
 if [[ "$TARGET" == "pwa-transfer-acceptance" ]]; then
   TARGET="pwa"
   PWA_BUILD_SCRIPT="build:transfer-acceptance"
+  # Acceptance must reopen a joined Library, not replace local sample data.
+  PWA_FEATURE_PREVIEW="0"
   ACCEPTANCE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
   if [[ -n "$(git -C "$ACCEPTANCE_ROOT" status --porcelain)" ]]; then
     echo "Transfer acceptance requires a clean committed source." >&2
@@ -145,7 +148,7 @@ const path = process.argv[2];
 const config = JSON.parse(readFileSync(path, "utf8"));
 const source = process.env.FREED_BUILD_COMMIT_SHA;
 if (!/^[0-9a-f]{40}$/.test(source || "")) throw new Error("Invalid acceptance source identity.");
-config.buildCommand = `PATH=../../node_modules/.bin:$PATH FREED_BUILD_KIND=preview FREED_BUILD_CHANNEL=dev FREED_BUILD_COMMIT_SHA=${source} FREED_BUILD_COMMIT_REF=transfer-acceptance npm run build:transfer-acceptance`;
+config.buildCommand = `PATH=../../node_modules/.bin:$PATH VITE_FREED_FEATURE_PREVIEW=0 FREED_BUILD_KIND=preview FREED_BUILD_CHANNEL=dev FREED_BUILD_COMMIT_SHA=${source} FREED_BUILD_COMMIT_REF=transfer-acceptance npm run build:transfer-acceptance`;
 delete config.ignoreCommand;
 writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
 NODE
@@ -169,7 +172,7 @@ echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
   else
     (
       cd packages/pwa
-      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" VITE_FREED_FEATURE_PREVIEW=1 PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run "$PWA_BUILD_SCRIPT"
+      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "VITE_FREED_FEATURE_PREVIEW=${PWA_FEATURE_PREVIEW}" PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run "$PWA_BUILD_SCRIPT"
     )
   fi
 )
@@ -216,7 +219,7 @@ if [[ "$TARGET" == "website" ]]; then
   "$NPX_BIN" vercel deploy --prebuilt --archive=tgz --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y
 else
   echo "Building $TARGET preview with Vercel"
-  env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" VITE_FREED_FEATURE_PREVIEW=1 "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
+  env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "VITE_FREED_FEATURE_PREVIEW=${PWA_FEATURE_PREVIEW}" "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
 
   echo "Deploying $TARGET preview with Vercel"
   "$NPX_BIN" vercel deploy --prebuilt --archive=tgz --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y
