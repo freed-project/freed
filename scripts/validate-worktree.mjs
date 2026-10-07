@@ -1081,7 +1081,22 @@ export function buildValidationPlan(mode, changedFiles) {
     ];
   }
 
+  const installedTreeGuardPaths = new Set([
+    "scripts/check-installed-tree.mjs",
+    "scripts/check-installed-tree.test.mjs",
+  ]);
+  const installedTreeTests = nodeCommand("installed dependency tree tests", [
+    "--test",
+    "scripts/check-installed-tree.test.mjs",
+  ]);
+  if (changedFiles.length > 0 && changedFiles.every((file) => installedTreeGuardPaths.has(file))) {
+    return [installedTreeTests];
+  }
+
   const plan = [npmCommand("root typecheck", ["run", "typecheck"])];
+  if (changedFiles.some((file) => installedTreeGuardPaths.has(file))) {
+    addCommand(plan, installedTreeTests);
+  }
   const productFiles = changedFiles.filter(
     (filePath) => !isAgentInstructionFilePath(filePath),
   );
