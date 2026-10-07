@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 
 import { FOCUSED_FEATURE_VALIDATION_PATHS } from "./lib/tooling-smoke-plan.mjs";
 import {
@@ -413,7 +414,7 @@ test("feature plan runs strict reusable Library Core checks", () => {
   const held = plan.find((item) => item.label === "Library Core default-off transfer tests");
   assert.ok(held);
   assert.deepEqual(held.args, ["test", "--no-default-features", "--test", "transfer_hold"]);
-  assert.match(clippy.cwd, /\/packages\/library-core-native$/);
+  assert.equal(clippy.cwd, path.join(REPO_ROOT, "packages", "library-core-native"));
   assert.ok(plan.some((item) => item.label === "desktop production build"));
   assert.ok(plan.some((item) => item.label === "native rust clippy"));
   assert.ok(plan.some((item) => item.label === "native rust tests"));
@@ -450,8 +451,8 @@ test("workspace checks run inside each workspace without root dispatch flags", (
   assert.ok(plan.some((item) => item.label === "sync unit tests"));
   const websiteTests = plan.find((item) => item.label === "website tests");
   const desktopTests = plan.find((item) => item.label === "desktop unit tests");
-  assert.match(websiteTests.cwd, /\/website$/);
-  assert.match(desktopTests.cwd, /\/packages\/desktop$/);
+  assert.equal(websiteTests.cwd, path.join(REPO_ROOT, "website"));
+  assert.equal(desktopTests.cwd, path.join(REPO_ROOT, "packages", "desktop"));
 });
 
 test("parseArgs supports printing plan labels without executing", () => {
@@ -596,10 +597,10 @@ test("feature plan routes tooling smoke workflow and helper changes through focu
   assert.ok(releaseAdmissionTests);
   assert.deepEqual(runnerTests.args, [
     "--test",
-    "scripts/measure-tooling-smoke.test.mjs",
-    "scripts/run-native-acceptance.test.mjs",
-    "scripts/tooling-smoke-plan.test.mjs",
-    "scripts/run-tooling-smoke-shard.test.mjs",
+    path.join("scripts", "measure-tooling-smoke.test.mjs"),
+    path.join("scripts", "run-native-acceptance.test.mjs"),
+    path.join("scripts", "tooling-smoke-plan.test.mjs"),
+    path.join("scripts", "run-tooling-smoke-shard.test.mjs"),
   ]);
 });
 
@@ -663,8 +664,8 @@ test("stability status paths route focused tests in feature and dev plans", () =
       assert.ok(item, `${mode}: ${filePath}`);
       assert.deepEqual(item.args, [
         "--test",
-        "scripts/stability-status.test.mjs",
-        "scripts/stability-artifact.test.mjs",
+        path.join("scripts", "stability-status.test.mjs"),
+        path.join("scripts", "stability-artifact.test.mjs"),
       ]);
     }
   }
@@ -745,7 +746,7 @@ test("feature plan for updater manifest changes runs its complete-platform contr
   assert.ok(updaterTests);
   assert.deepEqual(updaterTests.args, [
     "--test",
-    "scripts/generate-tauri-latest-from-release.test.mjs",
+    path.join("scripts", "generate-tauri-latest-from-release.test.mjs"),
   ]);
 });
 
@@ -773,16 +774,16 @@ test("feature plan routes Library Core release activation changes through the fo
     true,
   );
   assert.deepEqual(manifestCommand?.args, [
-    "scripts/validate-library-core-activation-manifest.mjs",
+    path.join("scripts", "validate-library-core-activation-manifest.mjs"),
   ]);
   assert.deepEqual(command?.args, [
     "--test",
-    "scripts/release-receipt.test.mjs",
-    "scripts/library-core-release-activation.test.mjs",
-    "scripts/lib/git-path-at-ref.test.mjs",
-    "scripts/lib/github-release-publications.test.mjs",
-    "scripts/lib/library-core-release-activation.test.mjs",
-    "scripts/validate-release-identity.test.mjs",
+    path.join("scripts", "release-receipt.test.mjs"),
+    path.join("scripts", "library-core-release-activation.test.mjs"),
+    path.join("scripts", "lib", "git-path-at-ref.test.mjs"),
+    path.join("scripts", "lib", "github-release-publications.test.mjs"),
+    path.join("scripts", "lib", "library-core-release-activation.test.mjs"),
+    path.join("scripts", "validate-release-identity.test.mjs"),
   ]);
 });
 
@@ -1177,7 +1178,7 @@ test("release identity execution separates modern releases, historical correctio
   assert.deepEqual(
     releaseIdentityValidationArgsForArtifact(filePath, artifact),
     [
-      "scripts/validate-release-identity.mjs",
+      path.join("scripts", "validate-release-identity.mjs"),
       "--tag=v26.7.2800-dev",
       "--head-ref=HEAD",
     ],
@@ -1191,7 +1192,7 @@ test("release identity execution separates modern releases, historical correctio
       },
     ),
     [
-      "scripts/validate-release-identity.mjs",
+      path.join("scripts", "validate-release-identity.mjs"),
       "--tag=v26.7.2800",
       "--head-ref=HEAD",
     ],
@@ -1214,7 +1215,7 @@ test("release identity execution separates modern releases, historical correctio
     label: `validate identity ${filePath}`,
     command: process.execPath,
     args: [
-      "scripts/validate-release-identity.mjs",
+      path.join("scripts", "validate-release-identity.mjs"),
       "--tag=v26.7.2800-dev",
       "--head-ref=HEAD",
     ],
@@ -1241,7 +1242,7 @@ test("release identity execution separates modern releases, historical correctio
     label: `validate identity ${filePath}`,
     command: process.execPath,
     args: [
-      "scripts/validate-release-identity.mjs",
+      path.join("scripts", "validate-release-identity.mjs"),
       "--tag=v26.7.2800-dev",
       "--historical-published-tag",
       "--branch-ref=origin/dev",
@@ -1266,7 +1267,7 @@ test("release identity execution separates modern releases, historical correctio
     label: `validate identity ${filePath}`,
     command: process.execPath,
     args: [
-      "scripts/validate-release-identity.mjs",
+      path.join("scripts", "validate-release-identity.mjs"),
       "--tag=v26.7.2800-dev",
       "--historical-release-note-correction",
       "--branch-ref=origin/dev",
