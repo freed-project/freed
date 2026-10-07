@@ -187,7 +187,8 @@ const TOOLING_SMOKE_RUNNER_PATHS = new Set([
 ]);
 
 const RETIRED_AUTOMERGE_RUNTIME_GUARD_PATHS = new Set([
-  "packages/desktop/vite.config.js",
+  // vite.config.js was tsc output, now untracked, so it can never appear in a
+  // changed-file set. vite.config.ts carries the trigger.
   "packages/desktop/vite.config.ts",
   "packages/pwa/package.json",
   "packages/pwa/vite.config.ts",
@@ -1085,7 +1086,22 @@ export function buildValidationPlan(mode, changedFiles) {
     ];
   }
 
+  const installedTreeGuardPaths = new Set([
+    "scripts/check-installed-tree.mjs",
+    "scripts/check-installed-tree.test.mjs",
+  ]);
+  const installedTreeTests = nodeCommand("installed dependency tree tests", [
+    "--test",
+    "scripts/check-installed-tree.test.mjs",
+  ]);
+  if (changedFiles.length > 0 && changedFiles.every((file) => installedTreeGuardPaths.has(file))) {
+    return [installedTreeTests];
+  }
+
   const plan = [npmCommand("root typecheck", ["run", "typecheck"])];
+  if (changedFiles.some((file) => installedTreeGuardPaths.has(file))) {
+    addCommand(plan, installedTreeTests);
+  }
   const productFiles = changedFiles.filter(
     (filePath) => !isAgentInstructionFilePath(filePath),
   );
