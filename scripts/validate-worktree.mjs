@@ -723,6 +723,11 @@ function nativeRustChecks() {
       "--all-features",
     ]),
     cargoCommand("native rust tests", ["test", "--all-features"]),
+    ...(process.platform === "linux" ? [cargoCommand(
+      "native rust Linux credential acceptance",
+      ["test", "--all-features", "--test", "linux_platform_vault",
+        "isolated_linux_vault", "--", "--ignored", "--exact"],
+    )] : []),
   ];
 }
 

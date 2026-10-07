@@ -137,12 +137,17 @@ pub(crate) fn validate_subject(value: &str) -> Result<(), String> {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn keyring_entry(account: &str) -> Result<Entry, String> {
+    Entry::new(&keyring_service()?, account)
+        .map_err(|_| "Library Core could not open the platform credential vault".to_string())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
+fn keyring_service() -> Result<String, String> {
     #[cfg(feature = "isolated-preview-data-root")]
     let service = preview_keyring_service(option_env!("TAURI_CONFIG"))?;
     #[cfg(not(feature = "isolated-preview-data-root"))]
-    let service = KEYRING_SERVICE;
-    Entry::new(&service, account)
-        .map_err(|_| "Library Core could not open the platform credential vault".to_string())
+    let service = KEYRING_SERVICE.to_string();
+    Ok(service)
 }
 
 // A length-delimited namespace prevents account/subject boundary collisions.
@@ -298,7 +303,16 @@ pub(crate) fn load_platform_key(
             })
         })
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    {
+        validate_subject(subject)?;
+        linux_vault::with_collection(|collection| {
+            load_subject_key(vault, subject, |account| {
+                linux_vault::read(collection, account)
+            })
+        })
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (vault, subject);
         Err(unsupported_vault())
@@ -323,17 +337,112 @@ pub(crate) fn store_platform_key(
             })
         })
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    {
+        validate_subject(subject)?;
+        linux_vault::with_collection(|collection| {
+            store_subject_key(vault, subject, bytes, |account, encoded| {
+                linux_vault::write(collection, account, encoded)
+            })
+        })
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = (vault, subject, bytes);
         Err(unsupported_vault())
     }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
 fn unsupported_vault() -> String {
     "Library Core has no noninteractive platform credential vault on this operating system"
         .to_string()
+}
+
+/// Linux custody requires a persistent, already-unlocked desktop vault. Never
+/// create or unlock a collection, fall back to session storage, or interpret
+/// service failure as a missing key. A lock race also fails at the service.
+#[cfg(target_os = "linux")]
+mod linux_vault {
+    use super::keyring_service;
+    use dbus_secret_service::{Collection, EncryptionType, Item, SecretService};
+    use std::collections::HashMap;
+
+    fn unavailable(_: dbus_secret_service::Error) -> String {
+        "Library Core could not access the Linux credential vault".to_string()
+    }
+
+    pub(super) fn with_collection<T>(
+        operation: impl FnOnce(&Collection<'_>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        // Zero prevents Prompt from being invoked, including during CreateItem.
+        let service = SecretService::connect_with_max_prompt_timeout(EncryptionType::Dh, 0)
+            .map_err(unavailable)?;
+        let collection = service.get_default_collection().map_err(unavailable)?;
+        if collection.is_locked().map_err(unavailable)? {
+            return Err(
+                "Library Core requires an unlocked persistent Linux credential vault".into(),
+            );
+        }
+        operation(&collection)
+    }
+
+    fn attributes<'a>(service: &'a str, account: &'a str) -> HashMap<&'a str, &'a str> {
+        HashMap::from([
+            ("service", service),
+            ("username", account),
+            ("target", "default"),
+        ])
+    }
+
+    fn find<'a>(collection: &'a Collection<'_>, account: &str) -> Result<Option<Item<'a>>, String> {
+        let service = keyring_service()?;
+        let mut items = collection
+            .search_items(attributes(&service, account))
+            .map_err(unavailable)?;
+        if items.len() > 1 {
+            return Err("Library Core Linux credential entry is ambiguous".into());
+        }
+        let item = items.pop();
+        if let Some(item) = &item {
+            if item.is_locked().map_err(unavailable)? {
+                return Err("Library Core Linux credential entry is locked".into());
+            }
+        }
+        Ok(item)
+    }
+
+    pub(super) fn read(
+        collection: &Collection<'_>,
+        account: &str,
+    ) -> Result<Option<Vec<u8>>, String> {
+        find(collection, account)?
+            .map(|item| item.get_secret().map_err(unavailable))
+            .transpose()
+    }
+
+    pub(super) fn write(
+        collection: &Collection<'_>,
+        account: &str,
+        bytes: &[u8],
+    ) -> Result<(), String> {
+        if let Some(item) = find(collection, account)? {
+            return item
+                .set_secret(bytes, "application/octet-stream")
+                .map_err(unavailable);
+        }
+        let service = keyring_service()?;
+        collection
+            .create_item(
+                "Freed Desktop Library key",
+                attributes(&service, account),
+                bytes,
+                true,
+                "application/octet-stream",
+            )
+            .map_err(unavailable)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

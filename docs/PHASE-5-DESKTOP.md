@@ -1857,3 +1857,22 @@ thresholds are provisional. A six-example labeled evaluation compares raw accura
 Brier score, decision coverage, accepted accuracy and latency. It is a smoke corpus,
 not a representative benchmark. Library scores remain session-local and do not
 change feed filters. See [setup and evaluation](JEV-CLASSIFICATION-PREVIEW.md#local-kev).
+
+### Linux Library credential custody
+
+Freed Desktop uses an existing unlocked Secret Service default collection on
+Linux for its per-Library actor, authority, and pending handoff keys. The adapter
+uses an encrypted D-Bus session and never requests an unlock prompt or creates a
+collection. Missing services, locked collections, ambiguous entries, and corrupt envelopes
+fail closed. There is no fallback to a session-only key store. Linux users must provision and unlock
+a persistent desktop vault before opening a Library.
+
+The `linux_platform_vault` native acceptance test starts a private D-Bus
+session and GNOME Keyring with synthetic data. It checks key separation,
+persistence after process and daemon restart, locked and unavailable vault
+refusal, corruption, and duplicate entries. Run it from `packages/desktop/src-tauri`
+with `cargo test --test linux_platform_vault isolated_linux_vault -- --ignored --exact`.
+Linux native feature and integration gates run it explicitly. It requires
+`dbus-daemon`, `dbus-send`, and `gnome-keyring-daemon` on `PATH`; it does
+not use the login session's vault. This credential test does not establish
+installed multi-Desktop/PWA convergence or authorize a Library activation.

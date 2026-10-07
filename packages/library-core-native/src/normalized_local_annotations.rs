@@ -551,15 +551,18 @@ mod tests {
             populate(&db);
             drop(db);
             let mut observed = 0;
-            let db = initialize_owned_normalized_sqlite_database_with_observer_v1(&path, false, || {
-                observed += 1;
-                let reader = Connection::open(&path).unwrap();
-                // An exhausted pre-bootstrap slice has no receipt yet.
-                if matches!(version(&reader).unwrap(), 4 | 5) {
-                    assert!(open_normalized_sqlite_database_v1(&path, false).is_err());
-                }
-                assert_eq!(reader.total_changes(), 0);
-            }).unwrap().unwrap();
+            let db =
+                initialize_owned_normalized_sqlite_database_with_observer_v1(&path, false, || {
+                    observed += 1;
+                    let reader = Connection::open(&path).unwrap();
+                    // An exhausted pre-bootstrap slice has no receipt yet.
+                    if matches!(version(&reader).unwrap(), 4 | 5) {
+                        assert!(open_normalized_sqlite_database_v1(&path, false).is_err());
+                    }
+                    assert_eq!(reader.total_changes(), 0);
+                })
+                .unwrap()
+                .unwrap();
             assert!(observed > 0, "1025 rows require another bounded invocation");
             assert_eq!(version(&db).unwrap(), source + 3);
             assert_eq!(
@@ -768,7 +771,9 @@ mod tests {
           CASE WHEN first_counter=1 THEN NULL ELSE printf('%064d',first_counter-1) END,
           transaction_digest,'accepted',1,CAST(json_object('padding',printf('%0130000d',0)) AS BLOB),0
           FROM library_intent_transactions WHERE first_counter<=80;").unwrap();
-        assert!(!resume(&mut db).unwrap());
+        // Exercise the byte limit rather than yielding before schema bootstrap
+        // when unrelated tests consume this process's scheduling budget.
+        assert!(!resume_until(&mut db, Instant::now() + Duration::from_secs(60)).unwrap());
         let scanned: i64 = db
             .query_row(
                 "SELECT scanned_members FROM library_local_annotation_migration;",
@@ -831,7 +836,9 @@ mod tests {
                 rusqlite::hooks::Authorization::Allow
             }
         }));
-        assert!(resume(&mut db).is_err());
+        // Reach the injected write failure even under concurrent test load.
+        // Deadline yielding has separate coverage; this case proves rollback.
+        assert!(resume_until(&mut db, Instant::now() + Duration::from_secs(60)).is_err());
         db.authorizer(
             None::<fn(rusqlite::hooks::AuthContext<'_>) -> rusqlite::hooks::Authorization>,
         );
@@ -935,11 +942,22 @@ mod tests {
 
     #[test]
     fn annotation_upgrade_preserves_sources_and_reopens_exact_catalog() {
+        // Catalog preservation must hold across any number of production time
+        // slices. A loaded runner may exhaust one slice before finishing setup.
+        let finish = |db: &mut Connection| {
+            let deadline = Instant::now() + Duration::from_secs(60);
+            while !resume(db).unwrap() {
+                assert!(
+                    Instant::now() < deadline,
+                    "annotation upgrade did not finish"
+                );
+            }
+        };
         for source in [1, 2] {
             let dir = tempfile::tempdir().unwrap();
             let file = dir.path().join("library.sqlite");
             let mut db = fixture(&file, source);
-            assert!(resume(&mut db).unwrap());
+            finish(&mut db);
             let target = if source == 1 { 4 } else { 5 };
             assert_eq!(version(&db).unwrap(), target);
             verify_catalog(&db, target).unwrap();
@@ -947,7 +965,7 @@ mod tests {
             drop(db);
             let mut db = Connection::open(&file).unwrap();
             verify_catalog(&db, target).unwrap();
-            assert!(resume(&mut db).unwrap());
+            finish(&mut db);
             install_normalized_schema_v1(&db).unwrap();
             // The immutable pre-upgrade opener admits exactly versions 1/2.
             assert!(![1, 2].contains(&version(&db).unwrap()));
