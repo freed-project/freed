@@ -1,0 +1,218 @@
+{
+  "tag": "v26.10.701",
+  "version": "26.10.701",
+  "channel": "production",
+  "dayKey": "26.10.7",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-07T22:54:07.236Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "production",
+    "previousPublishedTag": "v26.9.1400",
+    "previousPublishedDayTag": "v26.9.1400",
+    "compareRef": "HEAD",
+    "productCommitSha": "b638f987c692fa55ed6836e7cf83738316183312",
+    "promotedDevCommitSha": "809b0670b8d62b68a44258b9beb493b7542d5fb4",
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "production",
+        "previousPublishedTag": "v26.9.1400",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "56e154c16c508e3acaf7556b95b0cd58883b1a84",
+        "toInclusiveProductCommitSha": "b638f987c692fa55ed6836e7cf83738316183312"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:709197038cc687ff0889d7e28497c08704b0a1f7096f4348479ea36bf5896ccb",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [
+        {
+          "activationId": "annotation-pending-local-schema-v4-v5",
+          "gate": "F",
+          "kind": "schema_version_activation",
+          "failureResponse": "Refuse unknown catalogs and all ordinary access while the annotation-specific local upgrade is building. Resume bounded pages under the existing exclusive Library ownership with unchanged pinned source identity. Preserve unresolved annotation markers and exact retry evidence. Physical 4 retains the base catalog; physical 5 retains the recovery catalog. Refuse older clients and roll forward through a compatible build without deleting local state or changing the writer epoch.",
+          "receiptExpectations": [
+            "roll_forward_recovery_receipt",
+            "schema_migration_receipt"
+          ]
+        },
+        {
+          "activationId": "consumer-successor-archive-and-reissue-v1",
+          "gate": "F",
+          "kind": "recovery_activation",
+          "failureResponse": "Preserve old signed intents and archive bytes. Refuse unverified successors, stale review inputs and unsupported complete transactions. Retain an exact durable replacement link atomically with the new intent; ambiguous responses retry that replacement without signing another action.",
+          "receiptExpectations": [
+            "recovery_receipt",
+            "roll_forward_recovery_receipt"
+          ]
+        },
+        {
+          "activationId": "cooperative-handoff-local-schema-v2",
+          "gate": "F",
+          "kind": "schema_version_activation",
+          "failureResponse": "Refuse an unknown or mismatched physical catalog before mutation. Migrate installation-local handoff and recovery tables atomically with their first durable lifecycle record. Preserve schema 2 databases and use a compatible successor build; never reopen them with a schema 1 binary or delete local recovery state to downgrade.",
+          "receiptExpectations": [
+            "roll_forward_recovery_receipt",
+            "schema_migration_receipt"
+          ]
+        },
+        {
+          "activationId": "cooperative-primary-authority-handoff-v1",
+          "gate": "F",
+          "kind": "authority_key_rotation",
+          "failureResponse": "Before signed source authorization, resume only through the verified cancellation path. After authorization, keep the predecessor fenced and recover the exact saved target transition. Admit the target only after independently verified cloud publication; never infer a winner or restore predecessor writes after ambiguous publication.",
+          "receiptExpectations": [
+            "authority_rotation_receipt",
+            "authority_transition_certificate",
+            "roll_forward_recovery_receipt"
+          ]
+        }
+      ],
+      "inspectionDigest": "sha256:b388153c233f88eb719cfcd7d59f838875640f04b2a4b530cce7590725769a11",
+      "decision": {
+        "state": "review_required",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.701"
+    ],
+    "relatedBuildTags": [
+      "v26.9.1700-dev",
+      "v26.10.200-dev",
+      "v26.10.300-dev",
+      "v26.10.302-dev",
+      "v26.10.303-dev",
+      "v26.10.304-dev",
+      "v26.10.305-dev",
+      "v26.10.400-dev",
+      "v26.10.401-dev",
+      "v26.10.402-dev",
+      "v26.10.403-dev",
+      "v26.10.500-dev",
+      "v26.10.601-dev",
+      "v26.10.700-dev",
+      "v26.10.701"
+    ],
+    "prNumbers": [
+      1824,
+      1835,
+      1837,
+      1839,
+      1850,
+      1856,
+      1857,
+      1862,
+      1864,
+      1879,
+      1886,
+      1888,
+      1889,
+      1892,
+      1894,
+      1896,
+      1899,
+      1917,
+      1927,
+      1936,
+      1939,
+      1940,
+      1944,
+      1954,
+      1959,
+      1962,
+      1967,
+      1979,
+      1986,
+      1991,
+      1993,
+      1998,
+      2000,
+      2002,
+      2009,
+      2011,
+      2013,
+      2017,
+      2024,
+      2059,
+      2060,
+      2061,
+      2062,
+      2064,
+      2065,
+      2068,
+      2070,
+      2071,
+      2072,
+      2077,
+      2079,
+      2080,
+      2081,
+      2082,
+      2083,
+      2084,
+      2085,
+      2086,
+      2087,
+      2088,
+      2089,
+      2090,
+      2091,
+      2092,
+      2093,
+      2094,
+      2095,
+      2096,
+      2098,
+      2099,
+      2100,
+      2101,
+      2102,
+      2103,
+      2117,
+      2129,
+      2131,
+      2132,
+      2133,
+      2135,
+      2152,
+      2161
+    ],
+    "commitSubjects": [
+      "chore: promote reviewed dev snapshot to main"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop can join an existing Library as a consumer device, joined devices report synchronization progress, and capture, login, and scraping platform work",
+    "features": [
+      "Freed Desktop can join an existing Library as a consumer device",
+      "Desktop and PWA devices can catch up through incremental operations",
+      "Joined devices report synchronization progress"
+    ],
+    "fixes": [
+      "Reader, feed, and header polish",
+      "Desktop retains sync ownership until canceled work has settled",
+      "Drive credentials refresh during long PWA transfers, and sync status reports active stages and the last successful completion",
+      "Capture and scraper reliability fixes",
+      "Show Library backup preparation before downloading an update",
+      "Isolate parallel Jev budget test ledgers",
+      "Avoid counting every checkpoint record during routine Library sync checks",
+      "Show elapsed backup time in the update notification and Settings",
+      "Update security dependencies and reduce Darwin filesystem admission overhead"
+    ],
+    "followUps": [
+      "Sync, cloud, and pairing infrastructure",
+      "Release workflow and build-system work",
+      "Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled",
+      "Reader, sidebar, and settings UX work"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.701\n\nFreed Desktop can join an existing Library as a consumer device, joined devices report synchronization progress, and capture, login, and scraping platform work\n\n### Features\n\n- Freed Desktop can join an existing Library as a consumer device\n- Desktop and PWA devices can catch up through incremental operations\n- Joined devices report synchronization progress\n\n### Fixes\n\n- Reader, feed, and header polish\n- Desktop retains sync ownership until canceled work has settled\n- Drive credentials refresh during long PWA transfers, and sync status reports active stages and the last successful completion\n- Capture and scraper reliability fixes\n- Show Library backup preparation before downloading an update\n- Isolate parallel Jev budget test ledgers\n- Avoid counting every checkpoint record during routine Library sync checks\n- Show elapsed backup time in the update notification and Settings\n- Update security dependencies and reduce Darwin filesystem admission overhead\n\n### Follow-ups\n\n- Sync, cloud, and pairing infrastructure\n- Release workflow and build-system work\n- Transfer-acceptance builds remain separate opt-in test artifacts; ordinary Library transfer and schema-v2 operations remain disabled\n- Reader, sidebar, and settings UX work\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
