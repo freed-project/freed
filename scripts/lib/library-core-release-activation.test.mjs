@@ -1041,7 +1041,7 @@ test("production manifest inspection rejects dev and main endpoint mismatch", (t
   );
 });
 
-test("production manifest inspection rejects duplicate or out-of-order IDs across recovered edges", (t) => {
+test("production manifest inspection rejects duplicate IDs across recovered edges", (t) => {
   const duplicateId = "activation-001";
   const previousContents = manifestContents();
   const duplicateIntermediateTransitions = [
@@ -1070,7 +1070,10 @@ test("production manifest inspection rejects duplicate or out-of-order IDs acros
       }),
     /unique ASCII-sorted activation IDs/,
   );
+});
 
+test("production manifest inspection canonicalizes IDs across recovered edges", (t) => {
+  const previousContents = manifestContents();
   const outOfOrderIntermediateTransitions = [
     migrationTransition({ activationId: "activation-200" }),
   ];
@@ -1088,16 +1091,46 @@ test("production manifest inspection rejects duplicate or out-of-order IDs acros
     outOfOrderIntermediateContents,
     outOfOrderCurrentContents,
   ]);
-  assert.throws(
-    () =>
-      resolveProductionManifestHistory({
-        cwd: outOfOrderHistory.cwd,
-        previousCommitSha: outOfOrderHistory.commits[0],
-        currentCommitSha: outOfOrderHistory.commits[2],
-        previousContents,
-        currentContents: outOfOrderCurrentContents,
-      }),
-    /unique ASCII-sorted activation IDs/,
+  const inspection = resolveProductionManifestHistory({
+    cwd: outOfOrderHistory.cwd,
+    previousCommitSha: outOfOrderHistory.commits[0],
+    currentCommitSha: outOfOrderHistory.commits[2],
+    previousContents,
+    currentContents: outOfOrderCurrentContents,
+  });
+  assert.deepEqual(
+    inspection.transitions.map(({ activationId }) => activationId),
+    ["activation-100", "activation-200"],
+  );
+});
+
+test("production manifest inspection canonicalizes successive append-only v2 deltas", (t) => {
+  const baseline = sqliteEpochTransition({ activationId: "baseline" });
+  const first = sqliteEpochTransition({ activationId: "cooperative-handoff" });
+  const second = sqliteEpochTransition({ activationId: "annotation-upgrade" });
+  const previousContents = manifestV2Contents({ transitions: [baseline] });
+  const intermediateContents = manifestV2Contents({
+    transitions: [baseline, first],
+  });
+  const currentContents = manifestV2Contents({
+    transitions: [baseline, first, second],
+  });
+  const { cwd, commits } = makeManifestHistory(t, [
+    previousContents,
+    intermediateContents,
+    currentContents,
+  ]);
+  const inspection = resolveProductionManifestHistory({
+    cwd,
+    previousCommitSha: commits[0],
+    currentCommitSha: commits[2],
+    previousContents,
+    currentContents,
+  });
+  assert.deepEqual(inspection.transitions, [second, first]);
+  assert.deepEqual(
+    inspection,
+    inspectLibraryCoreActivationManifest({ previousContents, currentContents }),
   );
 });
 

@@ -388,6 +388,13 @@ test("feature plan runs native clippy and tests for native shell changes", () =>
   assert.ok(labels.includes("desktop social provider e2e"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
+  const custody = plan.find((item) => item.label === "native rust Linux credential acceptance");
+  assert.equal(Boolean(custody), process.platform === "linux");
+  if (custody) {
+    assert.ok(custody.args.includes("linux_platform_vault"));
+    assert.ok(custody.args.includes("--ignored"));
+    assert.ok(custody.args.includes("--exact"));
+  }
   assert.equal(
     isDesktopNativeSurface("packages/desktop/src-tauri/src/lib.rs"),
     true,
