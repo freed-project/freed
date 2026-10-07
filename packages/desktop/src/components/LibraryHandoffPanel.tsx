@@ -28,6 +28,7 @@ function EnabledLibraryHandoffPanel() {
   const [cancellationInput, setCancellationInput] = useState("");
   const [status, setStatus] = useState<NormalizedLibraryHandoffStatus | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [viewer, setViewer] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [input, setInput] = useState("");
@@ -38,8 +39,8 @@ function EnabledLibraryHandoffPanel() {
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
-    void readNormalizedLibraryHandoffStatus().then(value => {
-      if (alive.current) { setStatus(value); setLoaded(true); }
+    void Promise.all([readNormalizedLibraryHandoffStatus(), refreshLibraryCoreDesktopRole()]).then(([value, installation]) => {
+      if (alive.current) { setStatus(value); setViewer(installation?.state === "read_only_consumer"); setLoaded(true); }
     }).catch(failure => { if (alive.current) setError(String(failure)); });
     return () => { alive.current = false; operation.current?.abort(); };
   }, []);
@@ -53,7 +54,8 @@ function EnabledLibraryHandoffPanel() {
       try {
         const current = await readNormalizedLibraryHandoffStatus();
         if (alive.current) { setStatus(current); setLoaded(true); }
-        await refreshLibraryCoreDesktopRole();
+        const installation = await refreshLibraryCoreDesktopRole();
+        if (alive.current) setViewer(installation?.state === "read_only_consumer");
       } catch (failure) { if (alive.current) setError(String(failure)); }
       operation.current = null;
       if (alive.current) setBusy(false);
@@ -84,7 +86,7 @@ function EnabledLibraryHandoffPanel() {
     <p className="text-sm text-[var(--theme-text-secondary)]">Join the new Freed Desktop as a consumer first and sync until its edits are accepted. Exchange the signed receipts between your two installations. Only the current Primary can authorize the move.</p>
     {!loaded && !error && <p role="status">Checking the saved transfer...</p>}
     {status && <p className="text-sm">Transfer ...{status.handoffId.slice(-8)} · {source ? status.phase === "demoted" ? "Former Primary" : "Current Primary" : targetRole && status.phase !== "cancelled" ? "New Primary" : "Consumer"} · {{ preparing: "Preparation saved", sealed: "Source paused", authorized: "Move authorized", cas_pending: "Ready to publish", active: "Activation saved", demoted: "Consumer selected", cancelled: "Canceled", committed: "Publication saved", recovery: "Recovery required", following: "Following successor" }[status.phase]}</p>}
-    {fresh && role === "follower" && <button className={button} disabled={busy || signingIn} onClick={() => void run(() => prepareDesktopLibraryTargetReadiness())}>Prepare this device as the new Primary</button>}
+    {fresh && viewer === false && role === "follower" && <button className={button} disabled={busy || signingIn} onClick={() => void run(() => prepareDesktopLibraryTargetReadiness())}>Prepare this device as the new Primary</button>}
     {fresh && role === "primary" && <>
       <label className="block text-sm">New device readiness receipt<textarea className={field} rows={4} maxLength={16384} value={input} onChange={e => { setInput(e.target.value); setConfirmed(false); }} /></label>
       <label className="block text-sm">Target actor ID from the new device<input className={field} value={target} maxLength={64} onChange={e => { setTarget(e.target.value); setConfirmed(false); }} /></label>
@@ -108,11 +110,17 @@ function EnabledLibraryHandoffPanel() {
       <button className={button} disabled={busy || signingIn} onClick={() => void run(signal => authorizeDesktopLibrarySourceHandoff({ handoffId: status!.handoffId, accessToken: "", signal }))}>Finish signed authorization</button>
     </>}
     {source && ["authorized", "demoted"].includes(status!.phase) && status!.canonicalAuthorization && <>
-      <p className="text-sm">{status!.phase === "demoted" ? "This device follows the successor as a consumer. After its enrollment is accepted and edits are synced, you can prepare a new transfer back to this device." : "This transfer cannot be reversed. After the new Primary finishes activation, verify its checkpoint here and continue as a consumer."}</p>
-      <button className={button} disabled={busy || signingIn} onClick={() => void run(async signal => {
+      <p className="text-sm">{status!.phase === "demoted"
+        ? viewer ? "This device is a read-only viewer. It receives updates without creating Library edits, including automatic read or seen changes."
+          : "This device follows the successor as an editable consumer."
+        : "After the new Primary finishes activation, verify its checkpoint and choose how this device follows it. Read-only viewers receive updates without editing the Library."}</p>
+      <button className={button} disabled={busy || signingIn || viewer === null} onClick={() => void run(async signal => {
         const request = status!.phase === "demoted" ? { handoffId: status!.handoffId, accessToken: "", signal } : await cloud(signal);
-        return adoptDesktopLibrarySourceHandoff(request);
-      })}>Verify successor and continue as consumer</button>
+        return adoptDesktopLibrarySourceHandoff({ ...request, readOnly: viewer === true });
+      })}>{viewer ? "Verify successor and continue as read-only viewer" : "Verify successor and continue as consumer"}</button>
+      {status!.phase === "authorized" && <button className={button} disabled={busy || signingIn || viewer === null} onClick={() => void run(async signal => {
+        return adoptDesktopLibrarySourceHandoff({ ...await cloud(signal), readOnly: true });
+      })}>Verify successor and continue as read-only viewer</button>}
     </>}
     {targetRole && status!.phase === "preparing" && !status!.canonicalAuthorization && <>
       <label className="block text-sm">Signed authorization from the current Primary<textarea className={field} rows={4} maxLength={16384} value={input} onChange={e => setInput(e.target.value)} /></label>
@@ -139,7 +147,7 @@ function EnabledLibraryHandoffPanel() {
     </div>}
     {status && status.installationRole !== "consumer" && (role !== "follower" || (source && status.phase === "demoted")) && <div className="border-t border-[var(--theme-border-subtle)] pt-3">
       <h3 className="text-sm font-semibold">Preserved edits</h3>
-      <ConsumerRecoveryReview key={`${status.handoffId}:${status.phase}:${role}`} primary={role === "primary"} readOnly={!((source && status.phase === "demoted" && role === "follower") || (targetRole && status.phase === "active" && role === "primary"))} />
+      <ConsumerRecoveryReview key={`${status.handoffId}:${status.phase}:${role}`} primary={role === "primary"} readOnly={viewer !== false || !((source && status.phase === "demoted" && role === "follower") || (targetRole && status.phase === "active" && role === "primary"))} />
     </div>}
     {busy && <p role="status" className="text-sm">Transfer step is running. Native work may finish after this view closes; the saved receipt determines the next step.</p>}
     {error && <p role="alert" className="text-sm theme-feedback-text-danger">{error}</p>}

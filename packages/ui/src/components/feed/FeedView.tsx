@@ -30,7 +30,7 @@ import {
   type SavedFeedSelectionPin,
 } from "./saved-feed-presentation-patch.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
-import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform, getPlatformCapabilities } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryItemDetail, annotationFailureLabel } from "../../hooks/useLibraryItemDetail.js";
@@ -301,8 +301,8 @@ export function FeedView() {
     queryLibraryCore,
     readLibraryAccountDetail,
   } = platform;
-  const readOnly = platform.interactionMode === "read-only";
-  const canAddFeeds = !!addRssFeed;
+  const readOnly = !getPlatformCapabilities(platform).libraryEdits;
+  const canAddFeeds = !readOnly && !!addRssFeed;
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);

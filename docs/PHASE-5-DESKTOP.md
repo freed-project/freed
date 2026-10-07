@@ -1877,3 +1877,16 @@ Linux native feature and integration gates run it explicitly. It requires
 `dbus-daemon`, `dbus-send`, and `gnome-keyring-daemon` on `PATH`; it does
 not use the login session's vault. This credential test does not establish
 installed multi-Desktop/PWA convergence or authorize a Library activation.
+
+### Strict viewer after source handoff
+
+The transfer-acceptance UI offers an explicit read-only choice when the former
+Primary adopts its verified successor. Native catalog 6 commits that choice with
+source demotion and checkpoint selection; retries verify the same choice before
+sync resumes. Feed, reader and synchronized settings controls respect viewer
+access, including automatic read state. Device-local appearance, cache and AI
+configuration remain available. Archive browsing preserves proof checks without
+enabling reapplication. Native restrictions survive restart and later successor
+recovery. These changes have synthetic test coverage; signed delivery, installed
+viewer acceptance and the personal Library transition remain pending. Ordinary
+transfer and recovery activation holds are unchanged.

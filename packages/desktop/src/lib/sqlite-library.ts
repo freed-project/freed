@@ -2498,7 +2498,7 @@ export function prepareNormalizedLibraryHandoffActivation(handoffId: string, con
 }
 
 export function adoptNormalizedLibrarySourceHandoff(input: {
-  handoffId: string; stageId: string; canonicalControl: string; accessToken: string;
+  handoffId: string; stageId: string; canonicalControl: string; accessToken: string; readOnly?: boolean;
 }): Promise<NormalizedLibraryHandoffStatus> {
   if (!HEX_64.test(input.handoffId) || !input.stageId || input.stageId.length > 255) throw new TypeError("Invalid source adoption identity");
   return desktopLibraryCountResource.transition(() => invoke("adopt_normalized_library_source_handoff", input));
@@ -2667,8 +2667,9 @@ const HEX_64 = /^[a-f0-9]{64}$/;
 export async function loadSqliteLibraryState(): Promise<LibraryCoreRuntimeStateV1> {
   const readSelection = async (afterReads = false) => {
     const status = await (afterReads ? refreshLibraryCoreDesktopRoleAfterPending() : refreshLibraryCoreDesktopRole());
-    if (!status.libraryId || !status.authorityEpochId || !status.actorId
-      || !["editable_consumer", "standalone_primary", "shared_primary"].includes(status.state)) {
+    if (!status.libraryId || !status.authorityEpochId
+      || (status.actorId === null && status.state !== "read_only_consumer")
+      || !["editable_consumer", "read_only_consumer", "standalone_primary", "shared_primary"].includes(status.state)) {
       throw new Error("Native Library count identity is unavailable");
     }
     return { libraryId: status.libraryId, authorityEpochId: status.authorityEpochId, actorId: status.actorId };

@@ -2037,7 +2037,7 @@ export function Header({
                   type="button"
                   role="menuitem"
                   disabled={action.disabled}
-                  title={action.disabled ? (readOnly ? "Unavailable in this read-only demo" : "Refreshing counts") : undefined}
+                  title={action.disabled ? (readOnly ? "Unavailable in read-only mode" : "Refreshing counts") : undefined}
                   onClick={() => {
                     action.onClick();
                     if (action.id !== "delete-archived" || action.danger) {

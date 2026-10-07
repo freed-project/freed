@@ -593,7 +593,9 @@ export function AISection() {
     checkOllamaReachable,
     openUrl,
     AISettingsContent,
+    libraryAccess,
   } = usePlatform();
+  const libraryViewer = libraryAccess === "read-only";
   const preferences = useAppStore((state) => state.preferences);
   const updatePreferences = useAppStore((state) => state.updatePreferences);
 
@@ -679,7 +681,14 @@ export function AISection() {
   }, [busyModelId, displayedAI.provider, localAIModels, refreshLocalModelHealth]);
 
   const update = useCallback(
-    (patch: Partial<ResolvedAIPreferences>) => {
+    (requestedPatch: Partial<ResolvedAIPreferences>) => {
+      // Provider/model configuration is device-local; workflow preferences belong to the Library.
+      const patch = { ...requestedPatch };
+      if (libraryViewer) {
+        delete patch.autoSummarize;
+        delete patch.extractTopics;
+      }
+      if (Object.keys(patch).length === 0) return;
       const updateSequence = updateSequenceRef.current + 1;
       updateSequenceRef.current = updateSequence;
       const previousDeviceAI = deviceAI;
@@ -716,7 +725,7 @@ export function AISection() {
         });
       }
     },
-    [deviceAI, displayedAI, setDeviceAI, updatePreferences],
+    [deviceAI, displayedAI, libraryViewer, setDeviceAI, updatePreferences],
   );
 
   const handleProviderChange = (provider: AIProvider) => {
@@ -967,14 +976,14 @@ export function AISection() {
             label="Summaries and extraction"
             description={featureDescriptions.summarize}
             checked={displayedAI.autoSummarize && integratedSummariesEnabled}
-            disabled={!integratedSummariesEnabled}
+            disabled={libraryViewer || !integratedSummariesEnabled}
             onChange={(value) => update({ autoSummarize: value })}
           />
           <SettingsToggle
             label="Topics and ranking"
             description={featureDescriptions.topics}
             checked={displayedAI.extractTopics && integratedTopicsEnabled}
-            disabled={!integratedTopicsEnabled}
+            disabled={libraryViewer || !integratedTopicsEnabled}
             onChange={(value) => update({ extractTopics: value })}
           />
         </section>

@@ -2806,7 +2806,7 @@ fn query_recovery_archive_page(
         return Err(invalid("recovery archive page request is invalid"));
     }
     let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if !matches!(version, 2 | 5) {
+    if !matches!(version, 2 | 5 | 6) {
         return Err(invalid(
             "recovery archives are unavailable in this storage version",
         ));
@@ -2816,6 +2816,9 @@ fn query_recovery_archive_page(
         .find(|p| p.query_id == QUERY)
         .ok_or(invalid("recovery archive query program is missing"))?;
     let tx = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    if version == crate::sqlite_contract_generated::VIEWER_STORAGE_SCHEMA_VERSION {
+        crate::normalized_viewer::verify_policy(&tx)?;
+    }
     let (generation_id, revision) = query_source(&tx)?;
     let handoff_id: String = tx.query_row(program.count_sql, [], |r| r.get(0))?;
     if !valid_lower_hex_64(&handoff_id) {
@@ -2919,7 +2922,7 @@ fn query_recovery_intent_page(
         return Err(invalid("recovery intent page request is invalid"));
     }
     let version: u32 = connection.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    if !matches!(version, 2 | 5) {
+    if !matches!(version, 2 | 5 | 6) {
         return Err(invalid(
             "recovery archives are unavailable in this storage version",
         ));
@@ -2929,6 +2932,9 @@ fn query_recovery_intent_page(
         .find(|p| p.query_id == QUERY)
         .ok_or(invalid("recovery intent query program is missing"))?;
     let tx = connection.transaction_with_behavior(TransactionBehavior::Deferred)?;
+    if version == crate::sqlite_contract_generated::VIEWER_STORAGE_SCHEMA_VERSION {
+        crate::normalized_viewer::verify_policy(&tx)?;
+    }
     let (generation_id, source_revision) = query_source(&tx)?;
     let archive_digest: String =
         tx.query_row(program.count_sql, [&request.recovery_id], |r| r.get(0))?;
