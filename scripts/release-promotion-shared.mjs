@@ -67,7 +67,7 @@ export const PROMOTION_BRANCH_PATTERN =
   /^chore\/promote-dev-to-main(?:-[a-z0-9._-]+)?$/;
 export const RELEASE_PREP_BRANCH_PATTERN = /^chore\/release-[a-z0-9._-]+$/;
 export const PROMOTION_COMMIT_SUBJECT_PATTERN =
-  /^chore: promote dev (?:into|to) main(?: for production release)?(?: \(#\d+\))?$/;
+  /^chore: promote (?:dev (?:into|to) main(?: for production release)?|reviewed dev snapshot to main)(?: \(#\d+\))?$/;
 const HISTORICAL_MAIN_BACKPORT_SUBJECTS = new Set([
   "fix: backport simplified provider approval (#980)",
 ]);
