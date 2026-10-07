@@ -1,5 +1,114 @@
 [
   {
+    "version": "26.10.700-dev",
+    "tagName": "v26.10.700-dev",
+    "channel": "dev",
+    "date": "2026-10-07T08:08:06Z",
+    "deck": "Linux Library keys and transfer preview startup",
+    "features": [
+      {
+        "text": "Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts."
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Locked or unavailable Linux vaults return an error instead of replacing Library keys."
+      },
+      {
+        "text": "Transfer acceptance previews retain normal onboarding and Library selection without automatically creating a sample Library."
+      },
+      {
+        "text": "Desktop Settings shows the ten newest individual releases with complete notes."
+      },
+      {
+        "text": "Descriptions in sidebar tiles without media are centered."
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit."
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.700-dev",
+    "prNumbers": [
+      2156,
+      2158,
+      2159,
+      2161,
+      2163
+    ],
+    "builds": [
+      "26.10.700-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.10.700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.700-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
+    "version": "26.10.601-dev",
+    "tagName": "v26.10.601-dev",
+    "channel": "dev",
+    "date": "2026-10-06T23:35:37Z",
+    "deck": "Local Kev classification, labeled comparisons, and restored annotation text",
+    "features": [
+      {
+        "text": "Choose Kev or Jev in AI settings and compare read-only Library classification scores. Kev uses a separate local service and abstains on uncertain answers without cloud fallback"
+      },
+      {
+        "text": "Run six labeled examples on each classifier to compare accuracy, decision coverage and latency"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Saved annotation text now loads through authenticated storage; incomplete or stale note replacements are refused"
+      },
+      {
+        "text": "Show search failures with retry controls instead of presenting them as empty results"
+      },
+      {
+        "text": "Keep the selected classifier and entered settings when pausing a model download fails"
+      },
+      {
+        "text": "Update security dependencies and reduce Darwin filesystem admission overhead"
+      },
+      {
+        "text": "Keep the iOS Home Screen toolbar sharp"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Opening this build upgrades local annotation storage from catalog 1 or 2 to 4 or 5. Older clients refuse upgraded storage; recovery requires a compatible build"
+      },
+      {
+        "text": "Kev thresholds are provisional. Classification scores remain a Settings preview and do not change saved classifications or feed filters"
+      },
+      {
+        "text": "The small labeled evaluation does not establish model parity or quality on your feed"
+      },
+      {
+        "text": "Installed native UI acceptance and Windows authenticated-range annotation hydration remain separate verification work"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.601-dev",
+    "prNumbers": [
+      2152
+    ],
+    "builds": [
+      "26.10.601-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.10.601-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.601-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.10.500-dev",
     "tagName": "v26.10.500-dev",
     "channel": "dev",
