@@ -1455,9 +1455,11 @@ function App() {
 
   // Local feature previews should open with a useful library. E2E tests keep
   // deterministic control unless the preview helper opts in explicitly.
+  // Allow native development with hot reload and no automatic sample writes.
   useEffect(() => {
     const shouldAutoSeedPreview =
-      IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
+      import.meta.env.FREED_AUTO_SEED_SAMPLE_DATA !== "0" &&
+      (IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1"));
     if (!isInitialized || !shouldAutoSeedPreview || previewPopulationStarted.current) return;
 
     const guardKey = "freed_dev_seeded";
