@@ -3,7 +3,7 @@
   "version": "26.10.701-dev",
   "channel": "dev",
   "dayKey": "26.10.7",
-  "approved": false,
+  "approved": true,
   "editorialNotes": [],
   "generatedAt": "2026-10-07T22:28:44.624Z",
   "model": "heuristic",
@@ -48,8 +48,18 @@
       "v26.10.701-dev"
     ],
     "prNumbers": [
+      2156,
+      2158,
+      2159,
+      2160,
       2161,
-      2174
+      2163,
+      2167,
+      2168,
+      2169,
+      2173,
+      2174,
+      2177
     ],
     "commitSubjects": [
       "feat: enforce read-only Desktop viewers after Primary handoff",
@@ -67,25 +77,22 @@
     ]
   },
   "release": {
-    "deck": "Enforce read-only Desktop viewers after Primary handoff, Linux Library credentials and repair release admission, and primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit",
+    "deck": "Transfer acceptance builds can keep a former Primary as a strict read-only Desktop viewer. Ordinary builds retain the transfer and recovery holds.",
     "features": [
-      "Enforce read-only Desktop viewers after Primary handoff",
-      "Linux Library credentials and repair release admission",
-      "Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts"
+      "After a verified handoff, a former Primary can adopt the successor with a durable native read-only policy that blocks edits, including automatic read and seen updates, while allowing browsing and inbound sync.",
+      "Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts."
     ],
     "fixes": [
-      "Allow disabling automatic development sample data",
-      "Allow bounded annotation transfer fixture retries",
-      "Preserve normal Library startup in transfer previews",
-      "Descriptions in media-free sidebar tiles now align correctly",
-      "Locked or unavailable Linux vaults return an error instead of replacing Library keys",
-      "Descriptions in sidebar tiles without media are centered",
-      "Desktop Settings shows the ten newest individual releases with complete notes"
+      "Viewer restrictions survive restart, checkpoint replacement and later successor recovery; stale commands cannot sign or enqueue edits.",
+      "Transfer previews preserve normal Library startup, and automatic development sample data can be disabled.",
+      "Locked or unavailable Linux vaults return an error instead of replacing Library keys.",
+      "Desktop Settings shows the ten newest individual releases with complete notes, and descriptions in media-free sidebar tiles are centered.",
+      "Compatible native dependency security updates and build-time dependency checks keep release inputs consistent."
     ],
     "followUps": [
-      "Fail the build when node_modules drifts from the lockfile",
-      "Linux Library keys and transfer preview startup"
+      "Primary transfer and consumer recovery remain disabled in ordinary builds. Use the separate signed transfer-acceptance app and a PWA built from the same release source for isolated acceptance.",
+      "Installed multi-device acceptance and a verified personal Library handoff remain required; passing synthetic tests does not establish either."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.701-dev\n\nEnforce read-only Desktop viewers after Primary handoff, Linux Library credentials and repair release admission, and primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit\n\n### Features\n\n- Enforce read-only Desktop viewers after Primary handoff\n- Linux Library credentials and repair release admission\n- Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts\n\n### Fixes\n\n- Allow disabling automatic development sample data\n- Allow bounded annotation transfer fixture retries\n- Preserve normal Library startup in transfer previews\n- Descriptions in media-free sidebar tiles now align correctly\n- Locked or unavailable Linux vaults return an error instead of replacing Library keys\n- Descriptions in sidebar tiles without media are centered\n- Desktop Settings shows the ten newest individual releases with complete notes\n\n### Follow-ups\n\n- Fail the build when node_modules drifts from the lockfile\n- Linux Library keys and transfer preview startup\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.701-dev\n\nTransfer acceptance builds can keep a former Primary as a strict read-only Desktop viewer. Ordinary builds retain the transfer and recovery holds\n\n### Features\n\n- After a verified handoff, a former Primary can adopt the successor with a durable native read-only policy that blocks edits, including automatic read and seen updates, while allowing browsing and inbound sync\n- Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts\n\n### Fixes\n\n- Viewer restrictions survive restart, checkpoint replacement and later successor recovery; stale commands cannot sign or enqueue edits\n- Transfer previews preserve normal Library startup, and automatic development sample data can be disabled\n- Locked or unavailable Linux vaults return an error instead of replacing Library keys\n- Desktop Settings shows the ten newest individual releases with complete notes, and descriptions in media-free sidebar tiles are centered\n- Compatible native dependency security updates and build-time dependency checks keep release inputs consistent\n\n### Follow-ups\n\n- Primary transfer and consumer recovery remain disabled in ordinary builds. Use the separate signed transfer-acceptance app and a PWA built from the same release source for isolated acceptance\n- Installed multi-device acceptance and a verified personal Library handoff remain required; passing synthetic tests does not establish either\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
