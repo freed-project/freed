@@ -23,7 +23,8 @@ function encodeNumber(value: number): LibraryCoreCanonicalValue {
   }) as Readonly<Record<string, LibraryCoreCanonicalValue>>;
 }
 
-function isWrapper(value: unknown): value is LibraryCoreBinary64V1 {
+/** Identify the reserved wire shape; decoding separately checks finiteness. */
+export function isLibraryCoreBinary64V1(value: unknown): value is LibraryCoreBinary64V1 {
   if (
     value === null ||
     typeof value !== "object" ||
@@ -57,7 +58,7 @@ export function encodeLibraryCoreFractionalNumbersV1(
   if (typeof value !== "object") {
     throw new TypeError("Library Core values must contain only JSON data");
   }
-  if (isWrapper(value)) {
+  if (isLibraryCoreBinary64V1(value)) {
     throw new TypeError("Library Core values contain a reserved binary64 wrapper");
   }
   const prototype = Object.getPrototypeOf(value);
@@ -67,14 +68,14 @@ export function encodeLibraryCoreFractionalNumbersV1(
   const output: Record<string, LibraryCoreCanonicalValue> = {};
   for (const [key, nested] of Object.entries(value)) {
     if (nested === undefined) continue;
-    output[key] = encodeLibraryCoreFractionalNumbersV1(nested);
+    Object.defineProperty(output, key, { value: encodeLibraryCoreFractionalNumbersV1(nested), enumerable: true, writable: true, configurable: true });
   }
   return Object.freeze(output);
 }
 
 /** Restore v1 binary64 wrappers after signature verification. */
 export function decodeLibraryCoreFractionalNumbersV1(value: unknown): unknown {
-  if (isWrapper(value)) {
+  if (isLibraryCoreBinary64V1(value)) {
     const bytes = Uint8Array.from(
       value.bits.match(/../g)!.map((pair) => Number.parseInt(pair, 16)),
     );
@@ -90,7 +91,7 @@ export function decodeLibraryCoreFractionalNumbersV1(value: unknown): unknown {
   if (value !== null && typeof value === "object") {
     const output: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value)) {
-      output[key] = decodeLibraryCoreFractionalNumbersV1(nested);
+      Object.defineProperty(output, key, { value: decodeLibraryCoreFractionalNumbersV1(nested), enumerable: true, writable: true, configurable: true });
     }
     return output;
   }

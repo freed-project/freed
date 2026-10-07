@@ -1,3 +1,6 @@
+import { PRIORITY_RECENCY_HORIZON_MS } from "../ranking.js";
+import { LIBRARY_CORE_SQLITE_QUERY_PROGRAMS } from "./sqlite-contract.generated.js";
+import { parseLibraryCorePriorityTimePageRequestV1, parseLibraryCorePriorityTimePageResponseV1 } from "./priority-time-page-contracts.js";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -37,10 +40,12 @@ function card(globalId: string) {
     eventStartsAt: null,
     globalId,
     hidden: globalId === "hidden",
+    seenSyncedAt: null,
     liked: false,
     likedAt: null,
     likedSyncedAt: null,
     linkPreviewTitle: null,
+    linkPreviewUrl: null,
     locationName: null,
     mediaTypes: [],
     mediaUrls: [],
@@ -61,6 +66,19 @@ function card(globalId: string) {
 }
 
 describe("Library Core background item scan", () => {
+  it("closes nullable seen confirmation without losing zero or the terminal marker", () => {
+    const response = (seenSyncedAt: unknown) => ({ nextCursor: null, queryId: request.queryId, schemaVersion: 1,
+      source: { generationId, projectionRevision: 7, transitionSequence: 7 }, rows: [{ ...card("item-1"), seenSyncedAt }] });
+    for (const stamp of [null, -1, 0, 1000]) {
+      const parsed = parseLibraryCoreItemScanResponseV1(response(stamp), request);
+      expect(parsed.ok).toBe(true);
+      if (parsed.ok) expect(parsed.value.rows[0].seenSyncedAt).toBe(stamp);
+    }
+    for (const stamp of [undefined, -2, -0, 0.5, Number.MAX_SAFE_INTEGER + 1, "1000"]) {
+      expect(parseLibraryCoreItemScanResponseV1(response(stamp), request).ok).toBe(false);
+    }
+  });
+
   it("round-trips a source-bound identity cursor with no time ordering field", () => {
     const cursor = {
       generationId,
@@ -184,5 +202,32 @@ describe("Library Core background item scan", () => {
     expect(parseLibraryCoreItemScanResponseV1(response, request).ok).toBe(
       false,
     );
+  });
+});
+
+
+describe("source-fenced time-only priority metadata", () => {
+  it("uses the shared decay horizon and existing index without a schema extension", () => {
+    const sql = LIBRARY_CORE_SQLITE_QUERY_PROGRAMS.priority_time_page_v1.sql;
+    expect(sql).toContain(`item.priority_computed_at - item.published_at < ${PRIORITY_RECENCY_HORIZON_MS}`);
+    expect(sql).toContain("INDEXED BY library_feed_items_priority_refresh");
+  });
+  const timeRequest = { queryId: "priority_time_page_v1" as const, schemaVersion: 1 as const,
+    cancellationId: "cancel-time-1", readerSessionId: "reader-time-1", limit: 64,
+    priorityComputedBeforeMs: 1000, generationId, sourceRevision: 7 };
+  it("rejects cursor/progress overrides and malformed source bounds", () => {
+    expect(parseLibraryCorePriorityTimePageRequestV1(timeRequest).ok).toBe(true);
+    for (const invalid of [{...timeRequest,cursor:"opaque"}, {...timeRequest,priorityComputedBeforeMs:null},
+      {...timeRequest,sourceRevision:-1}, {...timeRequest,limit:65}, {...timeRequest,generationId:"unknown"}])
+      expect(parseLibraryCorePriorityTimePageRequestV1(invalid).ok).toBe(false);
+  });
+  it("requires the response to match both source counters and generation", () => {
+    const response = {queryId:"priority_time_page_v1",schemaVersion:1,rows:[card("old")],nextCursor:null,
+      source:{generationId,projectionRevision:7,transitionSequence:7}};
+    expect(parseLibraryCorePriorityTimePageResponseV1(response,timeRequest).ok).toBe(true);
+    for (const source of [{...response.source,projectionRevision:8},{...response.source,transitionSequence:8},
+      {...response.source,generationId:"b".repeat(64)}])
+      expect(parseLibraryCorePriorityTimePageResponseV1({...response,source},timeRequest)).toEqual({ok:false,error:"CURSOR_STALE"});
+    expect(parseLibraryCorePriorityTimePageResponseV1({...response,extra:true},timeRequest).ok).toBe(false);
   });
 });

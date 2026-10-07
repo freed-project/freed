@@ -55,6 +55,7 @@ export type LibraryMutationRequest =
       persons: Person[];
       accounts: Account[];
     }
+  | { reqId: number; type: "UPDATE_SAVED_ITEM_NOTE"; globalId: string; note: string; annotationSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations }
   | { reqId: number; type: "REMOVE_FEED_ITEM"; globalId: string }
   | { reqId: number; type: "CLEAR_SAMPLE_DATA" }
   | {
@@ -62,6 +63,7 @@ export type LibraryMutationRequest =
       type: "UPDATE_FEED_ITEM";
       globalId: string;
       updates: Partial<FeedItem>;
+      annotationSnapshot?: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations;
     }
   | {
       reqId: number;

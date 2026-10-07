@@ -23,6 +23,7 @@ export const LIBRARY_SERVICE_FAILURE_CODES = Object.freeze([
   "acl_probe_malformed",
   "acl_probe_unavailable",
   "bound_input_changed",
+  "cooperative_handoff_required",
   "config_invalid",
   "config_missing",
   "config_not_private",
@@ -105,6 +106,12 @@ export interface LibraryServiceGoogleDriveConfig {
   installationWitness: string;
   credentialRecordId: string;
   publicationStateFile: string;
+  credentialStore?: {
+    backend: "linux-sealed-file-v1";
+    directory: string;
+    wrappingKeyFile: string;
+    wrappingKeyDigest: string;
+  };
 }
 
 export interface LibraryServiceCredentialDescriptor {
@@ -177,7 +184,10 @@ export interface LibraryServiceBoundPath {
 export interface LibraryServiceFileSystemPort {
   canonicalPath(filePath: string): Promise<string>;
   inspect(filePath: string): Promise<LibraryServiceFileMetadata>;
-  openBoundPath(filePath: string): Promise<LibraryServiceBoundPath>;
+  openBoundPath(
+    filePath: string,
+    access?: "read" | "read-write",
+  ): Promise<LibraryServiceBoundPath>;
   openPrivateStatusFile(
     stateRoot: LibraryServiceBoundPath,
     stateRootPath: string,
@@ -262,7 +272,11 @@ export interface LibraryServiceProcessPort {
 }
 
 export type LibraryServicePhase =
-  "starting" | "running" | "stopping" | "stopped" | "failed";
+  | "starting"
+  | "running"
+  | "stopping"
+  | "stopped"
+  | "failed";
 
 export interface LibraryServiceStatusRecord {
   schemaVersion: typeof LIBRARY_SERVICE_STATUS_SCHEMA_VERSION;

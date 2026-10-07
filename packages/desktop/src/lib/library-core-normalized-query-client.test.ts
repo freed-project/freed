@@ -10,7 +10,10 @@ import {
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
 
-vi.mock("@tauri-apps/api/core", () => ({ invoke: mocks.invoke }));
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mocks.invoke,
+  Channel: class { constructor(public onmessage: (ticket: string) => void) {} },
+}));
 
 const {
   mutateNormalizedContentPolicy,
@@ -18,6 +21,7 @@ const {
   mutateNormalizedDeviceContacts,
   queryNormalizedDeviceContacts,
   queryNormalizedLibrary,
+  auditNormalizedLibraryReplica,
 } = await import("./library-core-normalized-query-client");
 
 const request = {
@@ -61,7 +65,7 @@ const response = {
 };
 
 describe("Freed Desktop normalized query client", () => {
-  beforeEach(() => mocks.invoke.mockReset());
+  beforeEach(() => { mocks.invoke.mockReset(); });
 
   it("sends only the validated typed request to the native boundary", async () => {
     mocks.invoke.mockResolvedValue(response);
@@ -70,6 +74,46 @@ describe("Freed Desktop normalized query client", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("query_normalized_library", {
       request,
     });
+  });
+
+  it.each(["query_normalized_library", "audit_normalized_library_replica"] as const)(
+    "%s cancels after registration, including an early abort", async (readCommand) => {
+    const controller = new AbortController();
+    let complete!: (value: unknown) => void;
+    mocks.invoke.mockImplementation((command) => command === readCommand
+      ? new Promise((resolve) => { complete = resolve; }) : Promise.resolve(true));
+    const pending = readCommand === "query_normalized_library"
+      ? queryNormalizedLibrary(request, controller.signal)
+      : auditNormalizedLibraryReplica(controller.signal);
+    const rejected = expect(pending).rejects.toThrow();
+    controller.abort();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    const started = mocks.invoke.mock.calls[0][1].started;
+    started.onmessage("ticket");
+    expect(mocks.invoke).toHaveBeenLastCalledWith("cancel_normalized_library_query", { ticket: "ticket" });
+    started.onmessage("ticket");
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    complete(response);
+    await rejected;
+    started.onmessage("late-ticket");
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+  });
+
+  it("validates the audit receipt without granting publication", async () => {
+    const receipt = {
+      format: "freed_normalized_replica_audit_v1", checkpointDigest: "d".repeat(64),
+      snapshot: {
+        format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+        libraryId: "a".repeat(64), authorityEpoch: "b".repeat(64),
+        writerId: "c".repeat(64), sourceRevision: 1, recordCount: 2, itemCount: 0,
+        causalFrontierDigest: "e".repeat(64),
+      },
+    };
+    mocks.invoke.mockResolvedValue(receipt);
+    await expect(auditNormalizedLibraryReplica()).resolves.toEqual(receipt);
+    expect(mocks.invoke).toHaveBeenCalledWith("audit_normalized_library_replica", {});
+    mocks.invoke.mockResolvedValue({ ...receipt, writerAdmission: true });
+    await expect(auditNormalizedLibraryReplica()).rejects.toThrow();
   });
 
   it("rejects a native response with compatibility payload fields", async () => {
@@ -212,4 +256,33 @@ describe("Freed Desktop normalized query client", () => {
       "device contact status response is invalid",
     );
   });
+  const searchRequest = {
+    cancellationId: "desktop-search-test", cursor: null, filter: request.filter,
+    friendsPredicateSchemaVersion: 1, identityMode: "all_content", limit: 32,
+    query: "needle", queryId: "search_page_v1", readerSessionId: "desktop-search-reader",
+    recommendationOrderSchemaVersion: 1, schemaVersion: 1,
+  } as const;
+
+  it("validates the exact search_page_v1 IPC request and admitted zero response", async () => {
+    const searchResponse = {
+      nextCursor: null, queryId: "search_page_v1", rows: [], scannedRows: 2,
+      schemaVersion: 1, source: response.source,
+    };
+    mocks.invoke.mockResolvedValue(searchResponse);
+    await expect(queryNormalizedLibrary(searchRequest)).resolves.toEqual(searchResponse);
+    expect(mocks.invoke).toHaveBeenCalledWith("query_normalized_library", { request: searchRequest });
+    mocks.invoke.mockResolvedValue({ ...searchResponse, shellJson: "{}" });
+    await expect(queryNormalizedLibrary(searchRequest)).rejects.toThrow();
+  });
+
+  it.each(["QUERY_DEADLINE", "normalized search cursor is stale or mismatched", "normalized SQLite failure: fixture row"])(
+    "preserves search_page_v1 native rejection %s", async (error) => {
+      mocks.invoke.mockRejectedValue(error);
+      const outcome = await queryNormalizedLibrary(searchRequest).then(
+        (value) => ({ value }), (reason: unknown) => ({ reason }),
+      );
+      expect(outcome).toEqual({ reason: error });
+    },
+  );
+
 });

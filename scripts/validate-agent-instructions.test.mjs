@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import {
+  chmodSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -80,6 +81,27 @@ test("accepts bounded root and scoped instructions at the exact chain limit", (t
     relativeFile: "packages/ui/AGENTS.md",
     bytes: Buffer.byteLength(root) + Buffer.byteLength(scoped),
   });
+});
+
+test("does not traverse private runtime state but still validates nested instruction directories", (t) => {
+  const repoRoot = fixture(t);
+  write(repoRoot, "AGENTS.md", "Root\n");
+  write(repoRoot, ".codex/AGENTS.md", "Private runtime state\n");
+  const privateRoot = path.join(repoRoot, ".codex");
+  chmodSync(privateRoot, 0o000);
+  try {
+    assert.deepEqual(
+      validate(repoRoot).records.map((record) => record.relativeFile),
+      ["AGENTS.md"],
+    );
+  } finally {
+    chmodSync(privateRoot, 0o700);
+  }
+  write(repoRoot, "packages/example/.codex/AGENTS.md", "Nested source rules\n");
+  assert.throws(
+    () => validate(repoRoot),
+    /must be reachable from root AGENTS\.md: packages\/example\/\.codex\/AGENTS\.md/,
+  );
 });
 
 test("rejects an oversized root", (t) => {

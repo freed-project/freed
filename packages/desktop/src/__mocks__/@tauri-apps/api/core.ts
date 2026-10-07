@@ -199,6 +199,14 @@ function sqliteLibrary(): MockSqliteLibrary {
   return w.__TAURI_MOCK_SQLITE_LIBRARY__;
 }
 
+function normalizedLibraryCloudPreflightIdentity(): Record<string, unknown> {
+  return {
+    format: "freed_normalized_cloud_preflight_identity_v1", protocolVersion: 2,
+    libraryId: "2".repeat(64), authorityEpoch: "3".repeat(64), writerId: "6".repeat(64),
+    sourceRevision: sqliteLibrary().sourceRevision, causalFrontierDigest: "a".repeat(64), localActorId: "6".repeat(64),
+  };
+}
+
 function normalizedLibraryCloudIdentity(): Record<string, unknown> {
   const state = sqliteLibrary();
   const items = Object.values(state.items).filter((item) => !item.__deleted);
@@ -218,13 +226,51 @@ function normalizedLibraryCloudIdentity(): Record<string, unknown> {
 
 /** Default handlers for every command the app calls on startup. */
 const handlers: Record<string, Handler> = {
+  cancel_normalized_library_query: () => true,
+      audit_normalized_library_replica: () => ({
+        format: "freed_normalized_replica_audit_v1",
+        checkpointDigest: "d".repeat(64),
+        snapshot: {
+          format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+          libraryId: "a".repeat(64), authorityEpoch: "b".repeat(64),
+          writerId: "6".repeat(64), sourceRevision: 0,
+          causalFrontierDigest: "c".repeat(64), recordCount: 0, itemCount: 0,
+        },
+      }),
   // Normalized Library commands come from the shared HTML/init bootstrap.
   // Keep one query implementation for previews and injected test fixtures.
+  get_jev_api_key: () => null,
+  set_jev_api_key: () => { throw new Error("Use the browser preview credential controls."); },
+  clear_jev_api_key: () => undefined,
+  get_jev_budget: () => null,
+  set_jev_budget: () => { throw new Error("Jev budget requires an explicit test handler."); },
+  request_jev: () => { throw new Error("Native Jev requests require an explicit test handler."); },
+  cancel_jev_request: () => undefined,
+  request_kev: () => { throw new Error("Local Kev requires Freed Desktop and a loopback server."); },
+  get_kev_models: () => { throw new Error("Local Kev requires Freed Desktop and a loopback server."); },
+  cancel_kev_request: () => undefined,
+  normalized_desktop_installation_status: () => (window as unknown as Record<string, unknown>).__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({
+    state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
+    authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),
+  }),
+  select_normalized_desktop_library_setup: (args: Record<string, unknown>) => {
+    const choice = (args.choice as { role: string; libraryId?: string });
+    const status = choice.role === "follower" ? {
+      state: "joining", role: "follower", libraryId: choice.libraryId,
+      authorityEpochId: null, actorId: null,
+    } : {
+      state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
+      authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),
+    };
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_LIBRARY_INSTALLATION__ = status;
+    return status;
+  },
   ensure_fresh_normalized_desktop_library: () => {
     sqliteLibrary().active = true;
     return true;
   },
   describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
+      describe_normalized_library_cloud_preflight_identity: normalizedLibraryCloudPreflightIdentity,
   set_sqlite_library_cloud_writer_admission: (
     args: Record<string, unknown>,
   ) => {
@@ -257,6 +303,50 @@ const handlers: Record<string, Handler> = {
       controlRevision: null,
       verifiedAtMs: null,
     },
+  describe_normalized_library_operation_export: () => {
+    throw new Error("Operation export requires an explicit signed Library fixture.");
+  },
+  read_normalized_library_operation_page: () => {
+    throw new Error("Operation export requires an explicit signed Library fixture.");
+  },
+  import_normalized_library_operation_page: () => {
+    throw new Error("Operation import requires an explicit signed Library fixture.");
+  },
+  prepare_normalized_library_predecessor_checkpoint_read: () => { throw new Error("Checkpoint catch-up requires an explicit signed Library fixture."); },
+  activate_normalized_library_predecessor_checkpoint: () => { throw new Error("Checkpoint catch-up requires an explicit signed Library fixture."); },
+  begin_normalized_library_source_handoff: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  accept_normalized_library_target_handoff_cancellation: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  cancel_normalized_library_source_handoff: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  seal_normalized_library_source_handoff: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  prepare_normalized_library_handoff_activation: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  stage_normalized_library_target_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  read_normalized_library_handoff_result_actors: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  adopt_normalized_library_source_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  activate_normalized_library_target_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  accept_normalized_library_target_handoff_authorization: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  prepare_normalized_library_handoff_authorization: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  authorize_normalized_library_source_handoff: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
+  read_normalized_library_consumer_recovery: () => null,
+  reapply_normalized_library_archived_editor_transaction: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  reapply_normalized_library_archived_assignments: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  prepare_normalized_library_consumer_recovery: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  commit_normalized_library_consumer_recovery: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  read_normalized_library_handoff_status: () => null,
+  prepare_normalized_library_handoff_readiness: () => {
+    throw new Error("Authority transfers require Freed Desktop.");
+  },
   normalized_library_follower_runtime_status: () => ({
     state: "awaiting_checkpoint",
     libraryId: null,
@@ -267,6 +357,7 @@ const handlers: Record<string, Handler> = {
     pendingIntentCount: 0,
     publishedIntentCount: 0,
     importedResultCount: 0,
+    awaitingCanonicalChanges: false,
   }),
   normalized_library_follower_transport_context: () => ({
     actorId: "11".repeat(32),
@@ -326,6 +417,10 @@ const handlers: Record<string, Handler> = {
       storedSegmentDigest: publication.storedSegmentDigest,
     };
   },
+  fetch_background_article_url: (args: Record<string, unknown>) =>
+    proxyFetch({ url: args.url, method: "GET" }),
+  fetch_rss_url: (args: Record<string, unknown>) =>
+    proxyFetch({ url: args.url, method: "GET" }),
   fetch_url: (args: Record<string, unknown>) =>
     proxyFetch({ url: args.url, method: "GET" }),
   google_api_request: (args: Record<string, unknown>) =>
@@ -354,6 +449,9 @@ const handlers: Record<string, Handler> = {
     return request?.expectedSizeBytes ?? 0;
   },
   cancel_local_ai_model_download: () => null,
+      request_gliclass: () => { throw new Error("Native GLiClass inference is unavailable in the browser preview."); },
+      cancel_gliclass_request: () => null,
+      unload_gliclass: () => null,
   get_desktop_session_state: () =>
     (
       window as unknown as {
@@ -675,4 +773,10 @@ export function isTauri(): boolean {
 
 export function convertFileSrc(filePath: string, protocol = "asset"): string {
   return `${protocol}://localhost/${encodeURIComponent(filePath)}`;
+}
+
+/** Query registration callback for the headless native fixture. */
+export class Channel<T> {
+  onmessage: (message: T) => void;
+  constructor(onmessage: (message: T) => void = () => {}) { this.onmessage = onmessage; }
 }

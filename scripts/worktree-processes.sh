@@ -52,21 +52,11 @@ matches_filters() {
 
 stop_pid() {
   local pid="$1"
-  local attempts=0
-
-  if ! is_pid_running "${pid}"; then
-    return 0
+  if [[ -z "${PROCESS_IDENTITY:-}" ]]; then
+    echo "Error: preview ${pid} has no process identity; retaining its record for inspection." >&2
+    return 1
   fi
-
-  kill "${pid}" 2>/dev/null || true
-  while is_pid_running "${pid}" && [[ ${attempts} -lt 10 ]]; do
-    sleep 0.2
-    attempts=$((attempts + 1))
-  done
-
-  if is_pid_running "${pid}"; then
-    kill -9 "${pid}" 2>/dev/null || true
-  fi
+  python3 "${SCRIPT_DIR}/lib/preview-processes.py" stop "${PROCESS_IDENTITY}" "${pid}"
 }
 
 list_processes() {
@@ -81,7 +71,7 @@ list_processes() {
 
   shopt -s nullglob
   for manifest in "$(process_state_dir)"/*.env; do
-    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
+    unset PROCESS_IDENTITY PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
     # shellcheck disable=SC1090
     source "${manifest}"
 
@@ -115,7 +105,7 @@ stop_processes() {
 
   shopt -s nullglob
   for manifest in "$(process_state_dir)"/*.env; do
-    unset PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
+    unset PROCESS_IDENTITY PID PROCESS_KIND TARGET WORKTREE_PATH PORT COMMAND LOG_PATH PREVIEW_LABEL STARTED_AT
     # shellcheck disable=SC1090
     source "${manifest}"
 

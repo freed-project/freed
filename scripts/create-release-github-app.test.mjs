@@ -35,7 +35,11 @@ import {
 const pem = generateKeyPairSync("rsa", { modulusLength: 2_048 })
   .privateKey.export({ format: "pem", type: "pkcs1" })
   .toString();
-const credentialTestHome = realpathSync(os.userInfo().homedir);
+// A container may mount the account home through a filesystem without stable
+// ownership metadata. Tests can use a physical protected home for synthetic keys.
+const credentialTestHome = realpathSync(
+  process.env.FREED_TEST_CREDENTIAL_HOME ?? os.userInfo().homedir,
+);
 
 function createCredentialTestDirectory(label) {
   return realpathSync(

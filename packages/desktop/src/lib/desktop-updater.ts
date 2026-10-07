@@ -9,6 +9,11 @@ import {
   getNativeUpdaterTarget,
 } from "./release-channel";
 
+import { recordRuntimeHealthEvent } from "./runtime-health-events";
+
+import { createSnapshot } from "./snapshots";
+import { isSqliteLibraryActive } from "./sqlite-library";
+
 export const JUST_UPDATED_KEY = "freed-updated-to";
 
 export type DesktopDownloadTarget =
@@ -25,6 +30,7 @@ export type PendingDesktopUpdate = {
 };
 
 export type DesktopInstallProgress =
+  | { phase: "backing-up" }
   | { phase: "downloading"; percent: number }
   | { phase: "ready" };
 
@@ -121,26 +127,62 @@ export async function installPendingDesktopUpdate(
   pendingUpdate: PendingDesktopUpdate,
   onProgress?: (progress: DesktopInstallProgress) => void,
 ): Promise<string> {
-  let totalBytes = 0;
-  let downloadedBytes = 0;
-
-  await pendingUpdate.update.downloadAndInstall((event) => {
-    switch (event.event) {
-      case "Started":
-        totalBytes = event.data.contentLength ?? 0;
-        break;
-      case "Progress": {
-        downloadedBytes += event.data.chunkLength;
-        const percent =
-          totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0;
-        onProgress?.({ phase: "downloading", percent });
-        break;
+  const startedAt = performance.now();
+  let stage = "preparing";
+  const recordStage = (next: string) => {
+    stage = next;
+    recordRuntimeHealthEvent({
+      event: "desktop_update_stage", stage,
+      targetVersion: pendingUpdate.update.version,
+      elapsedMs: Math.round(performance.now() - startedAt),
+    });
+  };
+  try {
+    // Capture using the currently installed build before replacing its executable.
+    // Recovery updates remain available when startup could not open the Library.
+    if (isSqliteLibraryActive()) {
+      recordStage("snapshot-started");
+      onProgress?.({ phase: "backing-up" });
+      const snapshot = await createSnapshot("manual");
+      if (!snapshot) {
+        throw new Error("Could not save a Library snapshot. The update was not installed.");
       }
-      case "Finished":
-        onProgress?.({ phase: "ready" });
-        break;
     }
-  });
 
-  return pendingUpdate.update.version;
+    recordStage("snapshot-completed-or-not-required");
+    let totalBytes = 0;
+    let downloadedBytes = 0;
+    onProgress?.({ phase: "downloading", percent: 0 });
+
+    recordStage("download-requested");
+    await pendingUpdate.update.downloadAndInstall((event) => {
+      switch (event.event) {
+        case "Started":
+          totalBytes = event.data.contentLength ?? 0;
+          break;
+        case "Progress": {
+          downloadedBytes += event.data.chunkLength;
+          const percent =
+            totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0;
+          onProgress?.({ phase: "downloading", percent });
+          break;
+        }
+        case "Finished":
+          recordStage("download-finished");
+          onProgress?.({ phase: "ready" });
+          break;
+      }
+    });
+
+    recordStage("install-completed");
+    return pendingUpdate.update.version;
+  } catch (error) {
+    const failedStage = stage;
+    recordRuntimeHealthEvent({
+      event: "desktop_update_stage", stage: "failed", failedStage,
+      targetVersion: pendingUpdate.update.version,
+      elapsedMs: Math.round(performance.now() - startedAt),
+    });
+    throw error;
+  }
 }

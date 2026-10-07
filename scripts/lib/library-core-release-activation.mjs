@@ -914,7 +914,13 @@ export function resolveLibraryCoreActivationManifestInspection({
       previousDigest: previousMainEndpoint.digest,
       currentDigest: currentMainEndpoint.digest,
     },
-    transitions: validateTransitions(transitions),
+    // Each history edge is append-only, but later IDs need not sort after
+    // earlier IDs. Canonicalize the combined receipt without deduplicating it.
+    transitions: validateTransitions(
+      transitions.sort((left, right) =>
+        compareAscii(left.activationId, right.activationId),
+      ),
+    ),
   };
 }
 

@@ -1,3 +1,6 @@
+import { listen } from "@tauri-apps/api/event";
+import { retainRenderedAnnotationSnapshot } from "@freed/shared/library-core";
+import type { LibraryCoreFeedPageSourceV1 } from "@freed/shared/library-core";
 /**
  * Freed Desktop Library client.
  *
@@ -7,6 +10,7 @@
 
 import { hashSavedUrl } from "@freed/capture-save/normalize";
 import {
+  withSavedItemNote,
   CONTENT_SIGNAL_KEYS,
   CONTENT_SIGNAL_VERSION,
   calculatePriority,
@@ -22,7 +26,6 @@ import {
   type RssFeed,
   type SampleDataClearSummary,
   type UserPreferences,
-  type WeightPreferences,
 } from "@freed/shared";
 import type {
   LibraryMutationEvent,
@@ -245,7 +248,28 @@ async function publishLocalChangeFeed(
   return Object.freeze({ published, sequence: currentSequence });
 }
 
+let localMaintenanceListener: Promise<() => void> | null = null;
+let localMaintenanceRefreshQueued = false;
+function observeLocalMaintenance(): void {
+  if (localMaintenanceListener) return;
+  localMaintenanceListener = listen("library-local-changes-available",() => {
+    if (localMaintenanceRefreshQueued) return;
+    localMaintenanceRefreshQueued=true;
+    const refresh=mutationQueue.then(async () => {
+      localMaintenanceRefreshQueued=false;
+      if (lastState) await reloadSqliteLibraryState();
+    });
+    mutationQueue=refresh.catch(() => { console.error("Local annotation refresh failed; editing will be checked again before submission"); });
+  }).catch(error => {
+    localMaintenanceListener=null;
+    console.error("Local annotation notifications are unavailable");
+    throw error;
+  });
+  void localMaintenanceListener.catch(() => undefined);
+}
+
 async function ensureInitialized(): Promise<LibraryCoreRuntimeStateV1> {
+  observeLocalMaintenance();
   if (lastState) return lastState;
   let normalizedSelected = await ensureFreshNormalizedDesktopLibrary(false);
   let legacyDataPresent = false;
@@ -409,10 +433,14 @@ export const addLibraryFeedItems = (items: FeedItem[]) =>
   request({ type: "ADD_FEED_ITEMS", items }).then(() => {});
 export const removeLibraryFeedItem = (globalId: string) =>
   request({ type: "REMOVE_FEED_ITEM", globalId }).then(() => {});
+/** Update an existing note through the ordinary serialized mutation queue. */
+export const updateLibrarySavedItemNote = (globalId: string, note: string, annotationSnapshot: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations) =>
+  request({ type: "UPDATE_SAVED_ITEM_NOTE", globalId, note, annotationSnapshot }).then(() => {});
 export const updateLibraryFeedItem = (
   globalId: string,
   updates: Partial<FeedItem>,
-) => request({ type: "UPDATE_FEED_ITEM", globalId, updates }).then(() => {});
+  annotationSnapshot?: import("@freed/shared/library-core").LibraryCoreHydratedAnnotations,
+) => request({ type: "UPDATE_FEED_ITEM", globalId, updates, annotationSnapshot: updates.userState?.tags !== undefined || updates.userState?.highlights !== undefined ? retainRenderedAnnotationSnapshot(annotationSnapshot, globalId) : undefined }).then(() => {});
 export const markLibraryItemAsRead = (globalId: string) =>
   request({ type: "MARK_AS_READ", globalId }).then(() => {});
 export const markLibraryItemsAsRead = (globalIds: string[]) =>
@@ -596,16 +624,20 @@ export async function backfillLibraryContentSignals(
 }
 
 export interface LibraryPriorityBackfillSummary {
+  /** Local diagnostic only: queue wait before initialization; zero when not measured. */
+  readonly queueWaitMs: number;
+  readonly source: LibraryCoreFeedPageSourceV1;
   readonly passStartedAt: number;
   readonly remaining: number;
   readonly updated: number;
 }
 
 export async function backfillLibraryPriorities(
-  weights: WeightPreferences,
   passStartedAt: number,
   batchSize = 64,
   publishRuntimeUpdate = true,
+  timeOnlySource?: LibraryCoreFeedPageSourceV1,
+  measureQueueWait = false,
 ): Promise<LibraryPriorityBackfillSummary> {
   if (
     !Number.isSafeInteger(passStartedAt) ||
@@ -617,18 +649,21 @@ export async function backfillLibraryPriorities(
     throw new TypeError("priority backfill bounds are invalid");
   }
   let summary!: LibraryPriorityBackfillSummary;
+  const queuedAt = measureQueueWait ? performance.now() : 0;
   const operation = mutationQueue.then(async () => {
+    const queueWaitMs = measureQueueWait ? Math.max(0, performance.now() - queuedAt) : 0;
     await ensureInitialized();
     const batch = await readLibraryCorePriorityCandidateBatch(
       passStartedAt,
       batchSize,
+      timeOnlySource,
     );
     if (batch.items.length > 0) {
       await commitDesktopLibraryFeedItemPriorities(
         batch.items.map(({ careLevel, item }) => ({
           entityId: item.globalId,
           priorityBasisPoints:
-            calculatePriority(item, weights, passStartedAt, { careLevel }) *
+            calculatePriority(item, batch.weights, passStartedAt, { careLevel }) *
             100,
         })),
         passStartedAt,
@@ -636,6 +671,8 @@ export async function backfillLibraryPriorities(
       if (publishRuntimeUpdate) await reloadSqliteLibraryState();
     }
     summary = Object.freeze({
+      queueWaitMs,
+      source: batch.source,
       passStartedAt,
       remaining: batch.remaining ? 1 : 0,
       updated: batch.items.length,
@@ -649,6 +686,7 @@ export async function backfillLibraryPriorities(
 export async function addLibraryStubItem(
   url: string,
   tags: string[] = [],
+  initial?: Readonly<{ notes?: string; preview?: { title: string; description?: string } }>,
 ): Promise<FeedItem> {
   const globalId = `saved:${hashSavedUrl(url)}`;
   const now = Date.now();
@@ -664,10 +702,10 @@ export async function addLibraryStubItem(
     publishedAt: now,
     author: { id: hostname, handle: hostname, displayName: hostname },
     content: {
-      text: url,
+      text: initial?.preview?.description ?? url,
       mediaUrls: [],
       mediaTypes: [],
-      linkPreview: { url, title: url },
+      linkPreview: { url, title: initial?.preview?.title ?? url, ...(initial?.preview?.description ? { description: initial.preview.description } : {}) },
     },
     userState: {
       hidden: false,
@@ -675,6 +713,7 @@ export async function addLibraryStubItem(
       savedAt: now,
       archived: false,
       tags,
+      highlights: withSavedItemNote([], initial?.notes ?? ""),
     },
     topics: [],
   };

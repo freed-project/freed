@@ -1,4 +1,4 @@
-import type { Highlight } from "./types";
+import type { Highlight } from "./types.js";
 
 /**
  * Reserved annotation text for a whole-item note.

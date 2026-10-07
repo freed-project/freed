@@ -1,0 +1,136 @@
+import type { Highlight } from "../types.js";
+import { SAVED_ITEM_NOTE_MARKER } from "../saved-item-note.js";
+import { decodeLibraryCoreCanonicalBase64 } from "./canonical-base64.js";
+import { type LibraryCoreItemAnnotationsResponseV1, parseLibraryCoreItemAnnotationsResponseV1, parseLibraryCoreItemAnnotationEditStateResponseV1 } from "./item-annotations-contracts.js";
+import { ANNOTATION_TEXT_AGGREGATE_BYTES, ANNOTATION_TEXT_MAXIMUM_BYTES, sameAnnotationSource, type LibraryCoreAnnotationTextState } from "./item-annotation-text-contracts.js";
+import type { LibraryCoreNormalizedQueryExecutor } from "./normalized-feed-readers.js";
+import { canonicalizeFeedItemHighlightsV1, canonicalizeFeedItemTagsV1, FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA } from "./operation-payload-contracts.js";
+
+export interface LibraryCoreHydratedAnnotations {
+  readonly editState: "ready" | "pending" | "unavailable";
+  readonly originals: LibraryCoreItemAnnotationsResponseV1;
+  readonly state: LibraryCoreAnnotationTextState | "stale";
+  readonly highlights: readonly Highlight[] | null;
+}
+/** A failed selection retains canonical evidence but never offers a partial replacement. */
+export class LibraryCoreAnnotationHydrationError extends Error {
+  readonly snapshot: LibraryCoreHydratedAnnotations;
+  constructor(snapshot: LibraryCoreHydratedAnnotations) {
+    super(snapshot.editState === "pending" ? "A saved annotation edit is still pending. Wait for it to settle before editing again." : `Annotation editing is ${snapshot.state === "ready" ? snapshot.editState : snapshot.state}; saved annotations have not changed`);
+    this.name = "LibraryCoreAnnotationHydrationError";
+    this.snapshot = snapshot;
+  }
+}
+export async function hydrateLibraryCoreAnnotations(query: LibraryCoreNormalizedQueryExecutor, input: LibraryCoreItemAnnotationsResponseV1): Promise<LibraryCoreHydratedAnnotations> {
+  const parsed = parseLibraryCoreItemAnnotationsResponseV1(input, { queryId: "item_annotations_v1", schemaVersion: 1, globalId: input.globalId });
+  if (!parsed.ok) throw new TypeError(parsed.error);
+  const originals = parsed.value;
+  const failure = (state: LibraryCoreHydratedAnnotations["state"]): LibraryCoreHydratedAnnotations => Object.freeze({ originals, state, editState: "unavailable", highlights: null });
+  const highlights: Highlight[] = [];
+  let total = 0;
+  let hydrated = false;
+  for (let index = 0; index < originals.highlights.length; index += 1) {
+    const row = originals.highlights[index]!;
+    let text = row.text;
+    if (text === null) {
+      let result;
+      try { result = await query({ queryId: "item_annotation_text_range_v1", schemaVersion: 1, globalId: originals.globalId, annotationIndex: index, expectedSource: originals.source, offsetBytes: 0, limitBytes: ANNOTATION_TEXT_MAXIMUM_BYTES }); }
+      catch { return failure("unavailable"); }
+      if (!sameAnnotationSource(result.source, originals.source)) return failure("stale");
+      if (result.state !== "ready") return failure(result.state);
+      if (!result.text || result.text.blobDigest !== row.textBlobDigest || result.text.startOffset !== 0 || result.text.endOffset !== result.text.contentLength) return failure("corrupt");
+      try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(decodeLibraryCoreCanonicalBase64(result.text.bytesBase64)); } catch { return failure("invalid_text"); }
+      hydrated = true;
+    }
+    const length = new TextEncoder().encode(text).length;
+    if (length === 0) return failure("invalid_text");
+    total += length;
+    if (length > ANNOTATION_TEXT_MAXIMUM_BYTES || total > ANNOTATION_TEXT_AGGREGATE_BYTES) return failure("oversized");
+    highlights.push(Object.freeze({ createdAt: row.createdAt, text, ...(row.note === null ? {} : { note: row.note }) }));
+  }
+  if (new TextEncoder().encode(JSON.stringify(highlights)).length > 1_048_576) return failure("oversized");
+  if (hydrated) {
+    try {
+      const current = await query({ queryId: "item_annotations_v1", schemaVersion: 1, globalId: originals.globalId });
+      if (!sameAnnotationSource(current.source, originals.source)) return failure("stale");
+    } catch { return failure("unavailable"); }
+  }
+  let editState: LibraryCoreHydratedAnnotations["editState"] = "unavailable";
+  const editRequest = { queryId: "item_annotation_edit_state_v1", schemaVersion: 1, globalId: originals.globalId } as const;
+  try {
+    const current = parseLibraryCoreItemAnnotationEditStateResponseV1(await query(editRequest), editRequest);
+    if (current.ok) {
+      if (!sameAnnotationSource(current.value.source, originals.source)) return failure("stale");
+      editState = current.value.pending ? "pending" : "ready";
+    }
+  } catch { /* Readable canonical quotes remain visible when editing is unavailable. */ }
+  return Object.freeze({ originals, state: "ready", editState, highlights: Object.freeze(highlights) });
+}
+
+/** Existing note edits retain every quote's canonical representation and ordering. */
+export function replaceHydratedSavedNote(snapshot: LibraryCoreHydratedAnnotations, note: string, assignedAtMs: number) {
+  if (snapshot.editState !== "ready" || snapshot.state !== "ready" || !snapshot.highlights || snapshot.highlights.length !== snapshot.originals.highlights.length) throw new LibraryCoreAnnotationHydrationError(snapshot);
+  const highlights = snapshot.originals.highlights.filter((_, index) => snapshot.highlights![index]!.text !== SAVED_ITEM_NOTE_MARKER);
+  if (note.length > 0) highlights.push(Object.freeze({ createdAt: assignedAtMs, text: SAVED_ITEM_NOTE_MARKER, textBlobDigest: null, note }));
+  const payload = FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate({ assigned_at_ms: assignedAtMs, highlights, tags: snapshot.originals.tags });
+  if (!payload.ok) throw new TypeError(payload.reason);
+  return payload.value;
+}
+
+
+/** Preserve the canonical representation of unchanged quotes in complete replacements. */
+export function assembleHydratedAnnotationReplacement(
+  snapshot: LibraryCoreHydratedAnnotations,
+  input: readonly Highlight[],
+  tags: readonly string[],
+  assignedAtMs: number,
+) {
+  if (snapshot.editState !== "ready" || snapshot.state !== "ready" || !snapshot.highlights) throw new LibraryCoreAnnotationHydrationError(snapshot);
+  const used = new Set<number>();
+  const highlights = canonicalizeFeedItemHighlightsV1(input).map(row => {
+    const index = snapshot.highlights!.findIndex((old, index) =>
+      !used.has(index) && old.createdAt === row.createdAt && old.text === row.text);
+    if (index < 0) return row;
+    used.add(index);
+    return Object.freeze({ ...snapshot.originals.highlights[index]!, note: row.note });
+  });
+  // Existing generic callers cannot prove that an absent digest-backed quote
+  // means an intentional deletion. Fail closed until an explicit edit API does.
+  if (snapshot.originals.highlights.some((row, index) => row.textBlobDigest !== null &&
+      !used.has(index) && snapshot.highlights![index]!.text !== SAVED_ITEM_NOTE_MARKER)) {
+    throw new Error("Annotation replacement omits an authenticated quote; reopen the item");
+  }
+  const payload = FEED_ITEM_ANNOTATIONS_REPLACE_PAYLOAD_SCHEMA.validate({
+    assigned_at_ms: assignedAtMs, highlights, tags: canonicalizeFeedItemTagsV1(tags),
+  });
+  if (!payload.ok) throw new TypeError(payload.reason);
+  return payload.value;
+}
+
+/** Copy the rendered evidence before any asynchronous context acquisition or signing. */
+export function retainRenderedAnnotationSnapshot(
+  input: LibraryCoreHydratedAnnotations | null | undefined,
+  globalId: string,
+): LibraryCoreHydratedAnnotations {
+  if (!input || input.editState !== "ready" || input.state !== "ready" || !input.highlights || input.originals.globalId !== globalId) {
+    if (input?.editState === "pending") throw new LibraryCoreAnnotationHydrationError(input);
+    throw new Error("Annotations are not ready for editing; reopen the item");
+  }
+  const parsed = parseLibraryCoreItemAnnotationsResponseV1(input.originals, { queryId: "item_annotations_v1", schemaVersion: 1, globalId });
+  if (!parsed.ok) throw new TypeError(parsed.error);
+  if (input.highlights.length !== parsed.value.highlights.length) throw new Error("Annotation snapshot is incomplete");
+  const highlights = Object.freeze(input.highlights.map(row => Object.freeze({ ...row })));
+  const snapshot = Object.freeze({ originals: parsed.value, state: "ready" as const, editState: "ready" as const, highlights });
+  // Reuse the canonical write contract and its bounded complete-set checks.
+  assembleHydratedAnnotationReplacement(snapshot, highlights, parsed.value.tags, 0);
+  return snapshot;
+}
+
+/** Recheck local eligibility without replacing the caller's original source. */
+export async function assertLibraryCoreAnnotationEditEligible(query: LibraryCoreNormalizedQueryExecutor, snapshot: LibraryCoreHydratedAnnotations): Promise<void> {
+  const request = { queryId: "item_annotation_edit_state_v1", schemaVersion: 1, globalId: snapshot.originals.globalId } as const;
+  const response = parseLibraryCoreItemAnnotationEditStateResponseV1(await query(request), request);
+  if (!response.ok) throw new Error("Annotation editing is unavailable");
+  if (!sameAnnotationSource(response.value.source, snapshot.originals.source)) throw new Error("Annotation source changed; reopen the item");
+  if (response.value.pending) throw new LibraryCoreAnnotationHydrationError({ ...snapshot, editState: "pending" });
+}

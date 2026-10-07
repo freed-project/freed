@@ -20,15 +20,18 @@ const stubItem: FeedItem = {
   topics: [],
 };
 
-const mockAddLibraryStubItem = vi.fn(async () => stubItem);
+const makeStub = async (_url?: string, _tags?: string[], initial?: { notes?: string }) => ({ ...stubItem, userState: { ...stubItem.userState, ...(initial?.notes ? { highlights: [{ text: "\u2063", createdAt: 1, note: initial.notes }] } : {}) } });
+const mockAddLibraryStubItem = vi.fn(makeStub);
 const mockEnqueue = vi.fn();
 const mockRemoveLibraryFeedItem = vi.fn(async () => undefined);
+const mockUpdateLibrarySavedItemNote = vi.fn(async () => undefined);
 const mockUpdateLibraryFeedItem = vi.fn(async () => undefined);
 
 vi.mock("./library-client.js", () => ({
   addLibraryStubItem: mockAddLibraryStubItem,
   removeLibraryFeedItem: mockRemoveLibraryFeedItem,
   updateLibraryFeedItem: mockUpdateLibraryFeedItem,
+  updateLibrarySavedItemNote: mockUpdateLibrarySavedItemNote,
 }));
 
 vi.mock("./content-fetcher.js", () => ({
@@ -38,7 +41,30 @@ vi.mock("./content-fetcher.js", () => ({
 describe("saveUrlInDesktop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockAddLibraryStubItem.mockResolvedValue(stubItem);
+    mockAddLibraryStubItem.mockImplementation(makeStub);
+  });
+
+  it("drains an accepted save through its note write while rejecting new saves during handoff", async () => {
+    const { saveUrlInDesktop } = await import("./save-url.js");
+    const { pauseDesktopOperationsForHandoff } = await import("./factory-reset-guard");
+    let releaseStub!: (item: FeedItem) => void;
+    mockAddLibraryStubItem.mockImplementationOnce(() => new Promise<FeedItem>((resolve) => { releaseStub = resolve; }));
+    const saving = saveUrlInDesktop(SAMPLE_URL, { notes: "Keep this note" });
+    await Promise.resolve();
+    expect(mockAddLibraryStubItem).toHaveBeenCalledOnce();
+    const pause = pauseDesktopOperationsForHandoff();
+    try {
+      const finished = vi.fn();
+      const draining = pause.drain(1_000).then(finished);
+      await expect(saveUrlInDesktop(SAMPLE_URL)).rejects.toThrow("pausing");
+      expect(finished).not.toHaveBeenCalled();
+      releaseStub(stubItem);
+      await saving;
+      await draining;
+      expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
+      expect(mockEnqueue).toHaveBeenCalledOnce();
+      expect(mockAddLibraryStubItem.mock.invocationCallOrder[0]).toBeLessThan(finished.mock.invocationCallOrder[0]);
+    } finally { pause.resume(); }
   });
 
   it("writes a saved stub and queues background detail fetching", async () => {
@@ -49,15 +75,8 @@ describe("saveUrlInDesktop", () => {
       tags: ["research"],
     });
 
-    expect(mockAddLibraryStubItem).toHaveBeenCalledWith(SAMPLE_URL, ["research"]);
-    expect(mockUpdateLibraryFeedItem).toHaveBeenCalledWith(
-      "saved:abc123",
-      expect.objectContaining({
-        userState: expect.objectContaining({
-          highlights: [expect.objectContaining({ note: "Follow up" })],
-        }),
-      }),
-    );
+    expect(mockAddLibraryStubItem).toHaveBeenCalledWith(SAMPLE_URL, ["research"], { notes: "Follow up", preview: undefined });
+    expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
     expect(mockEnqueue).toHaveBeenCalledWith([expect.objectContaining({
       globalId: stubItem.globalId,
       userState: expect.objectContaining({
@@ -80,6 +99,7 @@ describe("saveUrlInDesktop", () => {
     expect(mockAddLibraryStubItem).toHaveBeenCalledWith(
       "https://example.com/articles/hello-world#section",
       undefined,
+      { notes: undefined, preview: undefined },
     );
   });
 
@@ -107,5 +127,25 @@ describe("saveUrlInDesktop", () => {
 
     await expect(saveUrlInDesktop(SAMPLE_URL)).rejects.toThrow("Library unavailable");
     expect(mockEnqueue).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("same-URL saved note editing", () => {
+  it("uses canonical preservation without capture or URL fetching", async () => {
+    vi.clearAllMocks();
+    const { updateSavedContentInDesktop } = await import("./save-url.js");
+    const annotationSnapshot = { state: "ready" as const, editState: "ready" as const, highlights: [], originals: {
+      queryId: "item_annotations_v1" as const, schemaVersion: 1 as const, globalId: stubItem.globalId,
+      source: { generationId: "a".repeat(64) as import("@freed/shared/library-core").LibraryCoreLowercaseHex64, projectionRevision: 2, transitionSequence: 2 }, tags: [], highlights: [],
+    } };
+    await updateSavedContentInDesktop(stubItem, { url: SAMPLE_URL, notes: "Revised", annotationSnapshot });
+    expect(mockUpdateLibrarySavedItemNote).toHaveBeenCalledWith(stubItem.globalId, "Revised", annotationSnapshot);
+    expect(mockUpdateLibraryFeedItem).not.toHaveBeenCalled();
+    expect(mockAddLibraryStubItem).not.toHaveBeenCalled();
+    expect(mockEnqueue).not.toHaveBeenCalled();
+    mockUpdateLibrarySavedItemNote.mockRejectedValueOnce(new Error("Annotation text is corrupt"));
+    await expect(updateSavedContentInDesktop(stubItem, { url: SAMPLE_URL, notes: "", annotationSnapshot })).rejects.toThrow("corrupt");
+    expect(mockRemoveLibraryFeedItem).not.toHaveBeenCalled();
   });
 });

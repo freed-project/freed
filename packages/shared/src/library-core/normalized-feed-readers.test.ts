@@ -1,3 +1,5 @@
+import type { LibraryCoreFeedPageSourceV1 } from "./feed-page-contracts.js";
+import { calculatePriority } from "../ranking.js";
 import { encodeLibraryCoreFeedBrowsePageCursorV2, decodeLibraryCoreFeedBrowsePageCursorV2 } from "./feed-browse-page-contracts.js";
 import { encodeLibraryCoreSavedFeedPageCursorV2, decodeLibraryCoreSavedFeedPageCursorV2 } from "./saved-feed-page-contracts.js";
 import { describe, expect, it, vi } from "vitest";
@@ -25,6 +27,10 @@ import {
   searchLibraryCoreNormalizedItemsV1,
 } from "./normalized-surface-readers.js";
 import { CONTENT_SIGNAL_KEYS } from "../content-signals.js";
+import {
+  createLibraryCoreSqliteQueryWorkerRequest,
+  type LibraryCoreSqliteQueryRequest,
+} from "./sqlite-worker-protocol.js";
 
 const feedCard = (globalId: string) => ({
   archived: false,
@@ -45,6 +51,7 @@ const feedCard = (globalId: string) => ({
   likedAt: null,
   likedSyncedAt: null,
   linkPreviewTitle: null,
+  linkPreviewUrl: null,
   locationName: null,
   mediaTypes: [],
   mediaUrls: [],
@@ -64,6 +71,7 @@ const feedCard = (globalId: string) => ({
 const backgroundCard = (globalId: string) => ({
   ...feedCard(globalId),
   hidden: false,
+  seenSyncedAt: null,
   rssSource: null,
   sampleDataFingerprint: null,
 });
@@ -103,9 +111,12 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("converts exact SQLite Person and Account details without renderer catalogs", async () => {
+    const source = { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 };
+    const root = { source, person: { id: "person-ada", name: "Ada", bio: "Mathematician", careLevel: 5, createdAt: 1, updatedAt: 10, relationshipStatus: "friend", reachOutIntervalDays: 7, tags: ["computing"] } };
     const query = vi
       .fn()
       .mockResolvedValueOnce({
+        source,
         person: {
           avatarUrl: null,
           bio: "Mathematician",
@@ -131,6 +142,7 @@ describe("cross-platform normalized feed readers", () => {
           updatedAt: 10,
         },
       })
+      .mockResolvedValueOnce(root)
       .mockResolvedValueOnce({
         account: {
           address: null,
@@ -160,6 +172,7 @@ describe("cross-platform normalized feed readers", () => {
         },
       })
       .mockResolvedValueOnce({
+        source,
         linkedAccountCount: 1,
         linkedAccounts: [
           {
@@ -199,7 +212,7 @@ describe("cross-platform normalized feed readers", () => {
           tags: ["computing"],
           updatedAt: 10,
         },
-      }) as unknown as LibraryCoreNormalizedQueryExecutor;
+      }).mockResolvedValueOnce(root) as unknown as LibraryCoreNormalizedQueryExecutor;
     const runtime = { query, randomId: () => "test" };
 
     await expect(
@@ -228,12 +241,12 @@ describe("cross-platform normalized feed readers", () => {
       queryId: "person_detail_v1",
       schemaVersion: 1,
     });
-    expect(query).toHaveBeenNthCalledWith(2, {
+    expect(query).toHaveBeenNthCalledWith(3, {
       accountId: "account-ada",
       queryId: "account_detail_v1",
       schemaVersion: 1,
     });
-    expect(query).toHaveBeenNthCalledWith(3, {
+    expect(query).toHaveBeenNthCalledWith(4, {
       personId: "person-ada",
       queryId: "person_detail_v1",
       schemaVersion: 1,
@@ -484,7 +497,9 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("reads one bounded Primary ranking batch with complete ranking inputs", async () => {
-    const query = vi.fn(async () => ({
+    const query = vi.fn(async (request) => {
+      if (request.queryId === "ranking_weight_scope_v1") return { queryId: request.queryId, schemaVersion: 1, paths: request.paths, values: [30, 90, 70, 80], source: querySource };
+      return ({
       nextCursor: "more-priority-work",
       rows: [
         {
@@ -496,7 +511,7 @@ describe("cross-platform normalized feed readers", () => {
         },
       ],
       source: querySource,
-    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    }); }) as unknown as LibraryCoreNormalizedQueryExecutor;
 
     const batch = await readLibraryCoreNormalizedPriorityCandidateBatchV1(
       { query, randomId: () => "test" },
@@ -505,6 +520,7 @@ describe("cross-platform normalized feed readers", () => {
     );
 
     expect(batch).toEqual({
+      weights: { recency: 30, authors: { "reader-1": 90 }, platforms: { rss: 70 }, topics: { sqlite: 80 } },
       items: [
         {
           careLevel: 5,
@@ -516,6 +532,7 @@ describe("cross-platform normalized feed readers", () => {
         },
       ],
       remaining: true,
+      source: querySource,
     });
     expect(query).toHaveBeenCalledWith({
       analysisVersion: null,
@@ -527,6 +544,47 @@ describe("cross-platform normalized feed readers", () => {
       readerSessionId: "priority-reader:test",
       schemaVersion: 1,
     });
+  });
+
+  it("routes selective candidates through their exact source fence and retains scoped weights", async () => {
+    const query = vi.fn(async request => request.queryId === "priority_time_page_v1"
+      ? {rows:[backgroundCard("recent")], nextCursor:null, source:querySource}
+      : {queryId:request.queryId,schemaVersion:1,paths:request.paths,values:request.paths.map(()=>null),source:querySource}) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const batch = await readLibraryCoreNormalizedPriorityCandidateBatchV1({query,randomId:()=>"time-test"},1000,64,querySource as LibraryCoreFeedPageSourceV1);
+    expect(batch.items).toHaveLength(1);
+    expect(query).toHaveBeenCalledWith(expect.objectContaining({queryId:"priority_time_page_v1",generationId:querySource.generationId,sourceRevision:querySource.projectionRevision,priorityComputedBeforeMs:1000}));
+  });
+
+  // Tier 1: bounded ranking must not materialize unrelated weights or accept mixed sources.
+  it.each(["topics", "longAuthors"])("partitions a maximum %s candidate batch and refuses a stale chunk", async (shape) => {
+    const rows = Array.from({ length: 64 }, (_, i) => ({ ...backgroundCard(`item-${i}`),
+      authorId: shape === "longAuthors" ? `${i}${'"'.repeat(4090)}` : i === 0 ? "__proto__" : `author-${i}`,
+      topics: shape === "topics" ? Array.from({ length: 64 }, (_, j) => `topic_${i}_${j}`) : [] }));
+    let scopes = 0, stale = false;
+    const query = vi.fn(async request => {
+      if (request.queryId === "background_item_page_v1") return { rows, nextCursor: null, source: querySource };
+      scopes += 1;
+      expect(request.paths.length).toBeLessThanOrEqual(64);
+      expect(new TextEncoder().encode(JSON.stringify(request)).length).toBeLessThanOrEqual(96 * 1024);
+      expect(request.generationId).toBe(querySource.generationId);
+      expect(request.sourceRevision).toBe(querySource.projectionRevision);
+      return { queryId: request.queryId, schemaVersion: 1, paths: request.paths,
+        values: request.paths.map((path: readonly string[]) => path[1] === "recency" ? 30 : path[1] === "platforms" ? 70 : path[2] === "__proto__" ? 90 : path[2] === "topic_0_0" ? 81 : null),
+        source: stale && scopes > 1 ? { ...querySource, projectionRevision: 2, transitionSequence: 2 } : querySource };
+    }) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const runtime = { query, randomId: () => "test" };
+    const batch = await readLibraryCoreNormalizedPriorityCandidateBatchV1(runtime, 1000, 64);
+    expect(scopes).toBeGreaterThan(1);
+    expect(scopes).toBeLessThanOrEqual(66);
+    expect(batch.weights.recency).toBe(30);
+    expect(Object.keys(batch.weights.topics)).toEqual(shape === "topics" ? ["topic_0_0"] : []);
+    expect(Object.getPrototypeOf(batch.weights.authors)).toBeNull();
+    const full = { recency: 30, platforms: { rss: 70, unrelated: 99 },
+      authors: { ["__proto__"]: 90, unrelated: 99 }, topics: { topic_0_0: 81, unrelated: 99 } };
+    for (const candidate of batch.items) expect(calculatePriority(candidate.item, batch.weights, 1000)).toBe(calculatePriority(candidate.item, full, 1000));
+    stale = true; scopes = 0;
+    await expect(readLibraryCoreNormalizedPriorityCandidateBatchV1(runtime, 1000, 64)).rejects.toThrow("CURSOR_STALE");
+    expect(scopes).toBe(2);
   });
 
   it("streams compact content fetch candidates without reconstructing items", async () => {
@@ -648,6 +706,9 @@ describe("cross-platform normalized feed readers", () => {
   it("reconstructs synchronized preferences through the normalized executor", async () => {
     const query = vi.fn(async () => ({
       rows: [
+        ...["o:$.weights", "o:$.weights.topics", "o:$.weights.topics.alpha"].map(path => ({ path, booleanValue: null, integerValue: null, realValue: null, textValue: null, updatedAt: 1, valueType: "null" })),
+        ...[["v:$.weights.topics.alpha.bits", "3fc0000000000000"], ["v:$.weights.topics.alpha.codec", "ieee754_binary64_hex_v1"]].map(([path, textValue]) => ({ path, booleanValue: null, integerValue: null, realValue: null, textValue, updatedAt: 1, valueType: "text" })),
+
         {
           booleanValue: null,
           integerValue: null,
@@ -677,7 +738,7 @@ describe("cross-platform normalized feed readers", () => {
     ).resolves.toEqual(
       expect.objectContaining({
         display: expect.objectContaining({ themeId: "neon" }),
-        weights: expect.any(Object),
+        weights: expect.objectContaining({ topics: { alpha: 0.125 } }),
       }),
     );
     expect(query).toHaveBeenCalledWith({
@@ -876,9 +937,12 @@ describe("cross-platform normalized feed readers", () => {
   });
 
   it("derives all signal counts through the same normalized executor", async () => {
-    const query = vi.fn(async () => ({
-      totalCount: 42,
-    })) as unknown as LibraryCoreNormalizedQueryExecutor;
+    const query = vi.fn(async (request: LibraryCoreSqliteQueryRequest) => {
+      // Exercise the real host boundary: menu preset order is not necessarily
+      // the canonical set order required by SQLite's closed query contract.
+      createLibraryCoreSqliteQueryWorkerRequest("signal-count-request", request);
+      return { totalCount: 42 };
+    }) as unknown as LibraryCoreNormalizedQueryExecutor;
     const counts = await readLibraryCoreNormalizedFeedSignalCountsV1(
       { query, randomId: () => "test" },
       { platform: "rss" },
@@ -894,4 +958,30 @@ describe("cross-platform normalized feed readers", () => {
       }),
     );
   });
+  it.each(["native page", "optimistic overlay"])("propagates failed SQLite search %s without admitting partial rows", async (boundary) => {
+    const failure = new Error("synthetic source refusal");
+    const query = vi.fn().mockResolvedValueOnce({
+      nextCursor: "search-next", rows: [{ card: feedCard("first-match"), priority: 42, score: 7 }], source: querySource,
+    });
+    if (boundary === "native page") query.mockResolvedValueOnce({ rows: [], source: querySource }).mockRejectedValueOnce(failure);
+    else query.mockRejectedValueOnce(failure);
+    const visit = vi.fn(() => "continue" as const);
+    await expect(searchLibraryCoreNormalizedItemsV1(
+      { query: query as unknown as LibraryCoreNormalizedQueryExecutor, randomId: () => "test" },
+      { filter: {}, identityMode: "all_content", query: "needle" }, visit,
+    )).rejects.toBe(failure);
+    expect(visit).toHaveBeenCalledTimes(boundary === "native page" ? 1 : 0);
+  });
+
+  it("admits true zero SQLite search without querying optimistic fields", async () => {
+    const query = vi.fn().mockResolvedValue({ nextCursor: null, rows: [], source: querySource });
+    const visit = vi.fn(() => "continue" as const);
+    await expect(searchLibraryCoreNormalizedItemsV1(
+      { query: query as unknown as LibraryCoreNormalizedQueryExecutor, randomId: () => "test" },
+      { filter: {}, identityMode: "all_content", query: "zzzzzzzz" }, visit,
+    )).resolves.toBeUndefined();
+    expect(query).toHaveBeenCalledOnce();
+    expect(visit).not.toHaveBeenCalled();
+  });
+
 });

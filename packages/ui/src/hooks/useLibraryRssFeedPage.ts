@@ -10,6 +10,10 @@ import { usePlatform } from "../context/PlatformContext.js";
 const RAW_PAGE_LIMIT = 128;
 
 interface LoadedRssFeedPage {
+  readonly reader?: ReturnType<typeof usePlatform>["queryLibraryCore"];
+  readonly contextKey?: string;
+  readonly sourceVersion?: number;
+  readonly pageCursor?: string | null;
   readonly nextCursor: string | null;
   readonly rows: readonly LibraryCoreRssFeedPageRowV1[];
 }
@@ -113,21 +117,22 @@ export function useLibraryRssFeedPage({
       sourceVersion,
     ],
   );
+  const contextKey = JSON.stringify({ enabled, enabledOnly, includeUrlKey, searchMatchUrlKey, searchTerms, boundedPageSize });
   const [pageStartCursor, setPageStartCursor] = useState<string | null>(null);
   const [previousPageStarts, setPreviousPageStarts] = useState<
     readonly (string | null)[]
   >([]);
   const [page, setPage] = useState<LoadedRssFeedPage | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ reader: typeof queryLibraryCore; contextKey: string; version: number; message: string } | null>(null);
+  const error = failure !== null && failure.reader === queryLibraryCore && failure.contextKey === contextKey && failure.version === sourceVersion ? failure.message : null;
   const attemptRef = useRef(0);
 
-  useEffect(() => {
-    setPageStartCursor(null);
-    setPreviousPageStarts([]);
-    setPage(null);
-    setError(null);
-  }, [queryKey]);
+  const matchesContext = enabled && page !== null && page.reader === queryLibraryCore && page.contextKey === contextKey && (page.sourceVersion ?? Infinity) <= sourceVersion;
+  const visiblePage = matchesContext ? page : null;
+  const pageCurrent = matchesContext && page?.sourceVersion === sourceVersion;
+  const latest = useRef({ pageCurrent, page, loading, queryLibraryCore });
+  latest.current = { pageCurrent, page, loading, queryLibraryCore };
 
   useEffect(() => {
     const attempt = attemptRef.current + 1;
@@ -136,7 +141,7 @@ export function useLibraryRssFeedPage({
     if (!enabled) {
       setPage(null);
       setLoading(false);
-      setError(null);
+      setFailure(null);
       return () => {
         cancelled = true;
       };
@@ -144,16 +149,20 @@ export function useLibraryRssFeedPage({
     if (!queryLibraryCore) {
       setPage(null);
       setLoading(false);
-      setError("SQLite RSS Feed query is unavailable");
+      setFailure({ reader: queryLibraryCore, contextKey, version: sourceVersion, message: "SQLite RSS Feed query is unavailable" });
       return () => {
         cancelled = true;
       };
     }
+    if (pageCurrent && page?.pageCursor === pageStartCursor) return;
     setLoading(true);
-    setError(null);
-    void (async (): Promise<LoadedRssFeedPage> => {
+    setFailure(null);
+    const sameContext = matchesContext;
+    const targetPage = sameContext ? previousPageStarts.length : 0;
+    const refreshing = !pageCurrent;
+    const readVisible = async (start: string | null): Promise<LoadedRssFeedPage> => {
       const rows: LibraryCoreRssFeedPageRowV1[] = [];
-      let cursor = pageStartCursor;
+      let cursor = start;
       let nextCursor: string | null = null;
       for (;;) {
         const response = await queryLibraryCore({
@@ -196,23 +205,37 @@ export function useLibraryRssFeedPage({
         }
         cursor = response.nextCursor;
       }
+    };
+    void (async () => {
+      let cursor = refreshing ? null : pageStartCursor;
+      const starts: (string | null)[] = [];
+      for (let index = 0; ; index++) {
+        const loaded = await readVisible(cursor);
+        if (cancelled) return null;
+        if (!refreshing || index >= targetPage || loaded.nextCursor === null) return { ...loaded, reader: queryLibraryCore, contextKey, sourceVersion, pageCursor: cursor, starts: refreshing ? starts : previousPageStarts };
+        starts.push(cursor); cursor = loaded.nextCursor;
+      }
     })()
       .then((loaded) => {
-        if (cancelled || attemptRef.current !== attempt) return;
+        if (cancelled || attemptRef.current !== attempt || !loaded) return;
         setPage(loaded);
+        setPageStartCursor(loaded.pageCursor);
+        setPreviousPageStarts(loaded.starts);
         setLoading(false);
       })
       .catch((reason: unknown) => {
         if (cancelled || attemptRef.current !== attempt) return;
         setPage(null);
         setLoading(false);
-        setError(reason instanceof Error ? reason.message : String(reason));
+        setFailure({ reader: queryLibraryCore, contextKey, version: sourceVersion, message: reason instanceof Error ? reason.message : String(reason) });
       });
     return () => {
       cancelled = true;
     };
   }, [
     boundedPageSize,
+    contextKey,
+    sourceVersion,
     enabled,
     enabledOnly,
     pageStartCursor,
@@ -224,27 +247,27 @@ export function useLibraryRssFeedPage({
   ]);
 
   const nextPage = useCallback(() => {
-    if (!page?.nextCursor || loading) return;
+    if (!page?.nextCursor || loading || !latest.current.pageCurrent || latest.current.page !== page || latest.current.queryLibraryCore !== queryLibraryCore) return;
     setPreviousPageStarts((current) => [...current, pageStartCursor]);
     setPageStartCursor(page.nextCursor);
-  }, [loading, page?.nextCursor, pageStartCursor]);
+  }, [loading, page, pageStartCursor, queryLibraryCore]);
 
   const previousPage = useCallback(() => {
-    if (previousPageStarts.length === 0 || loading) return;
+    if (previousPageStarts.length === 0 || loading || !latest.current.pageCurrent || latest.current.page !== page || latest.current.queryLibraryCore !== queryLibraryCore) return;
     const target = previousPageStarts.at(-1) ?? null;
     setPreviousPageStarts((current) => current.slice(0, -1));
     setPageStartCursor(target);
-  }, [loading, previousPageStarts]);
+  }, [loading, previousPageStarts, page, queryLibraryCore]);
 
-  const rows = page?.rows ?? [];
+  const rows = visiblePage?.rows ?? [];
   return {
     error,
     feeds: rows.map(libraryCoreRssFeedPageRowToRssFeedV1),
-    hasNext: page?.nextCursor !== null && page?.nextCursor !== undefined,
-    hasPrevious: previousPageStarts.length > 0,
-    loading,
+    hasNext: pageCurrent && !loading && page?.nextCursor !== null && page?.nextCursor !== undefined,
+    hasPrevious: pageCurrent && !loading && previousPageStarts.length > 0,
+    loading: enabled && Boolean(queryLibraryCore) && ((!pageCurrent && error === null) || loading),
     nextPage,
-    pageNumber: previousPageStarts.length + 1,
+    pageNumber: visiblePage ? previousPageStarts.length + 1 : 1,
     previousPage,
     rows,
   };

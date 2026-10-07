@@ -7,6 +7,7 @@ import {
   projectShardRuntime,
   selectApplicableSuites,
   selectNativeAcceptance,
+  selectPreviewNativeAcceptance,
   suiteWeights,
   allocateShardBudget,
 } from "./lib/tooling-smoke-plan.mjs";
@@ -197,6 +198,11 @@ test("release admission and repository configuration changes use focused feature
   const selection = selectApplicableSuites([
     ".github/dependabot.yml",
     ".github/workflows/release.yml",
+    ".github/workflows/cloud-release-request.yml",
+    ".github/workflows/cloud-release-inbox.yml",
+    "scripts/cloud-release-request.mjs",
+    "scripts/cloud-release-request.test.mjs",
+
     "scripts/generate-tauri-latest-from-release.mjs",
     "scripts/generate-tauri-latest-from-release.test.mjs",
     "scripts/lib/tooling-smoke-plan.mjs",
@@ -354,4 +360,20 @@ test("product fixture literals do not schedule unrelated tooling or native lanes
     required: false,
     files: [],
   });
+});
+
+
+test("preview native proof is required without actor or Windows work for cleanup-only changes", () => {
+  for (const file of [
+    "scripts/lib/preview-processes.py", "scripts/lib/worktree-runtime.sh",
+    "scripts/worktree-processes.sh", "scripts/worktree-preview.sh",
+    "scripts/worktree-preview.test.mjs",
+  ]) {
+    assert.equal(selectPreviewNativeAcceptance([file]), true, file);
+    assert.equal(selectNativeAcceptance([file]).required, false, file);
+  }
+  assert.equal(selectPreviewNativeAcceptance(["packages/ui/src/Button.tsx"]), false);
+  assert.equal(selectPreviewNativeAcceptance([]), true);
+  assert.equal(selectPreviewNativeAcceptance([".github/workflows/ci.yml"]), true);
+  assert.equal(selectPreviewNativeAcceptance(["scripts/plan-tooling-smoke.mjs"]), true);
 });

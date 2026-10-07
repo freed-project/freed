@@ -217,15 +217,43 @@ const fileSystem = {
 };
 
 const nodePorts = createNodeLibraryServicePorts();
+const observeStartupFailure =
+  acceptanceMode === "ready-response-lost" ||
+  acceptanceMode === "launch-failure";
+let launchedChild = null;
+const terminationSignals = [];
+// Observe the production launcher and settlement without changing their result.
+const processPort = observeStartupFailure
+  ? {
+      async spawn(request) {
+        const child = await nodePorts.process.spawn(request);
+        launchedChild = child;
+        const terminate = child.terminate.bind(child);
+        child.terminate = (signal) => {
+          terminationSignals.push(signal);
+          terminate(signal);
+        };
+        return child;
+      },
+    }
+  : nodePorts.process;
 const supervisor = new LibraryServiceSupervisor({
   configPath,
   fileSystem,
   identity: { currentUserId: () => process.getuid() },
   aclProof: { assertNoExtendedAcl: async () => undefined },
-  process: nodePorts.process,
+  process: processPort,
   clock: nodePorts.clock,
   entropy: nodePorts.entropy,
-  localActorIngress: nodePorts.localActorIngress,
+  // These process-group cases exercise actual child processes and watchdog FDs.
+  // Socket custody has its own real-socket suite; it must not require systemd
+  // runtime-directory provisioning or a socket-capable home filesystem here.
+  // Native acceptance cases continue to use the production ingress.
+  localActorIngress: acceptanceMode === "process-lifecycle-only" ? {
+    async start() {
+      return { endpoint: "process-lifecycle-fixture", failure: new Promise(() => {}), async stop() {} };
+    },
+  } : nodePorts.localActorIngress,
   primaryCloud: createNormalizedPrimaryAcceptanceCloud(),
 });
 
@@ -259,7 +287,19 @@ try {
       ? error.code
       : "unknown";
   process.stderr.write(
-    `${JSON.stringify({ type: "supervisor-failed", code })}\n`,
+    `${JSON.stringify({
+      type: "supervisor-failed",
+      code,
+      ...(observeStartupFailure
+        ? {
+            launched: launchedChild !== null,
+            sidecarPid: launchedChild?.pid ?? null,
+            terminationSignals,
+            exit: launchedChild === null ? null : await launchedChild.exit,
+            groupRunning: launchedChild?.isGroupRunning() ?? false,
+          }
+        : {}),
+    })}\n`,
   );
   process.exitCode = 2;
 }

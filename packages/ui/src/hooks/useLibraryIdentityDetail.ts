@@ -24,6 +24,9 @@ interface CachedIdentityDetail<Value> {
 }
 
 interface IdentityDetailState<Value> {
+  readonly reader?: unknown;
+  readonly id?: string;
+  readonly sourceVersion?: number;
   readonly key: string;
   readonly status: IdentityDetailStatus;
   readonly value: Value | null;
@@ -99,22 +102,20 @@ function useIdentityDetail<
       return;
     }
     if (!reader) {
-      setState({ key, status: "failed", value: null });
+      setState({ reader, id, sourceVersion, key, status: "failed", value: null });
       return;
     }
     let cancelled = false;
     const prepared = prepareIdentityDetail(cache, reader, id, sourceVersion);
-    setState(
-      prepared.result === undefined
-        ? { key, status: "loading", value: null }
-        : { key, status: "ready", value: prepared.result },
-    );
+    setState(previous => prepared.result === undefined
+      ? { reader, id, sourceVersion, key, status: "loading", value: previous.reader === reader && previous.id === id && (previous.sourceVersion ?? Infinity) <= sourceVersion ? previous.value : null }
+      : { reader, id, sourceVersion, key, status: "ready", value: prepared.result });
     void prepared.promise
       .then((value) => {
-        if (!cancelled) setState({ key, status: "ready", value });
+        if (!cancelled) setState({ reader, id, sourceVersion, key, status: "ready", value });
       })
       .catch(() => {
-        if (!cancelled) setState({ key, status: "failed", value: null });
+        if (!cancelled) setState({ reader, id, sourceVersion, key, status: "failed", value: null });
       });
     return () => {
       cancelled = true;
@@ -122,7 +123,9 @@ function useIdentityDetail<
   }, [cache, id, key, reader, sourceVersion]);
 
   if (!id) return { status: "idle", value: null };
-  if (state.key !== key) return { status: "loading", value: null };
+  if (!reader) return { status: "failed", value: null };
+  const retained = state.reader === reader && state.id === id && (state.sourceVersion ?? Infinity) <= sourceVersion;
+  if (state.key !== key || !retained) return { status: "loading", value: retained ? state.value : null };
   return { status: state.status, value: state.value };
 }
 

@@ -269,6 +269,7 @@ async function showStoriesFilter(page: import("@playwright/test").Page): Promise
 }
 
 test("unified feed cards open reader actions and preserve media policy", async ({ app }) => {
+  await app.page.route("**/freed.svg?fallback", (route) => route.fulfill({ status: 404, body: "Not found" }));
   await app.goto();
   await app.waitForReady();
   await injectCardUiItems(app.page);
@@ -281,7 +282,16 @@ test("unified feed cards open reader actions and preserve media policy", async (
   await expect(facebookCard).toHaveClass(/grayscale/);
   await expect(facebookCard.getByRole("button", { name: "Archive", exact: true })).toHaveCount(0);
   const facebookImage = facebookCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
-  await expect(facebookImage).toHaveCount(0);
+  await expect(facebookImage).toBeVisible();
+  await expect(facebookImage).toHaveAttribute("loading", "lazy");
+  await expect(facebookImage).toHaveAttribute("decoding", "async");
+  await facebookImage.scrollIntoViewIfNeeded();
+  await facebookImage.evaluate(async (image: HTMLImageElement) => {
+    await image.decode();
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+      throw new Error("Lazy feed thumbnail did not decode");
+    }
+  });
 
   const storyTile = app.page.locator('[data-feed-item-id="test-instagram-story-thumbnail"]');
   const storyImage = storyTile.locator(`img[src="${STORY_MEDIA_URL}"]`).first();
@@ -295,6 +305,7 @@ test("unified feed cards open reader actions and preserve media policy", async (
   });
 
   const brokenCard = app.page.locator('[data-feed-item-id="test-broken-thumbnail-fallback"]');
+  await brokenCard.scrollIntoViewIfNeeded();
   const brokenImage = brokenCard.locator("img").first();
   await expect(brokenImage).toHaveCount(0);
   await expect(brokenCard).toContainText(BROKEN_TITLE);
@@ -317,7 +328,16 @@ test("unified feed cards open reader actions and preserve media policy", async (
   await expect(app.page.getByLabel("Archive").first()).toBeVisible();
   const compactRailCard = app.page.locator('[data-testid="compact-feed-panel-scroll-container"] [data-feed-item-id="test-facebook-card-ui-overhaul"]');
   const compactRailImage = compactRailCard.locator(`img[src="${FACEBOOK_MEDIA_URL}"]`).first();
-  await expect(compactRailImage).toHaveCount(0);
+  await expect(compactRailImage).toBeVisible();
+  await expect(compactRailImage).toHaveAttribute("loading", "lazy");
+  await expect(compactRailImage).toHaveAttribute("decoding", "async");
+  await compactRailImage.scrollIntoViewIfNeeded();
+  await compactRailImage.evaluate(async (image: HTMLImageElement) => {
+    await image.decode();
+    if (!image.complete || image.naturalWidth === 0 || image.naturalHeight === 0) {
+      throw new Error("Lazy feed thumbnail did not decode");
+    }
+  });
   await expect(compactRailCard).toHaveAttribute("data-selected", "true");
 
   await app.page.mouse.move(0, 0);

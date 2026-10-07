@@ -23,6 +23,7 @@ import {
   type PreferencesLeafAssignmentSigningBodyV1,
   type PersonReachOutAppendSigningBodyV1,
   type PersonUpsertSigningBodyV1,
+  type FriendReplaceSigningBodyV1,
   type PersonRemoveSigningBodyV1,
   type AccountPersonAssignmentSigningBodyV1,
   type AccountUpsertSigningBodyV1,
@@ -78,6 +79,10 @@ export interface PreferencesLeafAssignmentEnvelopeV1 extends PreferencesLeafAssi
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
 
+export interface FriendReplaceEnvelopeV1 extends FriendReplaceSigningBodyV1 {
+  readonly signature: LibraryCoreEd25519SignatureHex;
+}
+
 export interface PersonUpsertEnvelopeV1 extends PersonUpsertSigningBodyV1 {
   readonly signature: LibraryCoreEd25519SignatureHex;
 }
@@ -113,6 +118,7 @@ export type LibraryCoreOperationEnvelopeV1 =
   | RssFeedRemoveEnvelopeV1
   | RssFeedTitleAssignmentEnvelopeV1
   | PreferencesLeafAssignmentEnvelopeV1
+  | FriendReplaceEnvelopeV1
   | PersonUpsertEnvelopeV1
   | PersonReachOutAppendEnvelopeV1
   | PersonRemoveEnvelopeV1
@@ -156,6 +162,36 @@ function canonicalEnvelopeBytes(
   } as unknown as LibraryCoreCanonicalValue).byteLength;
 }
 
+/** Exact wire budget before signing; signatures have a fixed canonical width. */
+export function measureLibraryCoreTransactionEnvelopeBytesV1(assembled: LibraryCoreAssembledTransactionV1) {
+  if (!isLibraryCoreAssembledTransactionV1(assembled)) throw new TypeError("transaction must come from the closed assembly contract");
+  const memberByteLengths = assembled.members.map((member) =>
+    canonicalEnvelopeBytes(member.signing_body, PLACEHOLDER_SIGNATURE),
+  );
+  if (
+    memberByteLengths.some(
+      (byteLength) => byteLength > LIBRARY_CORE_MAX_OPERATION_ENVELOPE_BYTES,
+    )
+  ) {
+    throw new RangeError(
+      "one canonical operation envelope exceeds 131,072 bytes",
+    );
+  }
+  const canonicalEnvelopeByteTotal = memberByteLengths.reduce(
+    (total, byteLength) => {
+      const next = total + byteLength;
+      if (next > LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES) {
+        throw new RangeError(
+          "transaction canonical envelope bytes exceed 4,194,304",
+        );
+      }
+      return next;
+    },
+    0,
+  );
+  return { canonicalEnvelopeByteTotal, memberByteLengths };
+}
+
 /**
  * Sign a closed assembled transaction and construct its exact v1 envelopes.
  *
@@ -182,30 +218,7 @@ export async function finalizeLibraryCoreTransactionV1(
     throw new TypeError("operation finalization dependencies must be callable");
   }
 
-  const memberByteLengths = assembled.members.map((member) =>
-    canonicalEnvelopeBytes(member.signing_body, PLACEHOLDER_SIGNATURE),
-  );
-  if (
-    memberByteLengths.some(
-      (byteLength) => byteLength > LIBRARY_CORE_MAX_OPERATION_ENVELOPE_BYTES,
-    )
-  ) {
-    throw new RangeError(
-      "one canonical operation envelope exceeds 131,072 bytes",
-    );
-  }
-  const canonicalEnvelopeByteTotal = memberByteLengths.reduce(
-    (total, byteLength) => {
-      const next = total + byteLength;
-      if (next > LIBRARY_CORE_MAX_TRANSACTION_ENVELOPE_BYTES) {
-        throw new RangeError(
-          "transaction canonical envelope bytes exceed 4,194,304",
-        );
-      }
-      return next;
-    },
-    0,
-  );
+  const { canonicalEnvelopeByteTotal, memberByteLengths } = measureLibraryCoreTransactionEnvelopeBytesV1(assembled);
 
   const signatures: LibraryCoreEd25519SignatureHex[] = [];
   for (const member of assembled.members) {

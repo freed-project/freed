@@ -565,7 +565,7 @@ async function captureXTimelineInternal(
 
     addDebugEvent("change", "[X] sync started");
     onProviderContact?.();
-    const result = await fetchXTimeline(cookies, requester);
+    const result = await fetchXTimelineInternal(cookies, requester, resetEpoch);
     assertFactoryResetEpoch(resetEpoch);
 
     if (result.diag.errorStage) {

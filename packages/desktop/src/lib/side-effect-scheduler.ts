@@ -14,6 +14,8 @@ export interface SideEffectTask<T> {
   source: string;
   kind: string;
   timeoutMs?: number;
+  /** Keep caller ownership until execution settles after a deadline; does not cancel it. */
+  retainUntilSettledAfterTimeout?: boolean;
   slowMs?: number;
   run: () => Promise<T> | T;
 }
@@ -78,7 +80,11 @@ function withTimeout<T>(task: SideEffectTask<T>): TimedRun<T> {
   });
 
   return {
-    result: result.finally(() => {
+    result: result.catch(async (error) => {
+      // A rejected deadline does not end the underlying task's lifetime.
+      if (task.retainUntilSettledAfterTimeout) await settled;
+      throw error;
+    }).finally(() => {
       if (timeout) clearTimeout(timeout);
     }),
     settled,

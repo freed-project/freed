@@ -1,5 +1,7 @@
+import catchupVector from "../../../shared/src/library-core/native-handoff-catchup-vector-v1.json";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  parseLibraryCoreReapplyConsumerIntentV1,
   LIBRARY_CORE_NORMALIZED_SCHEMA_SHA256,
   LIBRARY_CORE_SQLITE_CONTRACT_VERSION,
   LIBRARY_CORE_SQLITE_PROTOCOL_VERSION,
@@ -92,6 +94,55 @@ describe("PWA SQLite worker response boundary", () => {
     vi.unstubAllGlobals();
   });
 
+  it("renews startup only for committed progress and retains the total deadline", async () => {
+    vi.useFakeTimers();
+    const client=new PwaLibraryCoreSqliteClient();
+    const opening=client.open();
+    const failure=expect(opening).rejects.toThrow("timed out");
+    const worker=activeWorker();
+    const id=requestId(worker);
+    for (let index=0;index<30;index++) {
+      worker.respond({kind:"annotation_upgrade_progress",requestId:id,scannedMembers:index*256});
+      await vi.advanceTimersByTimeAsync(20_000);
+    }
+    await failure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  it.each([{scannedMembers:256},{scannedMembers:512,extra:true},{scannedMembers:-1}])("refuses invalid startup progress %j", async invalid=>{
+    const client=new PwaLibraryCoreSqliteClient();
+    const opening=client.open();
+    const failure=expect(opening).rejects.toThrow("upgrade progress is invalid");
+    const worker=activeWorker();
+    const message={kind:"annotation_upgrade_progress",requestId:requestId(worker)};
+    worker.respond({...message,scannedMembers:256});
+    worker.respond({...message,...invalid});
+    await failure;
+    expect(worker.terminateCount).toBe(1);
+  });
+
+  it("cancels an unpublished startup worker when closed", async () => {
+    const client=new PwaLibraryCoreSqliteClient();
+    const opening=client.open();
+    const failedOpen=expect(opening).rejects.toThrow("startup was cancelled");
+    await expect(client.close()).rejects.toThrow("startup was cancelled");
+    await failedOpen;
+    expect(activeWorker().terminateCount).toBe(1);
+  });
+
+  it("accepts only closed local maintenance hints and ignores the disposed worker", () => {
+    const changed=vi.fn();
+    const client=new PwaLibraryCoreSqliteClient(undefined,changed);
+    const worker=activeWorker();
+    worker.respond({kind:"local_changes_available",extra:true});
+    expect(changed).not.toHaveBeenCalled();
+    worker.respond({kind:"local_changes_available"});
+    expect(changed).toHaveBeenCalledOnce();
+    client.dispose();
+    worker.respond({kind:"local_changes_available"});
+    expect(changed).toHaveBeenCalledOnce();
+  });
+
   it("isolates demo workers without opting ordinary app tabs into disposable storage", () => {
     vi.stubEnv("VITE_FREED_DEMO", "0");
     for (const [hostname, search, expected] of [
@@ -107,6 +158,24 @@ describe("PWA SQLite worker response boundary", () => {
     vi.stubEnv("VITE_FREED_DEMO", "1");
     new PwaLibraryCoreSqliteClient();
     expect(activeWorker().options?.name).toBe("freed-library-core-sqlite-demo");
+  });
+
+  it("validates replacement receipts and never retries an ambiguous recovery mutation", async () => {
+    const id = "a".repeat(64);
+    const input = parseLibraryCoreReapplyConsumerIntentV1({ review: { schemaVersion: 1, recoveryId: id, archiveDigest: id,
+      transactionId: "original-edit", transactionDigest: id, reviewedGenerationId: id, reviewedRevision: 1, reviewedLocalSequence: 0, memberCount: 1 },
+      intent: { envelopeBytes: [Uint8Array.of(123, 125)] } });
+    const client = new PwaLibraryCoreSqliteClient(), worker = activeWorker();
+    const pending = client.reapplyConsumerIntent(input);
+    expect(worker.posted[0]).toMatchObject({ kind: "reapply_consumer_intent", recovery: input });
+    worker.respond({ requestId: requestId(worker), ok: true, result: { schemaVersion: 1, recoveryId: id, originalTransactionId: "another-edit",
+      replacementTransactionId: "replacement-edit", replacementTransactionDigest: id, replacementEpochId: id, replacementActorId: id,
+      firstCounter: 1, lastCounter: 1, memberCount: 1, createdAt: 10 } });
+    await expect(pending).rejects.toThrow(/receipt/);
+    const lost = client.reapplyConsumerIntent(input);
+    worker.emit("error");
+    await expect(lost).rejects.toMatchObject({ code: "pwa_sqlite_worker_unavailable" });
+    expect(worker.posted).toHaveLength(2);
   });
 
   it("terminally retires the client when its worker errors", async () => {
@@ -167,6 +236,42 @@ describe("PWA SQLite worker response boundary", () => {
     expect(onUnavailable).toHaveBeenCalledOnce();
   });
 
+  it.each([null, catchupVector.expectedReadProof])("decodes the predecessor read response without creating an activation token", async (reference) => {
+    const client = new PwaLibraryCoreSqliteClient();
+    const pending = client.preparePredecessorCheckpointRead("successor");
+    const worker = activeWorker();
+    expect(worker.posted.at(-1)).toMatchObject({ kind: "prepare_predecessor_checkpoint_read", stageId: "successor" });
+    worker.respond({ ok: true, requestId: requestId(worker), result: reference });
+    await expect(pending).resolves.toEqual(reference === null ? null : [reference]);
+  });
+
+  it.each(["abort", "deadline"] as const)("settles an audit %s without retiring other requests", async (mode) => {
+    vi.useFakeTimers();
+    const onUnavailable = vi.fn();
+    const client = new PwaLibraryCoreSqliteClient(onUnavailable);
+    const controller = new AbortController();
+    const audit = client.auditNormalizedReplica(controller.signal);
+    const rejected = expect(audit).rejects.toThrow();
+    const worker = activeWorker();
+    const auditId = requestId(worker);
+    await vi.advanceTimersByTimeAsync(1);
+    const status = client.status();
+    const statusId = requestId(worker);
+    if (mode === "abort") controller.abort();
+    else await vi.advanceTimersByTimeAsync(29_999);
+    await rejected;
+    expect(worker.posted.at(-1)).toMatchObject({
+      kind: "cancel_normalized_replica_audit", auditRequestId: auditId,
+    });
+    expect(worker.terminateCount).toBe(0);
+    expect(onUnavailable).not.toHaveBeenCalled();
+    worker.respond({ ok: true, requestId: statusId, status: validStatus() });
+    await expect(status).resolves.toEqual(validStatus());
+    worker.respond({ ok: true, requestId: auditId, result: { late: true } });
+    expect(worker.terminateCount).toBe(0);
+    client.dispose();
+  });
+
   it("retires the complete client generation when a request times out", async () => {
     vi.useFakeTimers();
     const onUnavailable = vi.fn();
@@ -185,12 +290,16 @@ describe("PWA SQLite worker response boundary", () => {
     expect(onUnavailable).toHaveBeenCalledOnce();
   });
 
-  it("keeps queued reads alive only while checkpoint records advance", async () => {
+  it.each(["ordinary", "predecessor"] as const)("keeps queued reads alive only while %s checkpoint records advance", async (kind) => {
     vi.useFakeTimers();
     const client = new PwaLibraryCoreSqliteClient();
-    const activation = client.activateNormalizedCheckpointStage({
+    const activation = kind === "ordinary" ? client.activateNormalizedCheckpointStage({
       followerReceipt: null, replaceExisting: false, stageId: "progress-test",
-    });
+    }) : client.activateVerifiedPredecessorCheckpoint({ stageId: "predecessor", replaceExisting: true,
+      followerReceipt: { checkpointGeneration: 1, controlRevision: "revision", installedAt: 2400,
+        manifestContentDigest: "a".repeat(64) as never, manifestObjectKey: "manifest",
+        manifestTransportObjectId: "object", writerActorId: "writer" },
+    }, "successor");
     const activationFailure = expect(activation).rejects.toThrow("timed out");
     const worker = activeWorker();
     const activationId = requestId(worker);

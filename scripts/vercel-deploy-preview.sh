@@ -21,11 +21,29 @@ NPM_BIN="$(resolve_npm_bin)"
 NPX_BIN="$(resolve_npx_bin)"
 
 if [[ $# -lt 1 || $# -gt 2 ]]; then
-  echo "Usage: $0 website|pwa [vercel-token]" >&2
+  echo "Usage: $0 website|pwa|pwa-transfer-acceptance [vercel-token]" >&2
   exit 1
 fi
 
 TARGET="$1"
+PWA_BUILD_SCRIPT="build"
+PWA_FEATURE_PREVIEW="1"
+ACCEPTANCE_SOURCE_SHA=""
+if [[ "$TARGET" == "pwa-transfer-acceptance" ]]; then
+  TARGET="pwa"
+  PWA_BUILD_SCRIPT="build:transfer-acceptance"
+  # Acceptance must reopen a joined Library, not replace local sample data.
+  PWA_FEATURE_PREVIEW="0"
+  ACCEPTANCE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+  if [[ -n "$(git -C "$ACCEPTANCE_ROOT" status --porcelain)" ]]; then
+    echo "Transfer acceptance requires a clean committed source." >&2
+    exit 1
+  fi
+  ACCEPTANCE_SOURCE_SHA="$(git -C "$ACCEPTANCE_ROOT" rev-parse HEAD)"
+  export FREED_BUILD_KIND=preview FREED_BUILD_CHANNEL=dev
+  export FREED_BUILD_COMMIT_SHA="$ACCEPTANCE_SOURCE_SHA"
+  export FREED_BUILD_COMMIT_REF="$(git -C "$ACCEPTANCE_ROOT" branch --show-current)"
+fi
 VERCEL_TOKEN="${2:-${VERCEL_TOKEN:-}}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/freed-vercel-preview.XXXXXX")"
@@ -68,6 +86,11 @@ esac
 
 mkdir -p "$TEMP_DIR/scripts/lib" "$TEMP_DIR/.vercel"
 
+if [[ -n "$ACCEPTANCE_SOURCE_SHA" ]]; then
+  # Only committed source enters this artifact. Never copy ignored credentials,
+  # private task notes, local Library files or a previously built dist directory.
+  git -C "$ROOT_DIR" archive "$ACCEPTANCE_SOURCE_SHA" | tar -x -C "$TEMP_DIR"
+else
 cp "$ROOT_DIR/scripts/lib/build-metadata.mjs" "$TEMP_DIR/scripts/lib/build-metadata.mjs"
 cp "$ROOT_DIR/scripts/lib/build-metadata.d.mts" "$TEMP_DIR/scripts/lib/build-metadata.d.mts"
 cp "$ROOT_DIR/scripts/lib/retired-automerge-runtime.mjs" "$TEMP_DIR/scripts/lib/retired-automerge-runtime.mjs"
@@ -97,6 +120,8 @@ else
 EOF
 fi
 
+fi
+
 VERCEL_PROJECT="$(
   "$NODE_BIN" "$ROOT_DIR/scripts/lib/vercel-project-link.mjs" project "$TARGET"
 )"
@@ -108,15 +133,35 @@ then
   PROJECT_LINK_STATE="linked"
 fi
 
+if [[ -z "$ACCEPTANCE_SOURCE_SHA" ]]; then
 for dir in "${DEPENDENCY_DIRS[@]}"; do
   mkdir -p "$TEMP_DIR/$(dirname "$dir")"
   cp -R "$ROOT_DIR/$dir" "$TEMP_DIR/$dir"
 done
+fi
+
+if [[ -n "$ACCEPTANCE_SOURCE_SHA" ]]; then
+  cp "$TEMP_DIR/packages/pwa/vercel.json" "$TEMP_DIR/vercel.json"
+  "$NODE_BIN" --input-type=module - "$TEMP_DIR/vercel.json" <<'NODE'
+import { readFileSync, writeFileSync } from "node:fs";
+const path = process.argv[2];
+const config = JSON.parse(readFileSync(path, "utf8"));
+const source = process.env.FREED_BUILD_COMMIT_SHA;
+if (!/^[0-9a-f]{40}$/.test(source || "")) throw new Error("Invalid acceptance source identity.");
+config.buildCommand = `PATH=../../node_modules/.bin:$PATH VITE_FREED_FEATURE_PREVIEW=0 FREED_BUILD_KIND=preview FREED_BUILD_CHANNEL=dev FREED_BUILD_COMMIT_SHA=${source} FREED_BUILD_COMMIT_REF=transfer-acceptance npm run build:transfer-acceptance`;
+delete config.ignoreCommand;
+writeFileSync(path, JSON.stringify(config, null, 2) + "\n");
+NODE
+fi
 
 echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
 (
   cd "$TEMP_DIR"
-  "${NPM_BIN}" install
+  if [[ -n "$ACCEPTANCE_SOURCE_SHA" ]]; then
+    "${NPM_BIN}" ci --ignore-scripts
+  else
+    "${NPM_BIN}" install
+  fi
   if [[ "$TARGET" == "website" ]]; then
     (
       cd website
@@ -127,7 +172,7 @@ echo "Verifying preview bundle for $TARGET from $TEMP_DIR"
   else
     (
       cd packages/pwa
-      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" VITE_FREED_FEATURE_PREVIEW=1 PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run build
+      env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "VITE_FREED_FEATURE_PREVIEW=${PWA_FEATURE_PREVIEW}" PATH="${ROOT_BIN_DIR}:${PATH}" "$NPM_BIN" run "$PWA_BUILD_SCRIPT"
     )
   fi
 )
@@ -148,6 +193,24 @@ if ! "$NPX_BIN" vercel pull "${VERCEL_PULL_FLAGS[@]}" "${VERCEL_FLAGS[@]}"; then
   exit 1
 fi
 
+if [[ -n "$ACCEPTANCE_SOURCE_SHA" ]]; then
+  "$NODE_BIN" --input-type=module - "$TEMP_DIR/.vercel/.env.preview.local" <<'NODE'
+import { readFileSync } from "node:fs";
+import { parseEnv } from "node:util";
+const env = parseEnv(readFileSync(process.argv[2], "utf8"));
+const client = env.VITE_GDRIVE_CLIENT_ID;
+let additional = {};
+try { additional = JSON.parse(env.GDRIVE_OAUTH_CLIENTS_JSON || "{}"); } catch {}
+const secret = env.GDRIVE_CLIENT_SECRET ||
+  (client === env.GDRIVE_DESKTOP_CLIENT_ID && env.GDRIVE_DESKTOP_CLIENT_SECRET) ||
+  additional?.[client];
+if (!client || typeof secret !== "string" || !secret) {
+  throw new Error("Preview Google web client and matching server credentials are required for transfer acceptance.");
+}
+console.log("Preview Google configuration is present; live OAuth remains unverified.");
+NODE
+fi
+
 if [[ "$TARGET" == "website" ]]; then
   echo "Building $TARGET preview with Vercel"
   env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "$NPX_BIN" vercel build --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}"
@@ -156,7 +219,7 @@ if [[ "$TARGET" == "website" ]]; then
   "$NPX_BIN" vercel deploy --prebuilt --archive=tgz --cwd "$TEMP_DIR" "${VERCEL_FLAGS[@]}" -y
 else
   echo "Building $TARGET preview with Vercel"
-  env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" VITE_FREED_FEATURE_PREVIEW=1 "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
+  env "${BUILD_ENV_KEY}=${PREVIEW_LABEL}" "VITE_FREED_FEATURE_PREVIEW=${PWA_FEATURE_PREVIEW}" "$NPX_BIN" vercel build --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}"
 
   echo "Deploying $TARGET preview with Vercel"
   "$NPX_BIN" vercel deploy --prebuilt --archive=tgz --cwd "$TEMP_DIR" --local-config "$TEMP_DIR/vercel.json" "${VERCEL_FLAGS[@]}" -y

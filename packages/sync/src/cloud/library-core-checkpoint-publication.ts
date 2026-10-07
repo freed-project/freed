@@ -20,6 +20,7 @@ import {
   publishLibraryCoreImmutableGenerationV1,
   reassignLibraryCoreWriterV1,
   type LibraryCoreImmutablePublicationAdapterV1,
+  type LibraryCoreHandoffFrontiersV1,
   type LibraryCoreImmutablePublicationResultV1,
   type LibraryCorePreparedImmutableObjectV1,
   type LibraryCorePublishedImmutableObjectReceiptV1,
@@ -69,6 +70,7 @@ export interface ReassignLibraryCoreCheckpointGenerationRequestV1<RecordValue>
     readonly pointer: LibraryCoreControlPointerV1;
   };
   readonly epochCertificate: LibraryCorePreparedImmutableObjectV1<Uint8Array>;
+  readonly handoffFrontiers?: LibraryCoreHandoffFrontiersV1;
 }
 
 function exactArrayBuffer(bytes: Uint8Array): ArrayBuffer {
@@ -204,7 +206,12 @@ function assertReassignmentPreflight<RecordValue>(
     request.generation !== 0 ||
     request.libraryId !== previous.libraryId ||
     request.activeTransport !== previous.activeTransport ||
-    request.causalFrontierDigest !== previous.causalFrontierDigest ||
+    request.causalFrontierDigest !== (request.handoffFrontiers?.successor ?? previous.causalFrontierDigest) ||
+    (request.handoffFrontiers !== undefined && (
+      request.handoffFrontiers.kind !== "cooperative_handoff_v1" ||
+      request.handoffFrontiers.predecessor !== previous.causalFrontierDigest ||
+      !/^[0-9a-f]{64}$/.test(request.handoffFrontiers.predecessor) ||
+      !/^[0-9a-f]{64}$/.test(request.handoffFrontiers.successor))) ||
     request.storageEpoch === previous.storageEpoch ||
     request.writerId === previous.writerId
   ) {
@@ -501,6 +508,7 @@ async function publishPreparedCheckpointGenerationV1<RecordValue>(
     ...publication,
     expectedControl: reassignment.expectedControl,
     epochCertificate,
+    handoffFrontiers: reassignment.handoffFrontiers,
     targetStorageEpoch: reassignment.storageEpoch,
     targetWriterId: reassignment.writerId,
   });

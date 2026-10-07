@@ -1,3 +1,5 @@
+import { hydrateLibraryCoreAnnotations, LibraryCoreAnnotationHydrationError, type LibraryCoreHydratedAnnotations } from "./annotation-hydration.js";
+import { decodeLibraryCoreFractionalNumbersV1 } from "./fractional-number-codec.js";
 import {
   mergeDefaultPreferences,
   type Account,
@@ -41,6 +43,7 @@ import {
   LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
   LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   type LibraryCorePersonDetailV1,
+  type LibraryCorePersonDetailResponseV1,
   type LibraryCorePersonLinkedAccountV1,
 } from "./person-detail-contracts.js";
 import {
@@ -277,6 +280,7 @@ function validWindows(
 }
 
 export interface LibraryCoreNormalizedItemContentV1 {
+  readonly annotations: LibraryCoreHydratedAnnotations | null;
   readonly contentBody: LibraryCoreItemBodyLocatorV1;
   readonly item: FeedItem;
   readonly mediaBlobDigests: readonly (string | null)[];
@@ -314,6 +318,10 @@ export async function readLibraryCoreNormalizedItemContentV1(
   });
   if (response.item === null) return null;
   const detailItem = libraryCoreFeedCardToItemV1(response.item.card);
+  if (response.item.seenSyncedAt !== null) {
+    detailItem.userState.seenSyncedAt = response.item.seenSyncedAt;
+  }
+  let annotationSnapshot: LibraryCoreHydratedAnnotations | null = null;
   if (includeAnnotations) {
     const annotations = await runtime.query({
       globalId,
@@ -324,20 +332,12 @@ export async function readLibraryCoreNormalizedItemContentV1(
       normalizedSourceToken(annotations.source) !==
       normalizedSourceToken(response.source)
     ) {
-      throw new Error("SQLite item annotations source is stale");
+      throw new LibraryCoreAnnotationHydrationError(Object.freeze({ originals: annotations, state: "stale", editState: "unavailable", highlights: null }));
     }
     detailItem.userState.tags = [...annotations.tags];
-    detailItem.userState.highlights = annotations.highlights.map(
-      (highlight) => {
-        if (highlight.text === null)
-          throw new Error("SQLite annotation text requires blob hydration");
-        return {
-          createdAt: highlight.createdAt,
-          text: highlight.text,
-          ...(highlight.note === null ? {} : { note: highlight.note }),
-        };
-      },
-    );
+    annotationSnapshot = await hydrateLibraryCoreAnnotations(runtime.query, annotations);
+    if (annotationSnapshot.state !== "ready" || !annotationSnapshot.highlights) throw new LibraryCoreAnnotationHydrationError(annotationSnapshot);
+    detailItem.userState.highlights = [...annotationSnapshot.highlights];
   }
   const [item] = await applyLibraryCoreVisibleOptimisticFieldsV1(
     runtime.query,
@@ -345,6 +345,7 @@ export async function readLibraryCoreNormalizedItemContentV1(
     response.source.projectionRevision,
   );
   return Object.freeze({
+    annotations: annotationSnapshot,
     contentBody: response.item.contentBody,
     item: item!,
     mediaBlobDigests: response.item.mediaBlobDigests,
@@ -491,6 +492,16 @@ export function libraryCoreAccountDetailToAccountV1(
   };
 }
 
+/** Merge bounded display children only after the complete root matches their source. */
+async function completePersonWithHistory(runtime: LibraryCoreNormalizedReaderRuntime, personId: string, detail: LibraryCorePersonDetailResponseV1): Promise<Person | null> {
+  const root = await runtime.query({ personId, queryId: "person_root_v1", schemaVersion: 1 });
+  if (root.source.generationId !== detail.source.generationId || root.source.projectionRevision !== detail.source.projectionRevision ||
+      (root.person === null) !== (detail.person === null)) throw new Error("CURSOR_STALE");
+  if (!root.person || !detail.person) return null;
+  const history = libraryCorePersonDetailToPersonV1(detail.person).reachOutLog;
+  return { ...root.person, ...(history === undefined ? {} : { reachOutLog: history }) } as unknown as Person;
+}
+
 /** Read one exact Person directly from the selected SQLite generation. */
 export async function readLibraryCoreNormalizedPersonDetailV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
@@ -501,9 +512,7 @@ export async function readLibraryCoreNormalizedPersonDetailV1(
     queryId: LIBRARY_CORE_PERSON_DETAIL_QUERY_ID,
     schemaVersion: LIBRARY_CORE_PERSON_DETAIL_SCHEMA_VERSION,
   });
-  return response.person === null
-    ? null
-    : libraryCorePersonDetailToPersonV1(response.person);
+  return completePersonWithHistory(runtime, personId, response);
 }
 
 /** Read one selected Friend and its bounded linked Account window from SQLite. */
@@ -522,7 +531,8 @@ export async function readLibraryCoreNormalizedFriendDetailV1(
       "The selected Friend exceeds the bounded linked Account detail window",
     );
   }
-  const person = libraryCorePersonDetailToPersonV1(response.person);
+  const person = await completePersonWithHistory(runtime, personId, response);
+  if (!person) throw new Error("CURSOR_STALE");
   const accounts = response.linkedAccounts.map((account) =>
     libraryCorePersonLinkedAccountToAccountV1(account, person.id),
   );
@@ -570,29 +580,43 @@ export async function readLibraryCoreNormalizedAccountDetailV1(
     : libraryCoreAccountDetailToAccountV1(response.account);
 }
 
+/** Preserve the native source receipt for runtime-owned aggregate publication. */
+export function readLibraryCoreNormalizedFacetSummaryResponseV1(
+  runtime: Pick<LibraryCoreNormalizedReaderRuntime, "query">,
+) {
+  return runtime.query({ queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION });
+}
+
 export async function readLibraryCoreNormalizedFacetSummaryV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
 ): Promise<LibraryCoreFacetSummaryV1> {
+  return (await readLibraryCoreNormalizedFacetSummaryResponseV1(runtime)).summary;
+}
+
+/** Retain the preference source; a scalar facet revision cannot fence this read. */
+export async function readLibraryCoreNormalizedPreferencesSnapshotV1(
+  runtime: Pick<LibraryCoreNormalizedReaderRuntime, "query">,
+) {
   const response = await runtime.query({
-    queryId: LIBRARY_CORE_FACET_SUMMARY_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_FACET_SUMMARY_SCHEMA_VERSION,
+    queryId: LIBRARY_CORE_PREFERENCES_SNAPSHOT_QUERY_ID,
+    schemaVersion: LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION,
   });
-  return response.summary;
+  return {
+    source: response.source,
+    preferences: mergeDefaultPreferences(
+      decodeLibraryCoreFractionalNumbersV1(libraryCorePreferenceNodesToValueV1(
+        response.rows,
+      )) as Partial<UserPreferences>,
+    ),
+  };
 }
 
 /** Read and reconstruct the bounded synchronized preference tree from SQLite. */
 export async function readLibraryCoreNormalizedPreferencesV1(
   runtime: LibraryCoreNormalizedReaderRuntime,
 ): Promise<UserPreferences> {
-  const response = await runtime.query({
-    queryId: LIBRARY_CORE_PREFERENCES_SNAPSHOT_QUERY_ID,
-    schemaVersion: LIBRARY_CORE_PREFERENCES_SNAPSHOT_SCHEMA_VERSION,
-  });
-  return mergeDefaultPreferences(
-    libraryCorePreferenceNodesToValueV1(
-      response.rows,
-    ) as Partial<UserPreferences>,
-  );
+  return (await readLibraryCoreNormalizedPreferencesSnapshotV1(runtime)).preferences;
 }
 
 export async function readLibraryCoreNormalizedSavedAnalyticsV1(

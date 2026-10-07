@@ -271,6 +271,28 @@ struct LiquidGlassButton: View {
 
 ## AI-Powered Features
 
+### Jev evaluation
+
+Freed Desktop has a dedicated Jev section under AI settings with user-managed
+credentials, replacement, removal, and an explicit connection test. Native keys
+use the system credential vault. Jev operates independently of the summary
+provider, and no key comes from repository or host configuration.
+
+Explicit evaluation reads up to 100 local social posts through bounded SQLite
+queries and sends text to Jev for 26 independent scores. People I can help and
+Make something together compare explicit requests with declared skills. Exact
+local relationships supply context without sending identity records. Native
+requests are bounded, cancellable, and never trigger social-provider capture.
+
+This dev slice keeps native results in the evaluation view. Durable classification,
+feed-filter replacement, background jobs, and live quality measurements remain
+unfinished. Six additional signals stay experimental. The synthetic browser
+preview retains sample-feed comparison and authored example matches. Preset counts
+canonicalize their signal arrays before crossing the query boundary.
+
+See the [Jev evaluation runbook](JEV-CLASSIFICATION-PREVIEW.md) for credential
+handling, request bounds, and validation limits. Phase 10 remains `upcoming`.
+
 ### Topic Extraction
 
 Automatically tag feed items with relevant topics using local LLM or API.
@@ -541,3 +563,58 @@ parameters. Live output quality and account access require API validation.
 ## Demo error prevention
 
 The demo keeps appearance, filters, reader navigation, relationship controls, graph pins, and Story Wall previews. Story Wall publishing credentials and archive imports require Freed Desktop. Unavailable maintenance and diagnostic controls are hidden, including overflow menus and command-triggered dialogs. Failed reader photographs retain readable content with a placeholder. Map loading errors switch to the simplified view without new retries. Newsletter failures preserve the form and show recoverable public copy rather than raw backend errors.
+
+### Foreground frame diagnostics
+
+The Performance tab pauses its frame sampler while the document is hidden and
+resumes one loop when it becomes visible. Hidden time does not count as a
+foreground dropped frame; real foreground stalls remain visible. Synthetic
+hook tests verify visibility transitions and cleanup. This does not establish
+a hardware frame rate or a fix for the reported freeze. The existing app-wide
+heartbeat remains separate, and unsupported LongTask observation still needs
+an explicit diagnostic state.
+
+### Jev spending admission
+
+Jev requests require saved device-local spending limits. Defaults are $1 per
+UTC day and $10 per UTC calendar month; an optional lifetime limit never resets.
+All enabled limits apply before transport. A durable SQLite transaction reserves
+$0.002752512 per request: Jev 1.13's conservative 65,536-token interpretation of the published 64k ceiling at
+$0.042 per million, with free output. This conservative allowance is not a bill.
+Reservation precedes credential access. Even missing-key failures retain the
+allowance without implying provider contact or billing. No refund is inferred
+for success, cancellation, timeout, or uncertain outcomes;
+retries reserve again and duplicate request IDs are rejected. Default limits
+permit at most 363 requests daily and 3,633 monthly, even when actual short
+requests cost less. At a limit, settings offers local GLiClass when available, or a limit change.
+
+The ledger is under the compiled app's config directory, outside Library
+snapshots. Ordinary app replacement and Library restore do not reset it; a
+missing established ledger, corruption, or a backwards clock blocks requests.
+Removing an entire device profile removes its history; other clients/devices
+and vendor price changes are outside this local estimate-based allowance. The
+ledger is bounded to 100,000 reservations and then fails closed. Browser preview
+paid transport is disabled because it lacks the native ledger. Pricing evidence:
+https://docs.typesafe.ai/models (verified 2026-10-02).
+
+
+### Selected-post reader identity
+
+The reader clears the previous selection's cached title, body and lead media
+before committing a different post identity. Reply hydration settles only in
+the selection generation that requested it, including returning to the same
+post and unmounting. Synthetic regressions cover adjacent posts, A-to-B-to-A,
+late success/failure and out-of-order local cache responses. These tests confirm
+the source defects; they do not attribute the exact installed incident or prove
+all native cache associations. Requests and provider cadence are unchanged.
+
+### Optional local Kev evaluation
+
+AI settings offers a per-device Kev selection alongside Jev and GLiClass. Kev
+uses a separately installed service at `127.0.0.1:8009`. Native transport disables
+proxies, redirects, and cloud fallback. Switching classifiers cancels active work.
+Kev keeps uncertain probabilities visible but abstains between 0.2 and 0.8. These
+thresholds are provisional. A six-example labeled evaluation compares raw accuracy,
+Brier score, decision coverage, accepted accuracy and latency. It is a smoke corpus,
+not a representative benchmark. Library scores remain session-local and do not
+change feed filters. See [setup and evaluation](JEV-CLASSIFICATION-PREVIEW.md#local-kev).

@@ -1,7 +1,7 @@
 /**
  * useFpsMonitor - requestAnimationFrame-based FPS measurement hook
  *
- * Runs a rAF loop while the Performance tab is active. Updates a snapshot
+ * Runs a rAF loop while the Performance tab is active and the document is visible. Updates a snapshot
  * at ~4Hz to avoid re-render churn from 60fps state updates.
  *
  * Tracks:
@@ -122,9 +122,17 @@ export function useFpsMonitor(active: boolean) {
       }
     }
 
-    rafId.current = requestAnimationFrame(loop);
+    const syncVisibility = () => {
+      stop();
+      if (document.visibilityState === "visible") {
+        rafId.current = requestAnimationFrame(loop);
+      }
+    };
+    document.addEventListener("visibilitychange", syncVisibility);
+    syncVisibility();
 
     return () => {
+      document.removeEventListener("visibilitychange", syncVisibility);
       stop();
       observerRef.current?.disconnect();
       observerRef.current = null;

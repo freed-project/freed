@@ -141,6 +141,13 @@ export function tauriInitScript() {
       }
       return btoa(binary).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/g, '');
     }
+    function normalizedLibraryCloudPreflightIdentity() {
+      return {
+        format: 'freed_normalized_cloud_preflight_identity_v1', protocolVersion: 2,
+        libraryId: '2'.repeat(64), authorityEpoch: '3'.repeat(64), writerId: '6'.repeat(64),
+        sourceRevision: sqliteState().sourceRevision, causalFrontierDigest: 'a'.repeat(64), localActorId: '6'.repeat(64),
+      };
+    }
     function normalizedLibraryCloudIdentity() {
       var state = sqliteState();
       var items = Object.values(state.items).filter(function(item) { return !item.__deleted; });
@@ -190,6 +197,17 @@ export function tauriInitScript() {
       });
       var first = envelopes[0];
       envelopes.forEach(applyNormalizedEnvelope);
+      // Queued annotation intents remain excluded from further edits. Primary
+      // commits acknowledge applied snapshots; queued follower intents do not.
+      envelopes.forEach(function(envelope) {
+        if (envelope.operation_type !== 'feed_item_annotations_replace') return;
+        var state = sqliteState();
+        state.annotationPendingItems = state.annotationPendingItems || Object.create(null);
+        Object.defineProperty(state.annotationPendingItems, envelope.entity_id, {
+          value: true, enumerable: true, configurable: true, writable: true,
+        });
+        state.annotationLocalSequence = (state.annotationLocalSequence || 0) + 1;
+      });
       sqliteState().revision += 1;
       return {
         transactionId: first.transaction_id,
@@ -446,6 +464,7 @@ export function tauriInitScript() {
         likedAt: user.likedAt == null ? null : user.likedAt,
         likedSyncedAt: user.likedSyncedAt == null ? null : user.likedSyncedAt,
         linkPreviewTitle: content.linkPreview && content.linkPreview.title || null,
+      linkPreviewUrl: content.linkPreview && content.linkPreview.url || null,
         locationName: item.location && item.location.name || null,
         mediaTypes: content.mediaTypes || [],
         mediaUrls: content.mediaUrls || [],
@@ -598,6 +617,9 @@ export function tauriInitScript() {
     }
     function sqliteNormalizedQuery(args) {
       var request = args && args.request || {};
+      if (request.queryId === 'recovery_intent_page_v1' || request.queryId === 'recovery_intent_review_v1') {
+        throw new Error('This preview has no recovery archive.');
+      }
       var state = sqliteState();
       var source = {
         generationId: 'd'.repeat(64),
@@ -1194,6 +1216,17 @@ export function tauriInitScript() {
           source: source,
         };
       }
+      if (request.queryId === 'person_root_v1') {
+        var storedPersonRoot = state.persons && state.persons[request.personId] || null;
+        var completePersonRoot = null;
+        if (storedPersonRoot) {
+          completePersonRoot = {};
+          ['id', 'name', 'avatarUrl', 'bio', 'relationshipStatus', 'careLevel', 'reachOutIntervalDays', 'tags', 'notes', 'sampleDataFingerprint', 'createdAt', 'updatedAt'].forEach(function(key) {
+            if (storedPersonRoot[key] !== undefined && storedPersonRoot[key] !== null) completePersonRoot[key] = storedPersonRoot[key];
+          });
+        }
+        return { queryId: request.queryId, schemaVersion: 1, personId: request.personId, person: completePersonRoot, source: source };
+      }
       if (request.queryId === 'person_detail_v1') {
         var person = state.persons && state.persons[request.personId] || null;
         var personFingerprint = person && person.sampleDataFingerprint || null;
@@ -1537,6 +1570,18 @@ export function tauriInitScript() {
           source: source,
         };
       }
+      if (request.queryId === 'item_annotation_edit_state_v1') {
+        return {
+          globalId: request.globalId,
+          localSequence: state.annotationLocalSequence || 0,
+          pending: !!(state.annotationPendingItems &&
+            Object.prototype.hasOwnProperty.call(state.annotationPendingItems, request.globalId) &&
+            state.annotationPendingItems[request.globalId] === true),
+          queryId: request.queryId,
+          schemaVersion: 1,
+          source: source,
+        };
+      }
       if (request.queryId === 'item_annotations_v1') {
         var annotatedItem = state.items[request.globalId];
         var annotations = annotatedItem && !annotatedItem.__deleted ? sqliteItemState(annotatedItem) : {};
@@ -1556,6 +1601,7 @@ export function tauriInitScript() {
         return {
           item: item && !item.__deleted ? {
             card: sqliteFeedCard(item),
+            seenSyncedAt: sqliteItemState(item).seenSyncedAt == null ? null : sqliteItemState(item).seenSyncedAt,
             contentBody: {
               blobDigest: null,
               storage: item.content && item.content.text ? 'inline' : 'none',
@@ -1583,6 +1629,7 @@ export function tauriInitScript() {
             var rss = item.rssSource || null;
             return Object.assign({}, sqliteFeedCard(item), {
               hidden: !!sqliteItemState(item).hidden,
+              seenSyncedAt: sqliteItemState(item).seenSyncedAt == null ? null : sqliteItemState(item).seenSyncedAt,
               rankingCareLevel: item.rankingCareLevel == null ? null : item.rankingCareLevel,
               rankingEngagementReposts: !item.engagement || item.engagement.reposts == null
                 ? null
@@ -1957,12 +2004,53 @@ export function tauriInitScript() {
       return null;
     }
     window.__TAURI_MOCK_HANDLERS__ = {
+  get_jev_api_key: () => null,
+  set_jev_api_key: () => { throw new Error("Use the browser preview credential controls."); },
+  clear_jev_api_key: () => undefined,
+  get_jev_budget: () => null,
+  set_jev_budget: () => { throw new Error("Jev budget requires an explicit test handler."); },
+  request_jev: () => { throw new Error("Native Jev requests require an explicit test handler."); },
+  cancel_jev_request: () => undefined,
+  request_kev: () => { throw new Error("Local Kev requires Freed Desktop and a loopback server."); },
+  get_kev_models: () => { throw new Error("Local Kev requires Freed Desktop and a loopback server."); },
+  cancel_kev_request: () => undefined,
+      normalized_desktop_installation_status: () => window.__TAURI_MOCK_LIBRARY_INSTALLATION__ ?? ({
+        state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
+        authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),
+      }),
+      select_normalized_desktop_library_setup: (args) => {
+        const choice = args.choice;
+        const status = choice.role === "follower" ? {
+          state: "joining", role: "follower", libraryId: choice.libraryId,
+          authorityEpochId: null, actorId: null,
+        } : {
+          state: "standalone_primary", role: "primary", libraryId: "a".repeat(64),
+          authorityEpochId: "b".repeat(64), actorId: "6".repeat(64),
+        };
+        window.__TAURI_MOCK_LIBRARY_INSTALLATION__ = status;
+        return status;
+      },
       ensure_fresh_normalized_desktop_library: serializedSqliteMutation(() => {
         sqliteState().active = true;
         return true;
       }),
       describe_normalized_library_cloud_identity: normalizedLibraryCloudIdentity,
-      query_normalized_library: sqliteNormalizedQuery,
+      describe_normalized_library_cloud_preflight_identity: normalizedLibraryCloudPreflightIdentity,
+      query_normalized_library: (args) => {
+        args.started?.onmessage?.("00000000000000000000000000000001");
+        return sqliteNormalizedQuery(args);
+      },
+      cancel_normalized_library_query: () => true,
+      audit_normalized_library_replica: () => ({
+        format: "freed_normalized_replica_audit_v1",
+        checkpointDigest: "d".repeat(64),
+        snapshot: {
+          format: "freed_normalized_checkpoint_export_v2", protocolVersion: 2,
+          libraryId: "a".repeat(64), authorityEpoch: "b".repeat(64),
+          writerId: "6".repeat(64), sourceRevision: 0,
+          causalFrontierDigest: "c".repeat(64), recordCount: 0, itemCount: 0,
+        },
+      }),
       normalized_library_primary_mutation_context: normalizedPrimaryMutationContext,
       normalized_library_follower_mutation_context: normalizedFollowerMutationContext,
       sign_normalized_library_operations: (args) =>
@@ -2059,6 +2147,50 @@ export function tauriInitScript() {
           controlRevision: null,
           verifiedAtMs: null,
         },
+      describe_normalized_library_operation_export: () => {
+        throw new Error("Operation export requires an explicit signed Library fixture.");
+      },
+      read_normalized_library_operation_page: () => {
+        throw new Error("Operation export requires an explicit signed Library fixture.");
+      },
+      import_normalized_library_operation_page: () => {
+        throw new Error("Operation import requires an explicit signed Library fixture.");
+      },
+      prepare_normalized_library_predecessor_checkpoint_read: () => { throw new Error("Checkpoint catch-up requires an explicit signed Library fixture."); },
+  activate_normalized_library_predecessor_checkpoint: () => { throw new Error("Checkpoint catch-up requires an explicit signed Library fixture."); },
+  begin_normalized_library_source_handoff: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      accept_normalized_library_target_handoff_cancellation: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  cancel_normalized_library_source_handoff: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      seal_normalized_library_source_handoff: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      prepare_normalized_library_handoff_activation: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  stage_normalized_library_target_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  read_normalized_library_handoff_result_actors: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  adopt_normalized_library_source_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  activate_normalized_library_target_handoff: () => { throw new Error("Authority transfers require Freed Desktop."); },
+  accept_normalized_library_target_handoff_authorization: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      prepare_normalized_library_handoff_authorization: () => {
+        throw new Error("Native Library handoff authorization is unavailable in this preview");
+      },
+      authorize_normalized_library_source_handoff: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
+      read_normalized_library_consumer_recovery: () => null,
+  reapply_normalized_library_archived_editor_transaction: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  reapply_normalized_library_archived_assignments: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  prepare_normalized_library_consumer_recovery: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  commit_normalized_library_consumer_recovery: () => { throw new Error("Library recovery requires Freed Desktop."); },
+  read_normalized_library_handoff_status: () => null,
+      prepare_normalized_library_handoff_readiness: () => {
+        throw new Error("Authority transfers require Freed Desktop.");
+      },
       normalized_library_follower_runtime_status: () => ({
         state: 'awaiting_checkpoint',
         libraryId: null,
@@ -2069,6 +2201,7 @@ export function tauriInitScript() {
         pendingIntentCount: 0,
         publishedIntentCount: 0,
         importedResultCount: 0,
+        awaitingCanonicalChanges: false,
       }),
       normalized_library_follower_transport_context: () => ({
         actorId: '11'.repeat(32),
@@ -2121,6 +2254,8 @@ export function tauriInitScript() {
         };
       },
       fetch_url: () => '',
+      fetch_rss_url: () => '',
+      fetch_background_article_url: () => '',
       google_api_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"connections":[],"nextSyncToken":"test-sync-token"}') }),
       google_oauth_proxy_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"access_token":"test-access-token","refresh_token":"test-refresh-token","expires_in":3600}') }),
       google_drive_request: () => ({ status: 200, headers: [['content-type', 'application/json']], bodyB64: btoa('{"files":[]}') }),
@@ -2128,6 +2263,9 @@ export function tauriInitScript() {
       sha256_file: () => '',
       download_local_ai_model_file: (args) => args && args.request ? args.request.expectedSizeBytes || 0 : 0,
       cancel_local_ai_model_download: () => null,
+      request_gliclass: () => { throw new Error("Native GLiClass inference is unavailable in the browser preview."); },
+      cancel_gliclass_request: () => null,
+      unload_gliclass: () => null,
       get_desktop_installation_witness: () => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       get_desktop_session_state: () => window.__TAURI_MOCK_DESKTOP_SESSION_STATE__ || ({
         available: true,

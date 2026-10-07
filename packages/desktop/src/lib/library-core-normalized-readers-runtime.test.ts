@@ -19,7 +19,9 @@ function mockSurfaceQuery(
   }) => unknown | Promise<unknown>,
 ): void {
   mocks.queryNormalizedLibrary.mockImplementation(async (request) =>
-    request.queryId === "optimistic_fields_v1"
+    request.queryId === "item_annotation_edit_state_v1"
+      ? { queryId: request.queryId, schemaVersion: 1, globalId: request.globalId, source: QUERY_SOURCE, pending: false, localSequence: 0 }
+      : request.queryId === "optimistic_fields_v1"
       ? {
           queryId: request.queryId,
           rows: [],
@@ -81,6 +83,7 @@ const feedCard = {
   likedAt: null,
   likedSyncedAt: null,
   linkPreviewTitle: null,
+  linkPreviewUrl: null,
   locationName: null,
   mediaTypes: [],
   mediaUrls: [],
@@ -105,6 +108,7 @@ describe("Freed Desktop normalized surface readers", () => {
         return {
           item: {
             card: feedCard,
+            seenSyncedAt: 1234,
             contentBody: { blobDigest: null, storage: "inline" },
             mediaBlobDigests: [],
             preservedBody: { blobDigest: null, storage: "none" },
@@ -166,6 +170,7 @@ describe("Freed Desktop normalized surface readers", () => {
         globalId: "x:item-1",
         userState: expect.objectContaining({
           tags: ["favorite"],
+          seenSyncedAt: 1234,
           highlights: [
             { createdAt: 20, note: "Keep this", text: "A quotation" },
           ],
@@ -195,6 +200,7 @@ describe("Freed Desktop normalized surface readers", () => {
     ).toEqual([
       "item_detail_v1",
       "item_annotations_v1",
+      "item_annotation_edit_state_v1",
       "optimistic_fields_v1",
       "library_facet_summary_v1",
       "saved_analytics_v2",
@@ -207,6 +213,7 @@ describe("Freed Desktop normalized surface readers", () => {
       mocks.queryNormalizedLibrary.mockImplementation(async (request) => {
         if (request.queryId === "item_annotations_v1")
           return {
+            queryId: "item_annotations_v1", schemaVersion: 1, globalId: request.globalId,
             source:
               failure === "stale source"
                 ? { ...QUERY_SOURCE, projectionRevision: 8 }
@@ -221,9 +228,11 @@ describe("Freed Desktop normalized surface readers", () => {
               },
             ],
           };
+        if (request.queryId === "item_annotation_text_range_v1") throw new Error("vault unavailable");
         return {
           item: {
             card: feedCard,
+            seenSyncedAt: null,
             contentBody: { blobDigest: null, storage: "inline" },
             mediaBlobDigests: [],
             preservedBody: { blobDigest: null, storage: "none" },
@@ -233,10 +242,10 @@ describe("Freed Desktop normalized surface readers", () => {
       });
       await expect(readLibraryCoreItemDetail("x:item-1")).rejects.toThrow(
         failure === "stale source"
-          ? "source is stale"
-          : "requires blob hydration",
+          ? "Annotation editing is stale"
+          : "Annotation editing is unavailable",
       );
-      expect(mocks.queryNormalizedLibrary.mock.calls).toHaveLength(2);
+      expect(mocks.queryNormalizedLibrary.mock.calls).toHaveLength(failure === "stale source" ? 2 : 3);
     },
   );
 
@@ -253,6 +262,7 @@ describe("Freed Desktop normalized surface readers", () => {
             "https://example.com/image.jpg",
           ],
         },
+        seenSyncedAt: null,
         contentBody: { blobDigest: bodyDigest, storage: "blob" },
         mediaBlobDigests: [mediaDigest, bodyDigest],
         preservedBody: { blobDigest: bodyDigest, storage: "blob" },
@@ -420,6 +430,7 @@ describe("Freed Desktop normalized surface readers", () => {
           ...feedCard,
           hidden: false,
           linkPreviewTitle: "Article",
+          linkPreviewUrl: "https://example.test/article",
           rankingCareLevel: null,
           rankingEngagementReposts: null,
           rankingEngagementViews: null,

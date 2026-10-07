@@ -65,3 +65,30 @@ subscribes to Person or Account dictionaries, scans FeedItems, reconstructs
 Accounts from authors, or sorts a candidate corpus. Linking a suggestion
 creates only the typed Google contact Account and applies registered Account
 to Person assignments to the returned existing Account IDs.
+
+`account_root_v1` reads the complete editable Account root by primary key. It
+returns the closed write shape, including full optional text, roster state and
+sample provenance, under the existing 65,536-byte canonical Account limit.
+SQLite checks scalar byte totals and at most four roster rows before constructing
+JSON; more than three roles refuses the root. Native and browser runtimes then
+apply the registered Account write validator. Missing rows return null; overflow
+returns an error. The root and source revision share one read transaction.
+Friend recovery uses this query for exact account values instead of the smaller
+display projection. Linked-account enumeration uses the identity-only page query below.
+
+`person_account_page_v1` enumerates only linked Account IDs through the existing
+`library_accounts_person(person_id, id)` index. A request returns up to 64 IDs
+and reads at most one additional row to decide whether another page exists.
+It does not count or hydrate the entire linked set. The opaque canonical Base64
+cursor binds query version, Person ID, database generation, canonical revision
+and the final binary Account ID. A changed source returns `CURSOR_STALE`.
+Native and browser runtimes share the cursor vector and row model. Each page and
+its source come from one read transaction. Friend recovery uses this instead of
+the Person display projection; large link sets use eight-account review pages. The form retains the
+bounded original archive, one active page and at most 64 selected accounts. It
+requires every current-link page and archived account to be reviewed before
+confirmation. Large sets start unselected because choosing an arbitrary subset
+would silently omit links. Revisiting the beginning rereads pages at the same
+source rather than retaining an unbounded cursor history. A stale or unreadable
+page blocks submission. Each exact Account root retains the existing 64 KiB
+write bound, and the final replacement retains its existing payload bound.

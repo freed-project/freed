@@ -1,7 +1,7 @@
 {
   "name": "@freed/desktop",
   "private": true,
-  "version": "26.9.1400",
+  "version": "26.10.700",
   "type": "module",
   "scripts": {
     "dev": "node ../../node_modules/vite/bin/vite.js",
@@ -26,7 +26,9 @@
     "test:e2e:perf:settings": "node ../../node_modules/playwright/cli.js test perf-settings.spec.ts",
     "test:e2e:visual": "node ../../node_modules/playwright/cli.js test smoke.spec.ts theme-switching.spec.ts --grep \"dense Friends graph stays visually structured|map view repaints across all themes\"",
     "test:e2e:ui": "node ../../node_modules/playwright/cli.js test --ui",
-    "test:e2e:debug": "node ../../node_modules/playwright/cli.js test --debug"
+    "test:e2e:debug": "node ../../node_modules/playwright/cli.js test --debug",
+    "build:transfer-acceptance": "tsc -b && vite build --config vite.config.ts --mode library-transfer-acceptance",
+    "tauri:build:transfer-acceptance": "node ./scripts/tauri-cli.mjs build --features library-transfer-acceptance --config src-tauri/tauri.transfer-acceptance.conf.json"
   },
   "dependencies": {
     "@freed/capture-facebook": "*",

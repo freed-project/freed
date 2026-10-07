@@ -5,9 +5,10 @@ use crate::normalized_checkpoint::{
 };
 use crate::sqlite_contract_generated::{
     CHECKPOINT_PAGE_MAXIMUM_DECODED_BYTES, CHECKPOINT_PAGE_MAXIMUM_RECORDS,
-    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NORMALIZED_CHECKPOINT_EXPORT_FORMAT,
-    NORMALIZED_SCHEMA_SHA256, NORMALIZED_SCHEMA_SQL, SQLITE_APPLICATION_ID,
-    SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
+    NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES, NATIVE_STORAGE_SCHEMA_VERSION,
+    NORMALIZED_CHECKPOINT_EXPORT_FORMAT, NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL,
+    NORMALIZED_NATIVE_SCHEMA_SHA256, NORMALIZED_SCHEMA_SHA256, NORMALIZED_SCHEMA_SQL,
+    SQLITE_APPLICATION_ID, SQLITE_CONTRACT_VERSION, SQLITE_PROTOCOL_VERSION, SQLITE_SCHEMA_VERSION,
 };
 use base64::engine::general_purpose::STANDARD as BASE64;
 use base64::Engine;
@@ -32,9 +33,16 @@ pub(crate) fn normalized_sqlite_open_flags(create: bool) -> OpenFlags {
     flags
 }
 
+#[cfg(test)]
+thread_local! {
+    pub(crate) static TEST_CONNECTION_CONFIGURATION_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 pub(crate) fn configure_normalized_sqlite_connection(
     connection: &Connection,
 ) -> Result<(), NormalizedSqliteError> {
+    #[cfg(test)]
+    TEST_CONNECTION_CONFIGURATION_COUNT.with(|count| count.set(count.get() + 1));
     connection.execute_batch(
         "PRAGMA foreign_keys = ON;
          PRAGMA trusted_schema = OFF;
@@ -52,6 +60,55 @@ pub(crate) fn configure_normalized_sqlite_connection(
 /// uses a private cache, and applies the same schema and connection contract
 /// on every supported Desktop platform.
 pub fn open_normalized_sqlite_database_v1(
+    database_path: &Path,
+    create: bool,
+) -> Result<Connection, NormalizedSqliteError> {
+    let connection = open_checked_normalized_sqlite_path(database_path, create)?;
+    configure_normalized_sqlite_connection(&connection)?;
+    Ok(connection)
+}
+
+/// Startup/setup only, after acquiring the existing process lease. An absent
+/// database remains absent unless this is explicit authorized fresh creation.
+/// The returned connection is unpublished until all bounded upgrade slices finish.
+pub fn initialize_owned_normalized_sqlite_database_v1(
+    database_path: &Path,
+    create: bool,
+) -> Result<Option<Connection>, NormalizedSqliteError> {
+    initialize_owned_normalized_sqlite_database_with_observer_v1(database_path, create, || {})
+}
+
+/// Owned startup observation between bounded slices, outside any transaction.
+/// The callback receives no connection or authority and cannot change the pinned source.
+/// Hosts must retain their process lease until this function returns.
+pub fn initialize_owned_normalized_sqlite_database_with_observer_v1(
+    database_path: &Path,
+    create: bool,
+    mut unfinished: impl FnMut(),
+) -> Result<Option<Connection>, NormalizedSqliteError> {
+    if !create {
+        match std::fs::symlink_metadata(database_path) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(NormalizedSqliteError::Transport(error.to_string())),
+            Ok(_) => {}
+        }
+    }
+    let mut connection = open_checked_normalized_sqlite_path(database_path, create)?;
+    loop {
+        match crate::normalized_local_annotations::open_owned(&mut connection) {
+            Ok(()) => return Ok(Some(connection)),
+            Err(NormalizedSqliteError::InvalidRequest("LOCAL_ANNOTATION_UPGRADE_PENDING")) => {
+                unfinished();
+                std::thread::sleep(std::time::Duration::from_millis(25))
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+// Shared checked path boundary. Neither opener introduces another normalization,
+// URI, symlink or SQLite flag policy.
+fn open_checked_normalized_sqlite_path(
     database_path: &Path,
     create: bool,
 ) -> Result<Connection, NormalizedSqliteError> {
@@ -80,9 +137,10 @@ pub fn open_normalized_sqlite_database_v1(
         Err(error) if error.kind() == std::io::ErrorKind::NotFound && create => {}
         Err(error) => return Err(NormalizedSqliteError::Transport(error.to_string())),
     }
-    let connection = Connection::open_with_flags(&resolved, normalized_sqlite_open_flags(create))?;
-    configure_normalized_sqlite_connection(&connection)?;
-    Ok(connection)
+    Ok(Connection::open_with_flags(
+        &resolved,
+        normalized_sqlite_open_flags(create),
+    )?)
 }
 
 #[derive(Debug)]
@@ -202,11 +260,58 @@ pub struct NormalizedCheckpointStageStatusV2 {
     pub complete: bool,
 }
 
+/// Verify the selected Library against its native materialization receipt.
+///
+/// Primary genesis and restore bind the epoch's materialized digest. A consumer
+/// checkpoint has a different, acyclic digest and binds it in its local verified
+/// receipt instead. Neither proof grants writer admission.
+pub fn verify_normalized_library_selection_v1(
+    connection: &Connection,
+    library_id: &str,
+) -> Result<(), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
+    let matches: bool = connection.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM library_active_authority AS active
+           JOIN library_authority_epochs AS epoch ON epoch.epoch_id = active.epoch_id
+           JOIN library_meta AS meta ON meta.singleton_id = 1
+           JOIN library_materialization_generation AS generation ON generation.singleton_id = 1
+           WHERE active.active_key = 'active' AND active.library_id = ?1
+             AND meta.library_id = active.library_id
+             AND meta.authority_epoch = active.epoch_id
+             AND epoch.library_id = active.library_id
+             AND (epoch.materialized_state_digest = generation.generation_id OR EXISTS(
+               SELECT 1 FROM library_follower_checkpoint_receipt AS receipt
+               JOIN library_actors AS writer ON writer.actor_id = receipt.writer_actor_id
+               WHERE receipt.singleton_id = 1
+                 AND receipt.library_id = active.library_id
+                 AND receipt.authority_epoch_id = active.epoch_id
+                 AND receipt.checkpoint_digest = generation.generation_id
+                 AND receipt.source_revision <= meta.source_revision
+                 AND writer.authority_epoch_id = active.epoch_id
+                 AND writer.actor_kind = 'desktop' AND writer.retired_at IS NULL
+             ))
+         );",
+        [library_id],
+        |row| row.get(0),
+    )?;
+    if !matches {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized SQLite authority selection does not match its native receipt",
+        ));
+    }
+    Ok(())
+}
+
 pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), NormalizedSqliteError> {
     let user_version: u32 =
         connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let application_id: u32 =
         connection.pragma_query_value(None, "application_id", |row| row.get(0))?;
+    if matches!(user_version, 4 | 5) {
+        crate::normalized_local_annotations::verify_catalog(connection, user_version)?;
+        return crate::normalized_local_annotations::require_ready(connection);
+    }
     if user_version == 0 {
         if application_id != 0 {
             return Err(NormalizedSqliteError::InvalidRequest(
@@ -227,20 +332,28 @@ pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), Norma
         )?;
         connection.pragma_update(None, "user_version", SQLITE_SCHEMA_VERSION)?;
     } else {
-        if user_version != SQLITE_SCHEMA_VERSION || application_id != SQLITE_APPLICATION_ID {
+        if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&user_version)
+            || application_id != SQLITE_APPLICATION_ID
+        {
             return Err(NormalizedSqliteError::InvalidRequest(
                 "normalized SQLite version identity is unsupported",
             ));
         }
+        let schema_digest = if user_version == NATIVE_STORAGE_SCHEMA_VERSION {
+            verify_native_handoff_catalog(connection)?;
+            NORMALIZED_NATIVE_SCHEMA_SHA256
+        } else {
+            NORMALIZED_SCHEMA_SHA256
+        };
         let matches: bool = connection.query_row(
             "SELECT contract_version = ?1 AND schema_version = ?2
                     AND protocol_version = ?3 AND schema_sha256 = ?4
              FROM library_storage_meta WHERE singleton_id = 1;",
             params![
                 SQLITE_CONTRACT_VERSION,
-                SQLITE_SCHEMA_VERSION,
+                user_version,
                 SQLITE_PROTOCOL_VERSION,
-                NORMALIZED_SCHEMA_SHA256,
+                schema_digest,
             ],
             |row| row.get(0),
         )?;
@@ -251,6 +364,111 @@ pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), Norma
         }
     }
     Ok(())
+}
+
+fn verify_native_handoff_catalog(connection: &Connection) -> Result<(), NormalizedSqliteError> {
+    let declarations = NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL
+        .split(';')
+        .map(str::trim)
+        .filter(|sql| !sql.is_empty())
+        .collect::<Vec<_>>();
+    let objects = [
+        ("table", "library_local_handoff"),
+        ("table", "library_local_recovery_archives"),
+        ("table", "library_local_recovery_rows"),
+        ("index", "library_local_recovery_transaction_rows"),
+        ("table", "library_local_recovery_reissues"),
+        ("table", "library_local_handoff_cancellations"),
+        ("index", "library_local_recovery_enrollment"),
+        ("table", "library_local_source_demotions"),
+    ];
+    if declarations.len() != objects.len() {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "native lifecycle schema declarations are invalid",
+        ));
+    }
+    for ((kind, name), expected) in objects.iter().zip(declarations) {
+        let sql: Option<String> = connection
+            .query_row(
+                "SELECT sql FROM sqlite_schema WHERE type = ?1 AND name = ?2;",
+                [kind, name],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if sql.as_deref() != Some(expected) {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "normalized native handoff catalog does not match this build",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Upgrade only within the transaction that records the installation's handoff.
+/// Logical checkpoint records and their historical schema digest stay unchanged.
+pub(crate) fn migrate_native_handoff_schema_v2(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), NormalizedSqliteError> {
+    crate::require_library_transfer_capability()
+        .map_err(crate::NormalizedSqliteError::Transport)?;
+    let version: u32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if matches!(version, 4 | 5) {
+        use crate::sqlite_contract_generated::{
+            ANNOTATION_RECOVERY_SCHEMA_SHA256, ANNOTATION_SCHEMA_SHA256,
+        };
+        crate::normalized_local_annotations::verify_catalog(transaction, version)?;
+        crate::normalized_local_annotations::require_ready(transaction)?;
+        if version == 5 {
+            return Ok(());
+        }
+        transaction.execute_batch(NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL)?;
+        let changed=transaction.execute("UPDATE library_storage_meta SET schema_version=5,schema_sha256=?1 WHERE singleton_id=1 AND schema_version=4 AND schema_sha256=?2;",params![ANNOTATION_RECOVERY_SCHEMA_SHA256,ANNOTATION_SCHEMA_SHA256])?;
+        let receipt=transaction.execute("UPDATE library_local_annotation_migration SET catalog_version=5,catalog_sha256=?1 WHERE singleton_id=1 AND phase='ready' AND catalog_version=4 AND catalog_sha256=?2;",params![ANNOTATION_RECOVERY_SCHEMA_SHA256,ANNOTATION_SCHEMA_SHA256])?;
+        if changed != 1 || receipt != 1 {
+            return Err(NormalizedSqliteError::InvalidRequest(
+                "annotation recovery migration identity changed",
+            ));
+        }
+        transaction.pragma_update(None, "user_version", 5)?;
+        return install_normalized_schema_v1(transaction);
+    }
+    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION].contains(&version) {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "native handoff requires an existing supported Library",
+        ));
+    }
+    install_normalized_schema_v1(transaction)?;
+    if version == NATIVE_STORAGE_SCHEMA_VERSION {
+        return Ok(());
+    }
+    let exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'library_local_handoff');",
+        [],
+        |row| row.get(0),
+    )?;
+    if exists {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "unversioned native handoff catalog exists",
+        ));
+    }
+    transaction.execute_batch(NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL)?;
+    let updated = transaction.execute(
+        "UPDATE library_storage_meta SET schema_version = ?1, schema_sha256 = ?2
+         WHERE singleton_id = 1 AND schema_version = ?3 AND schema_sha256 = ?4;",
+        params![
+            NATIVE_STORAGE_SCHEMA_VERSION,
+            NORMALIZED_NATIVE_SCHEMA_SHA256,
+            SQLITE_SCHEMA_VERSION,
+            NORMALIZED_SCHEMA_SHA256
+        ],
+    )?;
+    if updated != 1 {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "native handoff migration source changed",
+        ));
+    }
+    transaction.pragma_update(None, "user_version", NATIVE_STORAGE_SCHEMA_VERSION)?;
+    install_normalized_schema_v1(transaction)
 }
 
 fn stage_status(
@@ -286,6 +504,7 @@ pub fn begin_normalized_checkpoint_stage_v2(
     connection: &Connection,
     request: &BeginNormalizedCheckpointStageV2,
 ) -> Result<NormalizedCheckpointStageStatusV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if request.stage_id.is_empty()
         || request.stage_id.len() > 255
         || request.library_id.is_empty()
@@ -352,6 +571,7 @@ pub fn append_normalized_checkpoint_stage_page_v2(
     stage_id: &str,
     records: &[NormalizedCheckpointRecordV2],
 ) -> Result<NormalizedCheckpointStageStatusV2, NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     if stage_id.is_empty()
         || stage_id.len() > 255
         || records.is_empty()
@@ -492,7 +712,7 @@ fn checkpoint_response_upper_bound(record_count: usize, canonical_record_bytes: 
         .saturating_add(CHECKPOINT_RESPONSE_ENVELOPE_MAXIMUM_BYTES)
 }
 
-fn checkpoint_frontier_digest_v2(
+pub(crate) fn checkpoint_frontier_digest_v2(
     connection: &Connection,
     authority_epoch: &str,
 ) -> Result<String, NormalizedSqliteError> {
@@ -518,6 +738,7 @@ fn checkpoint_frontier_digest_v2(
          ORDER BY actor_id;",
     )?;
     let mut rows = statement.query([authority_epoch])?;
+    let mut has_accepted_operations = false;
     while let Some(row) = rows.next()? {
         let actor_id: String = row.get(0)?;
         let accepted_counter: i64 = row.get(1)?;
@@ -528,6 +749,12 @@ fn checkpoint_frontier_digest_v2(
                 "normalized checkpoint actor counter is invalid".into(),
             ));
         }
+        // Enrollment alone does not advance causality. A newly transferred
+        // epoch carries the source frontier unchanged until it accepts work.
+        if accepted_counter == 0 {
+            continue;
+        }
+        has_accepted_operations = true;
         for value in [&actor_id, &accepted_chain_digest] {
             let length = u64::try_from(value.len()).map_err(|_| {
                 NormalizedSqliteError::Transport(
@@ -552,7 +779,11 @@ fn checkpoint_frontier_digest_v2(
             None => digest.update([0]),
         }
     }
-    Ok(lower_hex(&digest.finalize()))
+    if has_accepted_operations {
+        Ok(lower_hex(&digest.finalize()))
+    } else {
+        Ok(carried_frontier_digest)
+    }
 }
 
 fn checkpoint_hex_identity(value: &str) -> bool {
@@ -565,6 +796,7 @@ fn checkpoint_hex_identity(value: &str) -> bool {
 pub(crate) fn normalized_writer_identity(
     connection: &Connection,
 ) -> Result<(String, String, String, i64), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let (library_id, authority_epoch, writer_id, source_revision): (String, String, String, i64) =
         connection.query_row(
             "SELECT meta.library_id, meta.authority_epoch, actor.actor_id,
@@ -589,9 +821,42 @@ pub(crate) fn normalized_writer_identity(
     Ok((library_id, authority_epoch, writer_id, source_revision))
 }
 
-pub fn describe_normalized_checkpoint_export_v2(
+/// Metadata identity only. This is not an export descriptor or an exportability
+/// certificate: it neither counts nor traverses checkpoint or feed-item trees.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NormalizedCloudPreflightIdentityV1 {
+    pub format: String,
+    pub protocol_version: u32,
+    pub library_id: String,
+    pub authority_epoch: String,
+    pub writer_id: String,
+    pub source_revision: u64,
+    pub causal_frontier_digest: String,
+}
+
+/// Read within the host's transaction, which also contains local actor checks.
+/// The freshly opened selector identity must be revalidated in that snapshot;
+/// an earlier autocommit verification cannot authorize later metadata reads.
+pub fn describe_normalized_cloud_preflight_identity_v1(
     connection: &Connection,
-) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+    selected_library_id: &str,
+) -> Result<NormalizedCloudPreflightIdentityV1, NormalizedSqliteError> {
+    if connection.is_autocommit() {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "cloud preflight requires a read snapshot",
+        ));
+    }
+    // Opening already configured the handle. Recheck supported schema/storage
+    // identity in the pinned snapshot without replaying DDL or migrating.
+    let schema: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION, 4, 5].contains(&schema) {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized SQLite version identity is unsupported",
+        ));
+    }
+    install_normalized_schema_v1(connection)?;
+    verify_normalized_library_selection_v1(connection, selected_library_id)?;
     let (library_id, authority_epoch, writer_id, source_revision) =
         normalized_writer_identity(connection)?;
     if !checkpoint_hex_identity(&library_id)
@@ -602,15 +867,64 @@ pub fn describe_normalized_checkpoint_export_v2(
             "normalized checkpoint authority identity is invalid".into(),
         ));
     }
+    Ok(NormalizedCloudPreflightIdentityV1 {
+        format: "freed_normalized_cloud_preflight_identity_v1".into(),
+        protocol_version: SQLITE_PROTOCOL_VERSION,
+        library_id,
+        authority_epoch: authority_epoch.clone(),
+        writer_id,
+        source_revision: u64::try_from(source_revision).map_err(|_| {
+            NormalizedSqliteError::Transport(
+                "normalized checkpoint source revision is invalid".into(),
+            )
+        })?,
+        causal_frontier_digest: checkpoint_frontier_digest_v2(connection, &authority_epoch)?,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NormalizedCheckpointDescriptionStageV2 {
+    WriterIdentity,
+    ExportCount,
+    ItemCount,
+    FrontierAndValidation,
+}
+
+pub fn describe_normalized_checkpoint_export_v2(
+    connection: &Connection,
+) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+    describe_normalized_checkpoint_export_with_observer_v2(connection, |_| {})
+}
+
+/// The observer receives fixed stage boundaries only. It does not receive
+/// records, identity values or errors, and does not alter descriptor semantics.
+pub fn describe_normalized_checkpoint_export_with_observer_v2(
+    connection: &Connection,
+    mut observe: impl FnMut(NormalizedCheckpointDescriptionStageV2),
+) -> Result<NormalizedCheckpointExportDescriptorV2, NormalizedSqliteError> {
+    observe(NormalizedCheckpointDescriptionStageV2::WriterIdentity);
+    let (library_id, authority_epoch, writer_id, source_revision) =
+        normalized_writer_identity(connection)?;
+    if !checkpoint_hex_identity(&library_id)
+        || !checkpoint_hex_identity(&authority_epoch)
+        || !checkpoint_hex_identity(&writer_id)
+    {
+        return Err(NormalizedSqliteError::Transport(
+            "normalized checkpoint authority identity is invalid".into(),
+        ));
+    }
+    observe(NormalizedCheckpointDescriptionStageV2::ExportCount);
     let record_count: i64 = connection.query_row(
         "SELECT count(*) FROM library_checkpoint_export;",
         [],
         |row| row.get(0),
     )?;
+    observe(NormalizedCheckpointDescriptionStageV2::ItemCount);
     let item_count: i64 =
         connection.query_row("SELECT count(*) FROM library_feed_items;", [], |row| {
             row.get(0)
         })?;
+    observe(NormalizedCheckpointDescriptionStageV2::FrontierAndValidation);
     Ok(NormalizedCheckpointExportDescriptorV2 {
         format: NORMALIZED_CHECKPOINT_EXPORT_FORMAT.into(),
         protocol_version: SQLITE_PROTOCOL_VERSION,
@@ -648,6 +962,15 @@ pub fn export_pinned_normalized_checkpoint_page_v2(
     Ok(page)
 }
 
+/// Fixed preparation boundaries only; no records or authority values are exposed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NormalizedCheckpointPreparationStageV2 {
+    TransactionBegin,
+    Descriptor(NormalizedCheckpointDescriptionStageV2),
+    TemporaryMaterialization,
+    OrderIndex,
+}
+
 /// Hold one SQLite read transaction across a complete bounded checkpoint export.
 ///
 /// Hosts retain this session outside their ordinary command connection so
@@ -666,7 +989,7 @@ impl NormalizedCheckpointExportSessionV2 {
         connection: Connection,
         snapshot: NormalizedCheckpointExportDescriptorV2,
     ) -> Result<Self, NormalizedSqliteError> {
-        Self::begin_inner(connection, Some(snapshot))
+        Self::begin_inner(connection, Some(snapshot), |_| {})
     }
 
     /// Open a pinned export and return the descriptor from that same read transaction.
@@ -675,20 +998,33 @@ impl NormalizedCheckpointExportSessionV2 {
     /// checkpoint on one connection and opening the export on another leaves a
     /// race where a concurrent writer can advance the revision between calls.
     pub fn begin_current(connection: Connection) -> Result<Self, NormalizedSqliteError> {
-        Self::begin_inner(connection, None)
+        Self::begin_current_with_observer(connection, |_| {})
+    }
+
+    /// Identical pinned export with content-free preparation boundaries.
+    pub fn begin_current_with_observer(
+        connection: Connection,
+        observe: impl FnMut(NormalizedCheckpointPreparationStageV2),
+    ) -> Result<Self, NormalizedSqliteError> {
+        Self::begin_inner(connection, None, observe)
     }
 
     fn begin_inner(
         connection: Connection,
         expected_snapshot: Option<NormalizedCheckpointExportDescriptorV2>,
+        mut observe: impl FnMut(NormalizedCheckpointPreparationStageV2),
     ) -> Result<Self, NormalizedSqliteError> {
         if !connection.is_autocommit() {
             return Err(NormalizedSqliteError::InvalidRequest(
                 "normalized checkpoint export connection is already in a transaction",
             ));
         }
+        observe(NormalizedCheckpointPreparationStageV2::TransactionBegin);
         connection.execute_batch("BEGIN DEFERRED TRANSACTION;")?;
-        let snapshot = describe_normalized_checkpoint_export_v2(&connection)?;
+        let snapshot =
+            describe_normalized_checkpoint_export_with_observer_v2(&connection, |stage| {
+                observe(NormalizedCheckpointPreparationStageV2::Descriptor(stage));
+            })?;
         if expected_snapshot
             .as_ref()
             .is_some_and(|expected| expected != &snapshot)
@@ -705,13 +1041,7 @@ impl NormalizedCheckpointExportSessionV2 {
         // the order index serves every later page. The temporary object shadows
         // the main-schema view only for this export session and disappears with
         // the connection.
-        connection.execute_batch(
-            "CREATE TEMP TABLE library_checkpoint_export AS
-               SELECT registry_key, primary_key_json, payload_json, chunk_bytes
-               FROM main.library_checkpoint_export;
-             CREATE UNIQUE INDEX temp.library_checkpoint_export_order
-               ON library_checkpoint_export(registry_key, primary_key_json);",
-        )?;
+        materialize_normalized_checkpoint_export_with_observer_v2(&connection, &mut observe)?;
         Ok(Self {
             connection,
             snapshot,
@@ -756,6 +1086,44 @@ impl Drop for NormalizedCheckpointExportSessionV2 {
             let _ = self.connection.execute_batch("ROLLBACK;");
         }
     }
+}
+
+/// Index the pinned export once in connection-local SQLite temporary storage.
+/// The caller owns the read transaction; this does not change the main catalog.
+pub(crate) fn materialize_normalized_checkpoint_export_v2(
+    connection: &Connection,
+) -> Result<(), NormalizedSqliteError> {
+    materialize_normalized_checkpoint_export_with_observer_v2(connection, |_| {})
+}
+
+fn materialize_normalized_checkpoint_export_with_observer_v2(
+    connection: &Connection,
+    mut observe: impl FnMut(NormalizedCheckpointPreparationStageV2),
+) -> Result<(), NormalizedSqliteError> {
+    if connection.is_autocommit() {
+        return Err(NormalizedSqliteError::InvalidRequest(
+            "normalized checkpoint cache requires a pinned transaction",
+        ));
+    }
+    observe(NormalizedCheckpointPreparationStageV2::TemporaryMaterialization);
+    connection.execute_batch(
+        "CREATE TEMP TABLE library_checkpoint_export AS
+           SELECT registry_key, primary_key_json, payload_json, chunk_bytes
+           FROM main.library_checkpoint_export;",
+    )?;
+    observe(NormalizedCheckpointPreparationStageV2::OrderIndex);
+    connection.execute_batch(
+        "CREATE UNIQUE INDEX temp.library_checkpoint_export_order
+           ON library_checkpoint_export(registry_key, primary_key_json);",
+    )?;
+    Ok(())
+}
+
+pub(crate) fn release_normalized_checkpoint_export_cache_v2(
+    connection: &Connection,
+) -> Result<(), NormalizedSqliteError> {
+    connection.execute_batch("DROP TABLE temp.library_checkpoint_export;")?;
+    Ok(())
 }
 
 // A tuple comparison lets SQLite seek the export order index. An optional-
@@ -986,6 +1354,403 @@ mod tests {
         connection
     }
 
+    fn checkpoint_identity_fixture() -> Connection {
+        let vector: Value = serde_json::from_str(include_str!(
+            "../../shared/src/library-core/native-recovered-browser-vector-v1.json"
+        ))
+        .unwrap();
+        let baseline: NormalizedCheckpointExportDescriptorV2 =
+            serde_json::from_value(vector["baseline"].clone()).unwrap();
+        let records: Vec<NormalizedCheckpointRecordV2> =
+            serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
+        let mut connection = fixture();
+        begin_normalized_checkpoint_stage_v2(
+            &connection,
+            &BeginNormalizedCheckpointStageV2 {
+                stage_id: "timing-fixture".into(),
+                library_id: baseline.library_id.clone(),
+                authority_epoch: baseline.authority_epoch.clone(),
+                source_revision: baseline.source_revision,
+                expected_record_count: records.len(),
+                created_at: 2200,
+            },
+        )
+        .unwrap();
+        append_normalized_checkpoint_stage_page_v2(&mut connection, "timing-fixture", &records)
+            .unwrap();
+        replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut connection,
+            "timing-fixture",
+            &NormalizedFollowerCheckpointReceiptV2 {
+                checkpoint_generation: 1,
+                writer_actor_id: baseline.writer_id,
+                manifest_object_key: "synthetic-manifest".into(),
+                manifest_transport_object_id: "synthetic-object".into(),
+                manifest_content_digest: "9".repeat(64),
+                control_revision: "synthetic-control".into(),
+                installed_at: 2200,
+            },
+        )
+        .unwrap();
+        connection
+    }
+
+    #[test]
+    fn cloud_preflight_identity_matches_full_descriptor_without_census() {
+        let mut connection = checkpoint_identity_fixture();
+        let full = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        assert!(
+            describe_normalized_cloud_preflight_identity_v1(&connection, &full.library_id).is_err()
+        );
+        let tx = connection.transaction().unwrap();
+        let identity =
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap();
+        assert_eq!(identity.library_id, full.library_id);
+        assert_eq!(identity.authority_epoch, full.authority_epoch);
+        assert_eq!(identity.writer_id, full.writer_id);
+        assert_eq!(identity.source_revision, full.source_revision);
+        assert_eq!(identity.causal_frontier_digest, full.causal_frontier_digest);
+        assert_eq!(identity.protocol_version, full.protocol_version);
+        assert!(describe_normalized_cloud_preflight_identity_v1(&tx, &"0".repeat(64)).is_err());
+        // Census failures retain their original full-descriptor semantics.
+        // Preflight deliberately cannot certify either tree's exportability.
+        for view in ["library_checkpoint_export", "library_feed_items"] {
+            tx.execute_batch(&format!(
+                "CREATE TEMP VIEW {view} AS SELECT * FROM missing_preflight_fixture;"
+            ))
+            .unwrap();
+            assert_eq!(
+                describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap(),
+                identity
+            );
+            assert!(describe_normalized_checkpoint_export_v2(&tx).is_err());
+            tx.execute_batch(&format!("DROP VIEW temp.{view};"))
+                .unwrap();
+            assert_eq!(describe_normalized_checkpoint_export_v2(&tx).unwrap(), full);
+        }
+        tx.commit().unwrap();
+    }
+
+    #[test]
+    fn cloud_preflight_rechecks_selection_schema_authority_and_frontier_in_snapshot() {
+        let mut connection = checkpoint_identity_fixture();
+        let full = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        for sql in [
+            "UPDATE library_meta SET library_id = printf('%064d', 0)",
+            "UPDATE library_materialization_generation SET generation_id = printf('%064d', 0)",
+            "UPDATE library_actors SET retired_at = 1 WHERE actor_kind = 'desktop'",
+            "UPDATE library_storage_meta SET schema_sha256 = printf('%064d', 0)",
+            "PRAGMA user_version = 99",
+            "CREATE TEMP VIEW library_authority_epochs AS SELECT * FROM missing_preflight_fixture",
+            "CREATE TEMP VIEW library_meta AS SELECT library_id, authority_epoch, -1 AS source_revision, singleton_id FROM main.library_meta",
+        ] {
+            let tx = connection.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            assert!(describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).is_err(), "accepted {sql}");
+            tx.rollback().unwrap();
+        }
+        let tx = connection.transaction().unwrap();
+        assert_eq!(
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id)
+                .unwrap()
+                .source_revision,
+            full.source_revision
+        );
+        tx.commit().unwrap();
+        assert_eq!(
+            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+            full
+        );
+    }
+
+    #[test]
+    fn cloud_preflight_snapshot_stays_pinned_and_reopen_rechecks_generation() {
+        let fixture = tempfile::tempdir().unwrap();
+        let path = fixture.path().join("synthetic.sqlite");
+        let source = checkpoint_identity_fixture();
+        source
+            .backup(rusqlite::DatabaseName::Main, &path, None)
+            .unwrap();
+        let mut reader = Connection::open(&path).unwrap();
+        configure_normalized_sqlite_connection(&reader).unwrap();
+        let writer = Connection::open(&path).unwrap();
+        configure_normalized_sqlite_connection(&writer).unwrap();
+        let full = describe_normalized_checkpoint_export_v2(&reader).unwrap();
+        let tx = reader.transaction().unwrap();
+        let before =
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap();
+        writer
+            .execute(
+                "UPDATE library_meta SET source_revision = source_revision + 1",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap(),
+            before
+        );
+        assert_eq!(describe_normalized_checkpoint_export_v2(&tx).unwrap(), full);
+        tx.commit().unwrap();
+        let tx = reader.transaction().unwrap();
+        assert_eq!(
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id)
+                .unwrap()
+                .source_revision,
+            before.source_revision + 1
+        );
+        tx.commit().unwrap();
+        writer
+            .execute(
+                "UPDATE library_materialization_generation SET generation_id = ?1",
+                ["0".repeat(64)],
+            )
+            .unwrap();
+        drop(reader);
+        let mut reopened = Connection::open(&path).unwrap();
+        configure_normalized_sqlite_connection(&reopened).unwrap();
+        let tx = reopened.transaction().unwrap();
+        assert!(describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).is_err());
+    }
+
+    #[test]
+    fn cloud_preflight_never_reads_receipt_or_item_census_and_preserves_actor_refusals() {
+        use crate::library_core_actor_enrollment::{
+            load_normalized_local_actor_id_v2, ActorKeyStore,
+        };
+        use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+        struct Store(std::sync::Mutex<Option<Vec<u8>>>);
+        impl ActorKeyStore for Store {
+            fn load(&self, _: &str) -> Result<Option<Vec<u8>>, String> {
+                Ok(self.0.lock().unwrap().clone())
+            }
+            fn store(&self, _: &str, bytes: &[u8]) -> Result<(), String> {
+                *self.0.lock().unwrap() = Some(bytes.to_vec());
+                Ok(())
+            }
+        }
+        let store = Store(std::sync::Mutex::new(None));
+        let mut connection = checkpoint_identity_fixture();
+        let full = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        let witness = "8".repeat(64);
+        let actor =
+            load_normalized_local_actor_id_v2(&connection, &full.library_id, &witness, &store)
+                .unwrap();
+        connection.execute_batch("WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<8192)
+            INSERT INTO library_receipts(actor_id, operation_id, status, digest, result_text, accepted_at)
+            SELECT 'synthetic-actor', printf('synthetic-%d',x), 'accepted', printf('%064d',0), printf('%02048d',0), 1 FROM n;").unwrap();
+        let counted = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        assert_eq!(counted.record_count, full.record_count + 8192);
+        connection.authorizer(Some(|ctx: AuthContext<'_>| match ctx.action {
+            AuthAction::Read {
+                table_name: "library_receipts" | "library_feed_items",
+                ..
+            } => Authorization::Deny,
+            _ => Authorization::Allow,
+        }));
+        let tx = connection.transaction().unwrap();
+        let identity =
+            describe_normalized_cloud_preflight_identity_v1(&tx, &full.library_id).unwrap();
+        assert_eq!(identity.source_revision, full.source_revision);
+        assert_eq!(identity.causal_frontier_digest, full.causal_frontier_digest);
+        assert_eq!(
+            load_normalized_local_actor_id_v2(&tx, &identity.library_id, &witness, &store).unwrap(),
+            actor
+        );
+        assert!(load_normalized_local_actor_id_v2(
+            &tx,
+            &identity.library_id,
+            "bad-witness",
+            &store
+        )
+        .unwrap_err()
+        .contains("invalid"));
+        *store.0.lock().unwrap() = Some(vec![0, 1, 2]);
+        assert!(
+            load_normalized_local_actor_id_v2(&tx, &identity.library_id, &witness, &store)
+                .unwrap_err()
+                .contains("corrupt")
+        );
+        assert!(describe_normalized_checkpoint_export_v2(&tx).is_err());
+    }
+
+    #[test]
+    fn checkpoint_stage_observer_preserves_descriptor_and_each_failure_boundary() {
+        let connection = checkpoint_identity_fixture();
+        let expected = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        let stages = [
+            NormalizedCheckpointDescriptionStageV2::WriterIdentity,
+            NormalizedCheckpointDescriptionStageV2::ExportCount,
+            NormalizedCheckpointDescriptionStageV2::ItemCount,
+            NormalizedCheckpointDescriptionStageV2::FrontierAndValidation,
+        ];
+        let mut observed = Vec::new();
+        assert_eq!(
+            describe_normalized_checkpoint_export_with_observer_v2(&connection, |stage| {
+                observed.push(stage)
+            })
+            .unwrap(),
+            expected
+        );
+        assert_eq!(observed, stages);
+        // Temporary broken views fault one real SQL boundary at a time without
+        // mutating canonical data or changing the main checkpoint export view.
+        for (index, view) in [
+            "library_meta",
+            "library_checkpoint_export",
+            "library_feed_items",
+            "library_authority_epochs",
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            connection
+                .execute_batch(&format!(
+                    "CREATE TEMP VIEW {view} AS SELECT * FROM missing_timing_fixture;"
+                ))
+                .unwrap();
+            let original = describe_normalized_checkpoint_export_v2(&connection)
+                .unwrap_err()
+                .to_string();
+            observed.clear();
+            assert_eq!(
+                describe_normalized_checkpoint_export_with_observer_v2(&connection, |stage| {
+                    observed.push(stage)
+                })
+                .unwrap_err()
+                .to_string(),
+                original
+            );
+            assert_eq!(observed, stages[..=index]);
+            connection
+                .execute_batch(&format!("DROP VIEW temp.{view};"))
+                .unwrap();
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn public_browser_vectors_match_native_checkpoint_frontiers() {
+        // One public signed vector is consumed by both runtimes. Keep historical
+        // envelopes intact while checking the current export frontier contract.
+        for wire in [
+            include_str!("../../shared/src/library-core/native-recovered-browser-vector-v1.json"),
+            include_str!(
+                "../../shared/src/library-core/historical-native-preference-vector-v1.json"
+            ),
+        ] {
+            let vector: Value = serde_json::from_str(wire).unwrap();
+            let baseline: NormalizedCheckpointExportDescriptorV2 =
+                serde_json::from_value(vector["baseline"].clone()).unwrap();
+            let records: Vec<NormalizedCheckpointRecordV2> =
+                serde_json::from_value(vector["baselineRecords"].clone()).unwrap();
+            let mut connection = fixture();
+            begin_normalized_checkpoint_stage_v2(
+                &connection,
+                &BeginNormalizedCheckpointStageV2 {
+                    stage_id: "browser-vector".into(),
+                    library_id: baseline.library_id.clone(),
+                    authority_epoch: baseline.authority_epoch.clone(),
+                    source_revision: baseline.source_revision,
+                    expected_record_count: records.len(),
+                    created_at: 2200,
+                },
+            )
+            .unwrap();
+            append_normalized_checkpoint_stage_page_v2(&mut connection, "browser-vector", &records)
+                .unwrap();
+            finalize_normalized_checkpoint_stage_v2(&mut connection, "browser-vector").unwrap();
+            let mut current_baseline = baseline.clone();
+            if vector["sourceCommit"] == "17743c0e074b2b8ca27ff1c560a76854984410d7" {
+                // The published source included zero-counter enrollment in its
+                // frontier. Current readers carry the authenticated predecessor
+                // frontier until accepted work exists. Keep the old descriptor.
+                assert_eq!(baseline.source_revision, 0);
+                assert_eq!(
+                    connection
+                        .query_row(
+                            "SELECT max(accepted_counter) FROM library_actors;",
+                            [],
+                            |row| row.get::<_, i64>(0)
+                        )
+                        .unwrap(),
+                    0
+                );
+                assert_eq!(
+                    normalized_checkpoint_digest_v2(&records).unwrap(),
+                    vector["baselineCheckpointDigest"].as_str().unwrap()
+                );
+                current_baseline.causal_frontier_digest = records
+                    .iter()
+                    .find(|record| record.registry_key == "01_authority_epoch")
+                    .unwrap()
+                    .payload["checkpointFrontierDigest"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned();
+                assert_ne!(
+                    current_baseline.causal_frontier_digest,
+                    baseline.causal_frontier_digest
+                );
+            }
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                current_baseline
+            );
+            for page in vector["operationPages"].as_array().unwrap() {
+                let input = serde_json::from_value(page.clone()).unwrap();
+                crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+                crate::import_normalized_operation_page_v2(&mut connection, &input).unwrap();
+            }
+            if let Some(original) = vector["canonicalResultJson"].as_str() {
+                let stored: Vec<u8> = connection
+                    .query_row(
+                        "SELECT canonical_result FROM library_operation_replication_results;",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(stored, original.as_bytes());
+                let envelope: Vec<u8> = connection
+                    .query_row(
+                        "SELECT canonical_envelope FROM library_operations;",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .unwrap();
+                assert_eq!(
+                    envelope,
+                    vector["envelopes"][0].as_str().unwrap().as_bytes()
+                );
+            }
+            let expected: NormalizedCheckpointExportDescriptorV2 =
+                serde_json::from_value(vector["expected"].clone()).unwrap();
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+                expected
+            );
+            let mut records = Vec::new();
+            let mut request = NormalizedCheckpointExportRequestV2 {
+                maximum_records: 3,
+                ..Default::default()
+            };
+            loop {
+                let page = export_normalized_checkpoint_page_v2(&connection, &request).unwrap();
+                records.extend(page.records);
+                if page.done {
+                    break;
+                }
+                request.after = page.next_cursor;
+            }
+            assert_eq!(
+                normalized_checkpoint_digest_v2(&records).unwrap(),
+                vector["expectedCheckpointDigest"].as_str().unwrap()
+            );
+        }
+    }
+
     #[test]
     fn platform_path_opener_creates_and_reopens_the_normalized_schema() {
         let root = tempfile::TempDir::new().expect("create database root");
@@ -1008,6 +1773,101 @@ mod tests {
                 .expect("schema version"),
             i64::from(SQLITE_SCHEMA_VERSION)
         );
+    }
+
+    #[test]
+    fn native_handoff_schema_upgrade_is_atomic_and_preserves_logical_checkpoint() {
+        let directory = tempfile::tempdir().unwrap();
+        let database_path = directory.path().join("library.sqlite");
+        let mut connection = open_normalized_sqlite_database_v1(&database_path, true).unwrap();
+        install_test_authority(&connection, 0);
+        connection
+            .execute(
+                "INSERT INTO library_meta VALUES (1, 'library-1', 1, 'epoch-1', 7, 1000);",
+                [],
+            )
+            .unwrap();
+        let before = export_normalized_checkpoint_page_v2(
+            &connection,
+            &NormalizedCheckpointExportRequestV2::default(),
+        )
+        .unwrap();
+        {
+            let transaction = connection.transaction().unwrap();
+            migrate_native_handoff_schema_v2(&transaction).unwrap();
+            assert_eq!(
+                export_normalized_checkpoint_page_v2(
+                    &transaction,
+                    &NormalizedCheckpointExportRequestV2::default()
+                )
+                .unwrap(),
+                before
+            );
+            // Simulates a failure while recording the handoff before the owning commit.
+        }
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, u32>(0))
+                .unwrap(),
+            1
+        );
+        assert!(!connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE name = 'library_local_handoff');",
+                [],
+                |row| row.get::<_, bool>(0)
+            )
+            .unwrap());
+        let transaction = connection.transaction().unwrap();
+        migrate_native_handoff_schema_v2(&transaction).unwrap();
+        transaction
+            .execute(
+                "INSERT INTO library_local_handoff
+             (singleton_id, handoff_id, library_id, installation_role, phase,
+              predecessor_epoch_id, target_writer_id, target_authority_public_key,
+              canonical_readiness, created_at, updated_at)
+             VALUES (1, ?1, ?2, 'target', 'preparing', ?3, ?4, ?5, ?6, 1, 1);",
+                params![
+                    "1".repeat(64),
+                    "2".repeat(64),
+                    "3".repeat(64),
+                    "4".repeat(64),
+                    "5".repeat(64),
+                    b"{}".as_slice()
+                ],
+            )
+            .unwrap();
+        transaction.commit().unwrap();
+        drop(connection);
+        let mut connection = open_normalized_sqlite_database_v1(&database_path, false).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM library_local_handoff;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, u32>(0))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            export_normalized_checkpoint_page_v2(
+                &connection,
+                &NormalizedCheckpointExportRequestV2::default()
+            )
+            .unwrap(),
+            before
+        );
+        let transaction = connection.transaction().unwrap();
+        migrate_native_handoff_schema_v2(&transaction).unwrap();
+        transaction.commit().unwrap();
+        connection
+            .execute_batch("ALTER TABLE library_local_handoff ADD COLUMN unexpected TEXT;")
+            .unwrap();
+        assert!(install_normalized_schema_v1(&connection).is_err());
     }
 
     fn install_test_authority(connection: &Connection, accepted_counter: i64) {
@@ -1506,6 +2366,145 @@ mod tests {
     }
 
     #[test]
+    fn checkpoint_observer_preserves_descriptor_pages_and_incomplete_drop() {
+        let connection = checkpoint_identity_fixture();
+        let expected = describe_normalized_checkpoint_export_v2(&connection).unwrap();
+        let mut observed =
+            NormalizedCheckpointExportSessionV2::begin_current_with_observer(connection, |_| {})
+                .unwrap();
+        let mut plain = NormalizedCheckpointExportSessionV2::begin(
+            checkpoint_identity_fixture(),
+            expected.clone(),
+        )
+        .unwrap();
+        assert_eq!(observed.snapshot(), plain.snapshot());
+        let request = PinnedNormalizedCheckpointExportRequestV2 {
+            snapshot: expected,
+            page: NormalizedCheckpointExportRequestV2 {
+                after: None,
+                maximum_records: 2,
+                maximum_response_bytes: NATIVE_EXPORT_MAXIMUM_RESPONSE_BYTES,
+            },
+        };
+        let left = observed.read_page(&request).unwrap();
+        let right = plain.read_page(&request).unwrap();
+        assert_eq!(
+            serde_json::to_value(left).unwrap(),
+            serde_json::to_value(right).unwrap()
+        );
+        assert!(!observed.connection.is_autocommit());
+        // An unfinished session must release its read transaction on drop.
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("pinned.sqlite");
+        checkpoint_identity_fixture()
+            .backup(rusqlite::DatabaseName::Main, &path, None)
+            .unwrap();
+        let reader = open_normalized_sqlite_database_v1(&path, false).unwrap();
+        let export =
+            NormalizedCheckpointExportSessionV2::begin_current_with_observer(reader, |_| {})
+                .unwrap();
+        let writer = open_normalized_sqlite_database_v1(&path, false).unwrap();
+        writer
+            .execute(
+                "UPDATE library_meta SET source_revision = source_revision + 1",
+                [],
+            )
+            .unwrap();
+        writer.pragma_update(None, "busy_timeout", 0).unwrap();
+        let before: i64 = writer
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(before, 1);
+        drop(export);
+        let after: i64 = writer
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(after, 0);
+    }
+
+    #[test]
+    fn checkpoint_preparation_failures_preserve_error_boundary_and_rollback() {
+        use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+        use NormalizedCheckpointPreparationStageV2 as Preparation;
+        for failed_stage in [
+            Preparation::Descriptor(NormalizedCheckpointDescriptionStageV2::WriterIdentity),
+            Preparation::TemporaryMaterialization,
+            Preparation::OrderIndex,
+        ] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("failure.sqlite");
+            checkpoint_identity_fixture()
+                .backup(rusqlite::DatabaseName::Main, &path, None)
+                .unwrap();
+            let reader = open_normalized_sqlite_database_v1(&path, false).unwrap();
+            let before = describe_normalized_checkpoint_export_v2(&reader).unwrap();
+            reader.authorizer(Some(move |ctx: AuthContext<'_>| {
+                let deny = matches!(
+                    (failed_stage, ctx.action),
+                    (
+                        Preparation::Descriptor(_),
+                        AuthAction::Read {
+                            table_name: "library_meta",
+                            ..
+                        },
+                    ) | (
+                        Preparation::TemporaryMaterialization,
+                        AuthAction::CreateTempTable { .. }
+                    ) | (Preparation::OrderIndex, AuthAction::CreateTempIndex { .. })
+                );
+                if deny {
+                    Authorization::Deny
+                } else {
+                    Authorization::Allow
+                }
+            }));
+            let mut stages = Vec::new();
+            assert!(matches!(
+                NormalizedCheckpointExportSessionV2::begin_current_with_observer(reader, |s| {
+                    stages.push(s)
+                }),
+                Err(NormalizedSqliteError::Sqlite(_))
+            ));
+            assert_eq!(stages.last(), Some(&failed_stage));
+            let writer = open_normalized_sqlite_database_v1(&path, false).unwrap();
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&writer).unwrap(),
+                before
+            );
+            writer
+                .execute(
+                    "UPDATE library_meta SET source_revision = source_revision + 1",
+                    [],
+                )
+                .unwrap();
+            assert_eq!(
+                writer
+                    .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |r| r
+                        .get::<_, i64>(0))
+                    .unwrap(),
+                0
+            );
+            assert_eq!(writer.query_row("SELECT count(*) FROM sqlite_schema WHERE name='library_checkpoint_export' AND type='table'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        }
+        // The borrowed helper retains caller transaction ownership on failure.
+        let connection = checkpoint_identity_fixture();
+        connection.execute_batch("BEGIN DEFERRED").unwrap();
+        connection.authorizer(Some(|ctx: AuthContext<'_>| {
+            if matches!(ctx.action, AuthAction::CreateTempIndex { .. }) {
+                Authorization::Deny
+            } else {
+                Authorization::Allow
+            }
+        }));
+        assert!(
+            materialize_normalized_checkpoint_export_with_observer_v2(&connection, |_| {}).is_err()
+        );
+        assert!(!connection.is_autocommit());
+        connection.execute_batch("ROLLBACK").unwrap();
+        assert_eq!(connection.query_row("SELECT count(*) FROM sqlite_temp_schema WHERE name='library_checkpoint_export'", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+    }
+
+    #[test]
     fn pinned_checkpoint_export_session_keeps_one_revision_while_writes_continue() {
         let directory = tempfile::tempdir().expect("temporary Library");
         let database_path = directory.path().join("library.sqlite");
@@ -1570,16 +2569,31 @@ mod tests {
                 ],
             )
             .expect("actor");
-        let mut export = NormalizedCheckpointExportSessionV2::begin_current(connection)
+        let mut observed = Vec::new();
+        let mut export =
+            NormalizedCheckpointExportSessionV2::begin_current_with_observer(connection, |stage| {
+                observed.push(stage)
+            })
             .expect("begin current pinned export");
+        use NormalizedCheckpointDescriptionStageV2 as Description;
+        use NormalizedCheckpointPreparationStageV2 as Preparation;
+        assert_eq!(
+            observed,
+            [
+                Preparation::TransactionBegin,
+                Preparation::Descriptor(Description::WriterIdentity),
+                Preparation::Descriptor(Description::ExportCount),
+                Preparation::Descriptor(Description::ItemCount),
+                Preparation::Descriptor(Description::FrontierAndValidation),
+                Preparation::TemporaryMaterialization,
+                Preparation::OrderIndex,
+            ]
+        );
         let snapshot = export.snapshot().clone();
         assert_eq!(snapshot.library_id, library_id);
         assert_eq!(snapshot.authority_epoch, epoch_id);
         assert_eq!(snapshot.writer_id, actor_id);
-        assert_eq!(
-            snapshot.causal_frontier_digest,
-            "c2dac23e022015df7e5bee715cf2904e7c9737afadca0d87f7040f7383d8e446"
-        );
+        assert_eq!(snapshot.causal_frontier_digest, "1".repeat(64));
         assert_eq!(snapshot.record_count, 4);
         let first = export
             .read_page(&PinnedNormalizedCheckpointExportRequestV2 {
@@ -1974,7 +2988,7 @@ mod tests {
             .expect("stage records");
         let error = finalize_normalized_checkpoint_stage_v2(&mut connection, "stage-nonempty")
             .expect_err("nonempty target");
-        assert!(error.to_string().contains("target is not empty"));
+        assert!(error.to_string().contains("retry identity changed"));
         let preferences: i64 = connection
             .query_row("SELECT count(*) FROM library_preferences;", [], |row| {
                 row.get(0)
@@ -2047,6 +3061,90 @@ mod tests {
                 .expect("follower receipt"),
             (9, 7, receipt.checkpoint_digest, "actor-1".into())
         );
+    }
+
+    #[test]
+    fn caller_owned_checkpoint_install_rolls_back_rows_receipt_and_consumed_stage() {
+        let page = normalized_source_page();
+        let mut target = fixture();
+        begin_stage(&target, "initial", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "initial", &page.records).unwrap();
+        finalize_normalized_checkpoint_stage_v2(&mut target, "initial").unwrap();
+        target.execute("INSERT INTO library_preferences (path, value_type, updated_at) VALUES ('v:$.retained', 'null', 1);", []).unwrap();
+        begin_stage(&target, "candidate", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "candidate", &page.records)
+            .unwrap();
+        let before = export_normalized_checkpoint_page_v2(
+            &target,
+            &NormalizedCheckpointExportRequestV2::default(),
+        )
+        .unwrap();
+        let stage_before = stage_status(&target, "candidate").unwrap();
+        let receipt = NormalizedFollowerCheckpointReceiptV2 {
+            checkpoint_generation: 9,
+            writer_actor_id: "actor-1".into(),
+            manifest_object_key: "manifest-key".into(),
+            manifest_transport_object_id: "drive-object-1".into(),
+            manifest_content_digest: "9".repeat(64),
+            control_revision: "control-revision-1".into(),
+            installed_at: 2000,
+        };
+        let tx = target.transaction().unwrap();
+        let candidate =
+            crate::normalized_import::install_normalized_checkpoint_stage_in_transaction_v2(
+                &tx,
+                "candidate",
+                true,
+                Some(&receipt),
+                None,
+            )
+            .unwrap();
+        assert_eq!(candidate.record_count, page.records.len());
+        assert_eq!(
+            tx.query_row("SELECT count(*) FROM library_preferences", [], |r| r
+                .get::<_, u32>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            tx.query_row(
+                "SELECT count(*) FROM library_follower_checkpoint_receipt",
+                [],
+                |r| r.get::<_, u32>(0)
+            )
+            .unwrap(),
+            1
+        );
+        assert!(stage_status(&tx, "candidate").is_err());
+        // Model a later lifecycle/key/remote-proof check refusing admission.
+        tx.rollback().unwrap();
+        assert_eq!(
+            export_normalized_checkpoint_page_v2(
+                &target,
+                &NormalizedCheckpointExportRequestV2::default()
+            )
+            .unwrap()
+            .records,
+            before.records
+        );
+        assert_eq!(stage_status(&target, "candidate").unwrap(), stage_before);
+        assert_eq!(
+            target
+                .query_row(
+                    "SELECT count(*) FROM library_follower_checkpoint_receipt",
+                    [],
+                    |r| r.get::<_, u32>(0)
+                )
+                .unwrap(),
+            0
+        );
+        let committed = replace_with_normalized_follower_checkpoint_stage_v2(
+            &mut target,
+            "candidate",
+            &receipt,
+        )
+        .unwrap();
+        assert_eq!(committed.checkpoint_digest, candidate.checkpoint_digest);
     }
 
     #[test]
@@ -2306,6 +3404,59 @@ mod tests {
         .expect("begin");
         append_normalized_checkpoint_stage_page_v2(&mut target, "stage-activation", &page.records)
             .expect("stage");
+        // A new handoff target must not activate an arbitrary checkpoint before
+        // accepting consent. Exercise refusal at the real commit boundary.
+        let mut fenced = fixture();
+        begin_normalized_checkpoint_stage_v2(
+            &fenced,
+            &BeginNormalizedCheckpointStageV2 {
+                stage_id: "fenced-import".into(),
+                library_id: "library-1".into(),
+                authority_epoch: "epoch-1".into(),
+                source_revision: 7,
+                expected_record_count: page.records.len(),
+                created_at: 1000,
+            },
+        )
+        .unwrap();
+        append_normalized_checkpoint_stage_page_v2(&mut fenced, "fenced-import", &page.records)
+            .unwrap();
+        let transaction = fenced.transaction().unwrap();
+        migrate_native_handoff_schema_v2(&transaction).unwrap();
+        transaction.execute("INSERT INTO library_local_handoff
+            (singleton_id, handoff_id, library_id, installation_role, phase, predecessor_epoch_id,
+             target_writer_id, target_authority_public_key, canonical_readiness, created_at, updated_at)
+            VALUES (1, ?1, ?2, 'target', 'preparing', ?3, ?4, ?5, ?6, 1, 1);",
+            params!["1".repeat(64), "2".repeat(64), "3".repeat(64), "4".repeat(64), "5".repeat(64), b"{}".as_slice()],
+        ).unwrap();
+        transaction.commit().unwrap();
+        let failure =
+            finalize_normalized_checkpoint_stage_v2(&mut fenced, "fenced-import").unwrap_err();
+        assert!(failure
+            .to_string()
+            .contains("accepted target handoff consent"));
+        assert_eq!(
+            fenced
+                .query_row("SELECT count(*) FROM library_feed_items;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            fenced
+                .query_row("SELECT count(*) FROM library_meta;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            fenced
+                .query_row("SELECT count(*) FROM library_local_handoff;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(fenced.query_row("SELECT count(*) FROM library_checkpoint_stage_records WHERE stage_id = 'fenced-import';", [], |row| row.get::<_, i64>(0)).unwrap(), page.records.len() as i64);
         let receipt = finalize_normalized_checkpoint_stage_v2(&mut target, "stage-activation")
             .expect("activate");
         assert_eq!(receipt.checkpoint_digest, digest);
@@ -2363,5 +3514,178 @@ mod tests {
             )
             .expect("staged rows");
         assert_eq!(staged_rows, 0);
+
+        // A lost response may cause the importer to restage the same immutable
+        // checkpoint. Recover only after comparing the complete current export.
+        begin_stage(&target, "stage-activation", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "stage-activation", &page.records)
+            .expect("restage after response loss");
+        let replay = finalize_normalized_checkpoint_stage_v2(&mut target, "stage-activation")
+            .expect("recover exact activation");
+        assert_eq!(replay, receipt);
+        assert_eq!(
+            target
+                .query_row("SELECT count(*) FROM library_invalidations;", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+
+        // A same-count edit must fail even when somebody leaves the generation
+        // identity and source revision untouched.
+        target
+            .execute("UPDATE library_feed_items SET read_at = 123456;", [])
+            .expect("tamper current materialization");
+        begin_stage(&target, "stage-activation", &page.records);
+        append_normalized_checkpoint_stage_page_v2(&mut target, "stage-activation", &page.records)
+            .expect("stage retry against changed target");
+        let error = finalize_normalized_checkpoint_stage_v2(&mut target, "stage-activation")
+            .expect_err("reject changed materialization");
+        assert!(error.to_string().contains("materialization changed"));
+        assert_eq!(
+            stage_status(&target, "stage-activation")
+                .unwrap()
+                .staged_record_count,
+            page.records.len()
+        );
+    }
+    // Dormant schema contract only: no application open or migration invokes this SQL yet.
+    #[test]
+    fn dormant_preference_projection_schema_preserves_intent_lifetimes() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch("PRAGMA foreign_keys=ON;
+            CREATE TABLE library_intent_actors(actor_id TEXT PRIMARY KEY);
+            CREATE TABLE library_intent_members(transaction_id TEXT,member_index INTEGER,actor_id TEXT,actor_counter INTEGER,
+                PRIMARY KEY(transaction_id,member_index),UNIQUE(actor_id,actor_counter));
+            INSERT INTO library_intent_actors VALUES('actor');
+            INSERT INTO library_intent_members VALUES('first',0,'actor',1),('second',0,'actor',2);").unwrap();
+        let sql = include_str!("normalized_local_preferences_schema_v3.sql");
+        {
+            let tx = connection.transaction().unwrap();
+            tx.execute_batch(sql).unwrap();
+            // A crash or failed backfill initialization cannot leave half a catalog.
+        }
+        assert_eq!(connection.query_row("SELECT count(*) FROM sqlite_schema WHERE name LIKE 'library_local_preference%';", [], |r|r.get::<_,i64>(0)).unwrap(),0);
+        connection.execute_batch(sql).unwrap();
+        connection
+            .execute(
+                "INSERT INTO library_local_preference_projection VALUES(1,'actor',0,2,NULL,printf('%064d',0));",
+                [],
+            )
+            .unwrap();
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_projection SET last_counter=3;",
+                []
+            )
+            .is_err());
+        let insert = "INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,integer_value,updated_at)
+            VALUES(?1,0,'actor',?2,'$.friendSuggestions.dismissedSuggestionIds','array','integer',1,10);";
+        connection.execute(insert, params!["first", 1]).unwrap();
+        connection.execute(insert, params!["second", 2]).unwrap();
+        assert!(connection.execute(insert, params!["missing", 3]).is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET boolean_value=1;",
+                []
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET integer_value=512;",
+                []
+            )
+            .is_err());
+        assert!(connection
+            .execute(
+                "UPDATE library_local_preference_nodes SET path='caller sql';",
+                []
+            )
+            .is_err());
+        // A later object merge does not erase an earlier non-object replacement barrier.
+        connection.execute_batch("INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,integer_value,updated_at)
+          VALUES('first',0,'actor',1,'$.parent','value','integer',1,10);
+          INSERT INTO library_local_preference_nodes(transaction_id,member_index,actor_id,actor_counter,path,node_kind,value_type,updated_at)
+          VALUES('second',0,'actor',2,'$.parent','object','null',11);").unwrap();
+        let program = |id| {
+            crate::sqlite_contract_generated::PENDING_PREFERENCE_QUERY_PROGRAMS
+                .iter()
+                .find(|(name, _)| *name == id)
+                .unwrap()
+                .1
+        };
+        assert_eq!(
+            connection
+                .query_row(
+                    program("latest_node_v1"),
+                    params!["actor", "$.parent"],
+                    |r| r.get::<_, i64>(2)
+                )
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    program("replacement_barrier_v1"),
+                    params!["actor", "$.parent"],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1
+        );
+        for (id, index) in [
+            ("latest_node_v1", "library_local_preference_node_lookup"),
+            (
+                "replacement_barrier_v1",
+                "library_local_preference_replacement_lookup",
+            ),
+        ] {
+            let plan = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {}", program(id)))
+                .unwrap()
+                .query_map(params!["actor", "$.parent"], |r| r.get::<_, String>(3))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+                .join(" ");
+            assert!(plan.contains(index), "{plan}");
+            assert!(!plan.contains("TEMP B-TREE"), "{plan}");
+        }
+        let newest = "SELECT actor_counter FROM library_local_preference_nodes INDEXED BY library_local_preference_node_lookup WHERE actor_id='actor' AND path='$.friendSuggestions.dismissedSuggestionIds' ORDER BY actor_counter DESC LIMIT 1;";
+        assert_eq!(
+            connection
+                .query_row(newest, [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+        connection
+            .execute(
+                "DELETE FROM library_intent_members WHERE transaction_id='second';",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row(newest, [], |r| r.get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        connection
+            .execute(
+                "DELETE FROM library_intent_actors WHERE actor_id='actor';",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM library_local_preference_projection",
+                    [],
+                    |r| r.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
     }
 }

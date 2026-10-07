@@ -1,14 +1,19 @@
 use crate::library_core_actor_capability::ActorCapabilityScope;
+#[cfg(test)]
 use crate::library_core_actor_enrollment::{
     prepare_normalized_primary_actor_enrollment_v2, ActorKeyStore,
 };
 use crate::normalized_authority::{NormalizedAuthorityStateV2, NormalizedCausalTipV1};
+#[cfg(test)]
 use crate::normalized_authority_credentials::AuthorityKeyStore;
-use crate::normalized_sqlite::{describe_normalized_checkpoint_export_v2, NormalizedSqliteError};
-use crate::normalized_writer_certificate::{
-    prepare_writer_epoch_reassignment, WriterEpochReassignment,
-};
+#[cfg(test)]
+use crate::normalized_sqlite::describe_normalized_checkpoint_export_v2;
+use crate::normalized_sqlite::NormalizedSqliteError;
+#[cfg(test)]
+use crate::normalized_writer_certificate::prepare_writer_epoch_reassignment;
+use crate::normalized_writer_certificate::WriterEpochReassignment;
 use rusqlite::{params, Connection, OptionalExtension};
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -16,6 +21,7 @@ fn invalid(message: &'static str) -> NormalizedSqliteError {
     NormalizedSqliteError::InvalidRequest(message)
 }
 
+#[cfg(test)]
 fn valid_sha256(value: &str) -> bool {
     value.len() == 64
         && value
@@ -23,6 +29,7 @@ fn valid_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
+#[cfg(test)]
 fn source_control_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
     value.as_object()?.get(field)?.as_str()
 }
@@ -30,6 +37,7 @@ fn source_control_field<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
 pub(crate) fn current_authority(
     connection: &Connection,
 ) -> Result<(NormalizedAuthorityStateV2, String, String, i64), NormalizedSqliteError> {
+    crate::normalized_local_annotations::reject_building(connection)?;
     let (
         library_id,
         epoch,
@@ -118,7 +126,9 @@ pub(crate) fn current_authority(
     ))
 }
 
-pub fn reassign_normalized_writer_epoch_v2(
+// Historical fixture constructor only. Production cannot install an unfenced writer.
+#[cfg(test)]
+fn reassign_normalized_writer_epoch_v2(
     connection: &mut Connection,
     canonical_source_control_json: &str,
     target_writer_id: &str,
@@ -127,6 +137,10 @@ pub fn reassign_normalized_writer_epoch_v2(
     authority_store: &dyn AuthorityKeyStore,
     accepted_at: i64,
 ) -> Result<WriterEpochReassignment, NormalizedSqliteError> {
+    crate::normalized_handoff::require_handoff_admission(
+        connection,
+        crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+    )?;
     if !valid_sha256(target_writer_id) || !valid_sha256(installation_witness) || accepted_at < 0 {
         return Err(invalid("normalized writer reassignment request is invalid"));
     }
@@ -184,6 +198,102 @@ pub fn reassign_normalized_writer_epoch_v2(
             "normalized target writer does not match this installation",
         ));
     }
+    let transaction = connection.transaction()?;
+    crate::normalized_handoff::require_handoff_admission(
+        &transaction,
+        crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+    )?;
+    if describe_normalized_checkpoint_export_v2(&transaction)? != snapshot {
+        return Err(invalid(
+            "normalized Library changed during writer reassignment",
+        ));
+    }
+    install_prepared_writer_epoch_v2(
+        &transaction,
+        WriterEpochInstallation {
+            current: &current,
+            prepared: &prepared,
+            enrollment: &enrollment,
+            snapshot: &snapshot,
+            generation: &generation,
+            manifest_generation,
+            accepted_at,
+            admission: WriterEpochAdmission::LegacyPrimary,
+        },
+    )?;
+    transaction.commit()?;
+    Ok(prepared)
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum WriterEpochAdmission {
+    #[cfg(test)]
+    LegacyPrimary,
+    FencedHandoff,
+}
+
+pub(crate) struct WriterEpochInstallation<'a> {
+    pub current: &'a NormalizedAuthorityStateV2,
+    pub prepared: &'a WriterEpochReassignment,
+    pub enrollment: &'a crate::normalized_operation::VerifiedActorEnrollment,
+    pub snapshot: &'a crate::normalized_sqlite::NormalizedCheckpointExportDescriptorV2,
+    pub generation: &'a str,
+    pub manifest_generation: i64,
+    pub accepted_at: i64,
+    pub admission: WriterEpochAdmission,
+}
+
+/// Install canonical successor rows inside the caller's transaction. Handoff
+/// mode requires an already persisted fence and never writes admission rows.
+pub(crate) fn install_prepared_writer_epoch_v2(
+    transaction: &rusqlite::Transaction<'_>,
+    installation: WriterEpochInstallation<'_>,
+) -> Result<(), NormalizedSqliteError> {
+    let WriterEpochInstallation {
+        current,
+        prepared,
+        enrollment,
+        snapshot,
+        generation,
+        manifest_generation: _manifest_generation,
+        accepted_at,
+        admission,
+    } = installation;
+    match admission {
+        #[cfg(test)]
+        WriterEpochAdmission::LegacyPrimary => {
+            crate::normalized_handoff::require_handoff_admission(
+                transaction,
+                crate::normalized_handoff::HandoffAdmission::LegacyReassignment,
+            )?
+        }
+        WriterEpochAdmission::FencedHandoff => {
+            crate::normalized_sqlite::install_normalized_schema_v1(transaction)?;
+            let fenced: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM library_local_handoff WHERE singleton_id = 1
+                  AND installation_role = 'target' AND phase = 'cas_pending' AND library_id = ?1
+                  AND predecessor_epoch_id = ?2 AND successor_epoch_id = ?3
+                  AND target_writer_id = ?4 AND target_authority_public_key = ?5
+                  AND canonical_authorization IS NOT NULL AND canonical_activation IS NULL)
+                 AND EXISTS(SELECT 1 FROM library_storage_meta WHERE singleton_id = 1 AND schema_version = 2)
+                 AND NOT EXISTS(SELECT 1 FROM library_writer_admission)
+                 AND NOT EXISTS(SELECT 1 FROM library_local_cloud_writer_admission);",
+                params![
+                    current.library_id,
+                    current.epoch_id,
+                    prepared.authority.epoch_id,
+                    enrollment.actor_id,
+                    prepared.authority.authority_public_key
+                ],
+                |row| row.get(0),
+            )?;
+            if !fenced {
+                return Err(invalid(
+                    "successor staging requires the persisted target fence",
+                ));
+            }
+        }
+    }
     let (scope_mode, scope_kind, scope_id) = match &enrollment.capability.scope {
         ActorCapabilityScope::LibraryWide => {
             ("library_wide", Option::<&str>::None, Option::<&str>::None)
@@ -191,12 +301,6 @@ pub fn reassign_normalized_writer_epoch_v2(
         _ => return Err(invalid("normalized target writer capability is invalid")),
     };
 
-    let transaction = connection.transaction()?;
-    if describe_normalized_checkpoint_export_v2(&transaction)? != snapshot {
-        return Err(invalid(
-            "normalized Library changed during writer reassignment",
-        ));
-    }
     let existing_epoch: Option<String> = transaction
         .query_row(
             "SELECT canonical_transition_certificate FROM library_authority_epochs
@@ -267,38 +371,41 @@ pub fn reassign_normalized_writer_epoch_v2(
                 "normalized active authority changed during reassignment",
             ));
         }
-        let admission_generation: Option<i64> = transaction
-            .query_row(
-                "SELECT observed_manifest_generation FROM library_writer_admission
-                 WHERE singleton_id = 1;",
-                [],
-                |row| row.get(0),
-            )
-            .optional()?;
-        match admission_generation {
-            Some(generation) if generation == manifest_generation => {
-                transaction.execute(
-                    "UPDATE library_writer_admission
-                     SET local_writer_id = 'primary:desktop',
-                         active_writer_id = 'primary:desktop',
-                         observed_manifest_generation = 0, observed_at = ?1
+        #[cfg(test)]
+        if matches!(admission, WriterEpochAdmission::LegacyPrimary) {
+            let admission_generation: Option<i64> = transaction
+                .query_row(
+                    "SELECT observed_manifest_generation FROM library_writer_admission
                      WHERE singleton_id = 1;",
-                    [accepted_at],
-                )?;
-            }
-            None => {
-                transaction.execute(
-                    "INSERT INTO library_writer_admission
-                     (singleton_id, local_writer_id, active_writer_id,
-                      observed_manifest_generation, observed_at)
-                     VALUES (1, 'primary:desktop', 'primary:desktop', 0, ?1);",
-                    [accepted_at],
-                )?;
-            }
-            Some(_) => {
-                return Err(invalid(
-                    "normalized writer admission changed during reassignment",
-                ));
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            match admission_generation {
+                Some(generation) if generation == _manifest_generation => {
+                    transaction.execute(
+                        "UPDATE library_writer_admission
+                         SET local_writer_id = 'primary:desktop',
+                             active_writer_id = 'primary:desktop',
+                             observed_manifest_generation = 0, observed_at = ?1
+                         WHERE singleton_id = 1;",
+                        [accepted_at],
+                    )?;
+                }
+                None => {
+                    transaction.execute(
+                        "INSERT INTO library_writer_admission
+                         (singleton_id, local_writer_id, active_writer_id,
+                          observed_manifest_generation, observed_at)
+                         VALUES (1, 'primary:desktop', 'primary:desktop', 0, ?1);",
+                        [accepted_at],
+                    )?;
+                }
+                Some(_) => {
+                    return Err(invalid(
+                        "normalized writer admission changed during reassignment",
+                    ));
+                }
             }
         }
         let updated = transaction.execute(
@@ -429,13 +536,12 @@ pub fn reassign_normalized_writer_epoch_v2(
         |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
     )?;
     if selected.0 != prepared.authority.epoch_id
-        || selected.1 != target_writer_id
+        || selected.1 != enrollment.actor_id
         || selected.2 != prepared.canonical_certificate_json
     {
         return Err(invalid("normalized writer reassignment is incomplete"));
     }
-    transaction.commit()?;
-    Ok(prepared)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -516,6 +622,141 @@ mod tests {
             "writerId": source.writer_id,
         }))
         .expect("canonical source control");
+        // Exercise the shared row installer independently of certificate validation.
+        // Production handoff staging must verify predecessor consent before calling it.
+        let (_, current_certificate, generation, manifest_generation) =
+            current_authority(&connection).unwrap();
+        let staged = prepare_writer_epoch_reassignment(
+            &current,
+            &current_certificate,
+            &source_control,
+            &local_enrollment.actor_id,
+            &authority_store,
+        )
+        .unwrap();
+        let staged_enrollment = prepare_normalized_primary_actor_enrollment_v2(
+            &staged.authority,
+            &local_witness,
+            &local_actor_store,
+            &authority_store,
+            2_000,
+        )
+        .unwrap();
+        {
+            let transaction = connection.transaction().unwrap();
+            crate::normalized_sqlite::migrate_native_handoff_schema_v2(&transaction).unwrap();
+            transaction
+                .execute(
+                    "INSERT INTO library_local_handoff
+                 (singleton_id, handoff_id, library_id, installation_role, phase,
+                  predecessor_epoch_id, successor_epoch_id, target_writer_id,
+                  target_authority_public_key, canonical_readiness,
+                  canonical_authorization_body, canonical_authorization,
+                  expected_control_revision, created_at, updated_at)
+                 VALUES (1, ?1, ?2, 'target', 'cas_pending', ?3, ?4, ?5, ?6,
+                         X'7b7d', X'7b7d', X'7b7d', 'test-head', 2000, 2000);",
+                    params![
+                        "9".repeat(64),
+                        current.library_id,
+                        current.epoch_id,
+                        staged.authority.epoch_id,
+                        staged_enrollment.actor_id,
+                        staged.authority.authority_public_key
+                    ],
+                )
+                .unwrap();
+            let install = || {
+                install_prepared_writer_epoch_v2(
+                    &transaction,
+                    WriterEpochInstallation {
+                        current: &current,
+                        prepared: &staged,
+                        enrollment: &staged_enrollment,
+                        snapshot: &source,
+                        generation: &generation,
+                        manifest_generation,
+                        accepted_at: 2_000,
+                        admission: WriterEpochAdmission::FencedHandoff,
+                    },
+                )
+            };
+            assert!(
+                install().is_err(),
+                "leftover canonical admission must block staging"
+            );
+            assert_eq!(
+                describe_normalized_checkpoint_export_v2(&transaction).unwrap(),
+                source
+            );
+            transaction
+                .execute("DELETE FROM library_writer_admission;", [])
+                .unwrap();
+            transaction
+                .execute(
+                    "INSERT INTO library_local_cloud_writer_admission
+                 VALUES (1, ?1, ?1, ?2, 'test-head', 2000);",
+                    params![source.writer_id, current.epoch_id],
+                )
+                .unwrap();
+            assert!(
+                install().is_err(),
+                "leftover provider admission must block staging"
+            );
+            transaction
+                .execute("DELETE FROM library_local_cloud_writer_admission;", [])
+                .unwrap();
+            transaction
+                .execute(
+                    "UPDATE library_local_handoff SET target_writer_id = ?1;",
+                    ["a".repeat(64)],
+                )
+                .unwrap();
+            assert!(install().is_err(), "another target cannot use this fence");
+            transaction
+                .execute(
+                    "UPDATE library_local_handoff SET target_writer_id = ?1;",
+                    [&staged_enrollment.actor_id],
+                )
+                .unwrap();
+            install().expect("stage canonical rows behind the persisted target fence");
+            let selected = describe_normalized_checkpoint_export_v2(&transaction).unwrap();
+            assert_eq!(selected.authority_epoch, staged.authority.epoch_id);
+            assert_eq!(selected.writer_id, staged_enrollment.actor_id);
+            assert_eq!(
+                transaction
+                    .query_row(
+                        "SELECT (SELECT count(*) FROM library_writer_admission)
+                      + (SELECT count(*) FROM library_local_cloud_writer_admission);",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .unwrap(),
+                0,
+                "staging must never recreate writer or provider admission"
+            );
+            assert!(
+                crate::normalized_handoff::require_normalized_provider_handoff_admission_v2(
+                    &transaction,
+                )
+                .is_err()
+            );
+            assert!(
+                crate::normalized_mutation::normalized_primary_mutation_context_v1(&transaction,)
+                    .is_err()
+            );
+            transaction.rollback().unwrap();
+        }
+        assert_eq!(
+            describe_normalized_checkpoint_export_v2(&connection).unwrap(),
+            source,
+            "an interrupted staging transaction must preserve the predecessor"
+        );
+        assert_eq!(
+            connection
+                .pragma_query_value(None, "user_version", |row| row.get::<_, u32>(0))
+                .unwrap(),
+            1
+        );
         connection
             .execute("DELETE FROM library_writer_admission;", [])
             .expect("model an imported checkpoint without device admission");
@@ -551,7 +792,7 @@ mod tests {
                 .expect("imported writer admission"),
             ("primary:desktop".into(), "primary:desktop".into(), 0)
         );
-        assert_ne!(
+        assert_eq!(
             selected.causal_frontier_digest,
             source.causal_frontier_digest
         );

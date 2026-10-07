@@ -16,7 +16,8 @@ function productAccount(index: number, personCount: number): Account {
   const provider = index % 3 === 0 ? "instagram" : index % 3 === 1 ? "x" : "linkedin";
   return {
     id: `product-account-${index}`,
-    personId: index < personCount * 3
+    // Rendering-budget fixtures model explicitly managed relationships.
+    personId: personCount > 0
       ? `product-person-${index % personCount}`
       : undefined,
     kind: "social",

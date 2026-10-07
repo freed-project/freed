@@ -5,6 +5,14 @@
 
 ---
 
+Consumer startup no longer starts RSS or social capture schedules. Native X
+requests, social session acquisition, provider login entry points, and YouTube
+commands require local Primary admission, including after queued session waits.
+The device-local cloud lease also has to match the native Primary actor and
+epoch. These gates suppress consumer traffic without changing Primary request
+shapes, cookies, extraction, or cadence. Installed provider-ledger acceptance
+remains open.
+
 ## Overview
 
 Facebook, Instagram, LinkedIn, Substack and Medium share an Advanced disclosure
@@ -123,7 +131,7 @@ Self-contained JavaScript injected into the WebView's execution context. No exte
 - **Facebook comments** (`fb-comments-extract.js`): Used only after the user chooses the beta inline replies action. It opens the post URL in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
 - **Instagram comments** (`ig-comments-extract.js`): Used only after the user chooses the beta inline replies action. It opens post and reel URLs in the authenticated WebView, expands visible comment controls, and emits inline reader replies with media.
 - **Facebook stories** (`fb-stories-extract.js`): Injected into the FB story viewer overlay. Extracts author, media, timestamp, location/check-in. Emits via `fb-feed-data` with `postType: "story"`.
-- **Facebook advertising admission:** Feed and story placements are inspected before any expansion click. Verified advertising evidence excludes the placement, incomplete or failed evidence defers it, and only a current versioned admission envelope can cross the renderer capture boundary. The detector is bounded, records privacy-safe health counts, and performs no additional provider requests, navigation, scrolling, or disclosure clicks.
+- **Facebook advertising admission:** Feed and story placements are inspected before any expansion click. Verified advertising evidence excludes the placement, incomplete or failed evidence defers it, and only a current versioned admission envelope can cross the renderer capture boundary. The detector is bounded, records privacy-safe health counts, and performs no additional provider requests, navigation, scrolling, or disclosure clicks. Admit envelopes require empty advertising evidence; contradictory sponsored, unresolved or malformed evidence is refused at the capture boundary. Synthetic regression fixtures also prove sponsored story exclusion happens before reading its media URL.
 - **Instagram stories** (`ig-stories-extract.js`): Injected into the IG story viewer overlay. Extraction now requires a real story URL, dialog, or full-screen story container with controls before emitting, so feed cards cannot fall through as stories. Author detection prefers `/stories/<username>/` and rejects generic handles such as `reels`, `locations`, and `instagram`. Timestamp-like fallback story IDs are replaced with stable content hashes. The normalized `FeedItem.location` now preserves the sticker source plus Instagram `locationUrl`, so later map resolution can recover real place names from generic labels such as `Locations`.
 
 Story scraping is interleaved with feed scraping in each session. A coin flip (~50%) determines whether stories are scraped before or after the initial feed passes. ~15% of sessions skip story scraping entirely (real users don't always check stories). Up to 30 story frames are captured per session.
@@ -477,3 +485,47 @@ Profile whether the HashMap → Vec ordered header change in x_api_request meani
 ## Deliverable
 
 `@freed/capture-facebook` and `@freed/capture-instagram` packages for DOM-based feed capture via Tauri WebView. Location data from these sources feeds into Phase 8 (Friend Map).
+
+
+### Scoped organic retention and paid-disclosure regressions
+
+Facebook admission rejects contradictory or empty evidence envelopes. For already
+admitted observations sharing the existing permalink identity, the capture
+accumulator retains longer text and its matching hashtags while preserving the
+original author, URL, media, metadata and first-seen order. No-permalink identity
+behavior remains unchanged.
+
+Instagram rejects an exact standalone Sponsored disclosure in the article header
+using bounded label reads. Existing accessible disclosure and ads-link rejection
+remain intact. Commercial wording, caption sponsorship discussions and an author
+named Sponsored are organic controls and remain eligible. Requests, clicks,
+scrolling, cookies, retries and capture cadence are unchanged.
+
+These offline regressions do not prove current live markup coverage or zero ads.
+Recommendation-caption false rejection, permalink-less dedup collisions, Facebook
+identity drift and Instagram story paid origin remain separate measured risks.
+Broader extraction changes require their own scoped provider review.
+
+### Scoped Instagram header corrections, October 2, 2026
+
+Approved recommendation detection now checks only exact existing header labels
+for Suggested for you, Suggested Posts and Reels you might like. Personal caption
+uses of suggested and organic commercial captions remain eligible. Existing Follow
+and Sponsored feed exclusions are preserved. Story extraction separately rejects
+only an exact accessible Sponsored marker on the story header or its descendants.
+Author names, commercial wording and accessible markers outside the header are
+not treated as this ad proof. IDs, media/author extraction, navigation and cadence
+are unchanged. Synthetic positive and negative controls protect these scopes;
+installed coverage, other disclosure locations/locales and fallback identity
+collisions remain separate and no live completeness guarantee is claimed.
+
+## Default-off pass diagnostics
+
+Facebook and Instagram have a disabled, memory-only diagnostic slice for existing
+feed admission branches. Synthetic tests cover parity, fixed-field records and
+partial/error outcomes. Records identify candidate observations, not unique posts.
+The collector is capped at 250 records per pass, 500 across both providers per
+renderer lifetime and 100 passes. No uploader, durable writer or deletion is added.
+Live activation requires a separate exact-source, bounded-window checkpoint.
+
+Facebook disclosure inspection includes exact or anchored partial Sponsored labels on the visible owned placement root within the existing node budget. Root references, numeric metadata, nested-placement policy and group eligibility are unchanged. Synthetic controls verify this scope; live placement completeness remains unverified.

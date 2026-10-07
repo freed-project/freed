@@ -21,6 +21,23 @@ import {
 import { tauriInitScript } from "./fixtures/tauri-init";
 import { TOP_TOOLBAR_HEIGHT_PX } from "../../../ui/src/components/layout/layoutConstants";
 
+test("fresh Library setup does not create authority before the owner chooses", async ({ app, ipc }) => {
+  await app.page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__TAURI_MOCK_LIBRARY_INSTALLATION__ = {
+      state: "unconfigured", role: null, libraryId: null, authorityEpochId: null, actorId: null,
+    };
+  });
+  await app.goto();
+  await acceptLegalGate(app.page);
+  await expect(app.page.getByRole("heading", { name: "Set up your Library" })).toBeVisible();
+  expect((await ipc.invocations()).some(({ cmd }) => cmd === "ensure_fresh_normalized_desktop_library")).toBe(false);
+  await app.page.getByRole("button", { name: "Create a new Library", exact: true }).click();
+  await app.waitForReady();
+  expect(await ipc.invocations()).toContainEqual({
+    cmd: "select_normalized_desktop_library_setup", args: { choice: { role: "primary" } },
+  });
+});
+
 const SIDEBAR_ALIGNMENT_TOLERANCE_PX = 4;
 const SIDEBAR_ICON_ALIGNMENT_TOLERANCE_PX = 10;
 const READER_RAIL_ALIGNMENT_TOLERANCE_PX = 8;
@@ -4532,7 +4549,7 @@ test("mobile Friends toolbar switches between graph lenses and Details mode", as
     .toBe("all_content");
 });
 
-test("Friends graph renders confirmed friends, provisional people, and channels together", async ({ app, page }) => {
+test("Friends graph renders linked relationships and feeds without discovered authors", async ({ app, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
   await app.waitForReady();
@@ -4675,12 +4692,18 @@ test("Friends graph renders confirmed friends, provisional people, and channels 
       resident: Number((element as HTMLElement).dataset.graphResidentNodeCount ?? "0"),
     }));
   }).toEqual({
-    nodes: 8,
+    nodes: 7,
     people: 3,
-    channels: 5,
+    channels: 4,
     links: 3,
-    resident: 8,
+    resident: 7,
   });
+  await expect.poll(async () => page.evaluate(() => {
+    const graph = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as
+      | { nodes?: Array<{ accountId?: string }> }
+      | undefined;
+    return graph?.nodes?.some((node) => node.accountId === "social:x:systems-paper");
+  })).toBe(false);
 });
 
 test("AI ranked friend suggestions surface and promote connection people", async ({ app, page }) => {
@@ -5064,7 +5087,7 @@ test("AI ranked friend suggestion dismiss hides the candidate without deleting t
   ).toBe(true);
 });
 
-test("linking a channel through bounded graph queries survives reload", async ({ app, page }) => {
+test("relinking a tracked channel through bounded graph queries survives reload", async ({ app, page }) => {
   test.setTimeout(45_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await app.goto();
@@ -5105,6 +5128,7 @@ test("linking a channel through bounded graph queries survives reload", async ({
     await libraryCore.upsertLibraryAccounts([
       {
         id: "social:instagram:nora-ig",
+        personId: "friend-grace",
         kind: "social",
         provider: "instagram",
         externalId: "nora-ig",
@@ -5141,6 +5165,15 @@ test("linking a channel through bounded graph queries survives reload", async ({
     return viewport.evaluate((element) => Number((element as HTMLElement).dataset.graphNodeCount ?? "0"));
   }).toBeGreaterThanOrEqual(3);
   await waitForGraphPerfToSettle(page);
+
+  await expect.poll(async () => page.evaluate(() => {
+    const graph = (window as Record<string, unknown>).__FREED_GRAPH_DEBUG__ as
+      | { nodes?: Array<{ accountId?: string; linkedPersonId?: string | null }> }
+      | undefined;
+    return graph?.nodes?.find(
+      (node) => node.accountId === "social:instagram:nora-ig",
+    )?.linkedPersonId ?? null;
+  })).toBe("friend-grace");
 
   const accountPoint = await waitForGraphNodeScreenPoint(
     page,

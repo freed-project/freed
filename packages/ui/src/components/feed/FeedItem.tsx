@@ -133,13 +133,13 @@ function shouldShedFeedImages(memory: RuntimeMemorySnapshot | null): boolean {
   return webkitBytes >= webkitShedBytes;
 }
 
-function useFeedImageBudget(feedMediaPreviews: "inline" | "reader-only"): {
+function useFeedImageBudget(feedMediaPreviews: "inline" | "lazy-thumbnails" | "reader-only"): {
   showInlineMedia: boolean;
   showAvatarImages: boolean;
 } {
   const shedImages = useDebugStore((state) => shouldShedFeedImages(state.runtimeMemory));
   return {
-    showInlineMedia: feedMediaPreviews === "inline" && !shedImages,
+    showInlineMedia: feedMediaPreviews !== "reader-only" && !shedImages,
     showAvatarImages: !shedImages,
   };
 }
@@ -300,7 +300,9 @@ export const FeedItem = memo(function FeedItem({
       tagLimitWithoutMedia: 6,
     },
   }[density];
-  const showMedia = !summary && showInlineMedia && firstMediaUrl && !mediaFailed;
+  const thumbnailAllowed = feedMediaPreviewMode !== "lazy-thumbnails" ||
+    item.content.mediaTypes[0] === "image";
+  const showMedia = !summary && showInlineMedia && thumbnailAllowed && firstMediaUrl && !mediaFailed;
   const touchStartX = useRef(0);
   const touchStartY = useRef(0);
   const swipeLocked = useRef<"horizontal" | "vertical" | null>(null);
@@ -468,7 +470,7 @@ export const FeedItem = memo(function FeedItem({
 
             </div>
 
-            <div ref={compactTextAreaRef} className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${photoMedia ? "feed-card-photo-copy" : ""} ${photoLayout ? "justify-end" : "justify-center"}`} style={{ padding: summary ? 0 : compact ? photoSizing.padding / 2 : cardDensity.textInset }}>
+            <div ref={compactTextAreaRef} className={`relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden ${photoMedia ? "feed-card-photo-copy" : ""} ${photoMedia ? "justify-end" : "justify-center"}`} style={{ padding: summary ? 0 : compact ? photoSizing.padding / 2 : cardDensity.textInset }}>
               {!summary && item.content.linkPreview?.title && (
                 <h3 className={`min-w-0 shrink-0 break-words font-semibold ${photoLayout ? "m-0 truncate leading-[1.6] " + (compact && narrow ? "text-xs" : "text-sm") : cardDensity.title} ${photoMedia ? "text-white drop-shadow" : ""}`}>
                   {item.content.linkPreview.title}

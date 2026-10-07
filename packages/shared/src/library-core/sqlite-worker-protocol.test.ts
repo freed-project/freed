@@ -14,6 +14,8 @@ import {
   createLibraryCoreSqliteAppendCheckpointPageWorkerRequest,
   createLibraryCoreSqliteAppendScopeActionWorkerRequest,
   createLibraryCoreSqliteActivateCheckpointWorkerRequest,
+  createLibraryCoreSqliteActivatePredecessorWorkerRequest,
+  createLibraryCoreSqlitePredecessorReadWorkerRequest,
   createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest,
   createLibraryCoreSqliteDescribeCheckpointExportWorkerRequest,
   createLibraryCoreSqliteReadCheckpointExportPageWorkerRequest,
@@ -77,6 +79,15 @@ describe("Library Core SQLite worker protocol", () => {
   });
 
   it("carries only registered closed query contracts", () => {
+    const weightQuery = { queryId: "ranking_weight_scope_v1" as const, schemaVersion: 1 as const,
+      paths: [["weights", "topics", "one"]], generationId: "a".repeat(64), sourceRevision: 7 };
+    const weightRequest = createLibraryCoreSqliteQueryWorkerRequest("request-weights", weightQuery);
+    expect(parseLibraryCoreSqliteWorkerRequest(weightRequest)).toEqual(weightRequest);
+    expect(() => parseLibraryCoreSqliteWorkerRequest({ ...weightRequest, query: { ...weightQuery, paths: [["fbCapture", "excludedGroupIds", "one"]] } })).toThrow();
+    const weightResponse = { queryId: weightQuery.queryId, schemaVersion: 1, paths: weightQuery.paths, values: [0.5],
+      source: { generationId: weightQuery.generationId, projectionRevision: 7, transitionSequence: 7 } };
+    expect(parseLibraryCoreSqliteQueryResponse(weightResponse, weightQuery)).toEqual(weightResponse);
+    expect(() => parseLibraryCoreSqliteQueryResponse({ ...weightResponse, values: ["0.5"] }, weightQuery)).toThrow();
     expect(
       createLibraryCoreSqliteQueryWorkerRequest("request-account", {
         accountId: "account-1",
@@ -651,6 +662,11 @@ describe("Library Core SQLite worker protocol", () => {
     }
     bytes[0] = 9;
     expect(request.commit.envelopeBytes[0]).toEqual(Uint8Array.of(1, 2, 3));
+    const expectedSource = { generationId: "a".repeat(64), projectionRevision: 7, transitionSequence: 7 } as import("./feed-page-contracts.js").LibraryCoreFeedPageSourceV1;
+    const guarded = createLibraryCoreSqliteFollowerIntentCommitWorkerRequest("guarded", { envelopeBytes: [bytes], expectedSource });
+    const decoded = parseLibraryCoreSqliteWorkerRequest(structuredClone(guarded));
+    expect(decoded.kind === "commit_follower_intent" && decoded.commit.expectedSource).toEqual(expectedSource);
+
     expect(() =>
       parseLibraryCoreSqliteWorkerRequest({ ...request, sql: "SELECT 1" }),
     ).toThrow(/identity is invalid/);
@@ -976,6 +992,30 @@ describe("Library Core SQLite worker protocol", () => {
         stageId: "stage-1",
       }).kind,
     ).toBe("activate_normalized_checkpoint_stage");
+    const predecessor = createLibraryCoreSqliteActivatePredecessorWorkerRequest("catchup", {
+      stageId: "predecessor", replaceExisting: true, followerReceipt: {
+        checkpointGeneration: 1, controlRevision: "revision", installedAt: 2400,
+        manifestContentDigest: "a".repeat(64) as never, manifestObjectKey: "manifest",
+        manifestTransportObjectId: "object", writerActorId: "writer",
+      },
+    }, "successor");
+    expect(predecessor.kind).toBe("activate_verified_predecessor_checkpoint");
+    const read = createLibraryCoreSqlitePredecessorReadWorkerRequest("read", "successor");
+    expect(read.kind).toBe("prepare_predecessor_checkpoint_read");
+    for (const change of [{ stageId: "" }, { stageId: "x".repeat(256) }, { pointer: {} }]) {
+      expect(() => parseLibraryCoreSqliteWorkerRequest({ ...read, ...change })).toThrow();
+    }
+
+    for (const change of [{ successorStageId: "x".repeat(256) }, { successorStageId: "predecessor" },
+      { proof: {} }, { successorStageId: "" }]) {
+      expect(() => parseLibraryCoreSqliteWorkerRequest({ ...predecessor, ...change })).toThrow();
+    }
+    if (predecessor.kind !== "activate_verified_predecessor_checkpoint") throw new Error("wrong request kind");
+    for (const change of [{ followerReceipt: null }, { replaceExisting: false }, { unexpected: true }]) {
+      expect(() => parseLibraryCoreSqliteWorkerRequest({ ...predecessor,
+        activation: { ...predecessor.activation, ...change } })).toThrow();
+    }
+
     expect(
       createLibraryCoreSqliteReadCheckpointReceiptWorkerRequest("request-6")
         .kind,
