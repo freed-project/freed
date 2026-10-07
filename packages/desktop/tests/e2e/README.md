@@ -63,8 +63,22 @@ headless. `npm run test:e2e:ui` and `npm run test:e2e:debug` open external
 browser surfaces, so use them only when the owner explicitly requests that
 surface.
 
-The full command includes the `chromium` functional project and the
-`chromium-feed-perf` scroll benchmark project. The two feed scroll probes use a separate
+The recovery archive and handoff resume scenarios run once in the
+`chromium-transfer-acceptance` project. Its separate server uses the existing
+`library-transfer-acceptance` Vite mode with Tauri mocks and an isolated
+dependency cache. The fixture verifies that compiled capability when opening
+the app and blocks external HTTP(S). These synthetic scenarios do not prove
+installed convergence acceptance or activate native Library authority.
+The ordinary `chromium` project keeps the capability disabled and checks
+transfer refusal, retained restart fences and read-only archive review in
+`library-transfer-hold.spec.ts`. Do not enable the capability on the ordinary
+server to satisfy the acceptance scenarios. When using external servers, set
+`TRANSFER_BASE_URL` to the separate mocked acceptance server as well as
+`BASE_URL` for the ordinary server; a missing acceptance capability fails.
+
+The full command includes the `chromium` functional project, the
+`chromium-transfer-acceptance` recovery project and the `chromium-feed-perf`
+scroll benchmark project. The two feed scroll probes use a separate
 mock server with production React and an isolated dependency cache. This keeps
 development JSX validation and StrictMode diagnostics out of shipping-path
 timing measurements. The ordinary functional project retains development

@@ -74,7 +74,9 @@ export default defineConfig(({ mode }) => ({
   // other's optimized dependency graph when the complete suite runs both.
   cacheDir: process.env.FREED_E2E_PERF === "1"
     ? rootFile("node_modules/.vite-feed-perf")
-    : undefined,
+    : process.env.VITE_TEST_TAURI && mode === "library-transfer-acceptance"
+      ? rootFile("node_modules/.vite-transfer-acceptance")
+      : undefined,
   define: {
     // Expose only this development switch, without exposing other FREED_* values.
     "import.meta.env.FREED_AUTO_SEED_SAMPLE_DATA": JSON.stringify(

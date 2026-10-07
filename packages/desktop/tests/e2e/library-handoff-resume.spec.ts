@@ -1,4 +1,4 @@
-import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+import { test, expect, resolveViteFsModulePath } from "./fixtures/transfer-acceptance";
 const settingsModule = resolveViteFsModulePath("../../../ui/src/lib/settings-store.ts", import.meta.url);
 
 test("source restart retries demotion and prepares a later return transfer", async ({ app, ipc }, testInfo) => {
