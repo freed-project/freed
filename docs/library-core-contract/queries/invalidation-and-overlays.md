@@ -73,12 +73,12 @@ The immutable archive
 identities need no per-edit invalidation;
 checkpoint or Library replacement invalidates the reader.
 
-The native implementation requires physical storage version 2. The current
-PWA storage version refuses this query explicitly because it has no recovery
-archive tables. Shared request, response and cursor validation does not imply
-that browser recovery persistence has shipped. An archive row is an inspection
-locator, not proof that an edit was accepted or rejected and not permission to
-submit another intent.
+Native recovery readers admit physical catalogs 2, 5 and 6. Catalog 6 viewers
+retain the same bounded queries and proof checks; archive discovery and intent
+paging recheck the viewer policy in their read snapshot. Browsing an archive
+does not grant permission to reapply an edit. Browser physical schema 2 recovery
+query behavior is described below. An archive row is an inspection locator, not
+proof that an edit was accepted or rejected.
 
 `recovery_intent_review_v1` inspects one archived transaction. Its closed request
 adds a transaction ID and limits the result to 16 consecutive members. Native
@@ -105,8 +105,7 @@ what the item contained when the archived edit was created.
 
 Freed Desktop keeps one identity page and one review page in the renderer.
 Closing or replacing the review discards late results. Source changes invalidate
-continuation and clear the old outcome display. The current PWA engine refuses
-both recovery queries until browser archive persistence is implemented.
+continuation and clear the old outcome display. Browser archive persistence and query execution are specified below.
 
 Desktop registered queries have a 30-second monotonic budget beginning at
 native registration, including queue time. At most 64 queued or running readers

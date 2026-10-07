@@ -864,6 +864,15 @@ fn active_follower_actor(
         .ok_or(invalid("normalized follower actor is not active"))
 }
 
+/// The host holds an immediate transaction through key access and signing so a
+/// concurrent viewer transition cannot commit between admission and signature.
+pub fn normalized_follower_signing_context_v1(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<NormalizedMutationContextV1, NormalizedSqliteError> {
+    crate::normalized_handoff::require_handoff_follower_edit_admission_v1(transaction)?;
+    normalized_follower_mutation_context_v1(transaction)
+}
+
 pub fn normalized_follower_mutation_context_v1(
     connection: &Connection,
 ) -> Result<NormalizedMutationContextV1, NormalizedSqliteError> {
@@ -977,6 +986,7 @@ pub fn page_normalized_follower_transport_v2(
     connection: &Connection,
     request: &NormalizedFollowerTransportPageRequestV2,
 ) -> Result<NormalizedFollowerTransportPageV2, NormalizedSqliteError> {
+    crate::normalized_viewer::require_editable(connection)?;
     crate::normalized_local_annotations::reject_building(connection)?;
     if request.actor_id.len() != 64
         || !(1..=MAX_SAFE_INTEGER).contains(&request.first_actor_counter)
@@ -1405,6 +1415,7 @@ pub fn export_normalized_follower_intent_page_v1(
     connection: &Connection,
     request: &NormalizedFollowerIntentPageRequestV1,
 ) -> Result<NormalizedFollowerIntentPageV1, NormalizedSqliteError> {
+    crate::normalized_viewer::require_editable(connection)?;
     crate::normalized_local_annotations::reject_building(connection)?;
     if request.actor_id.is_empty()
         || request.actor_id.len() > 255

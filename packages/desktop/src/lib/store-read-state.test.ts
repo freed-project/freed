@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const viewer = vi.hoisted(() => ({ enabled: false }));
+vi.mock("./library-core-desktop-role", () => ({
+  readDesktopLibraryInstallation: () => ({ state: viewer.enabled ? "read_only_consumer" : "editable_consumer" }),
+}));
+
 const {
   mockMarkLibraryItemsAsRead,
   mockRecordRuntimeError,
@@ -62,6 +67,7 @@ async function loadStoreModule() {
 
 describe("store read-state batching", () => {
   beforeEach(() => {
+    viewer.enabled = false;
     vi.resetModules();
     vi.useFakeTimers();
     mockMarkLibraryItemsAsRead.mockReset();
@@ -72,6 +78,23 @@ describe("store read-state batching", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("does not queue automatic read marks in viewer mode", async () => {
+    const store = await loadStore();
+    viewer.enabled = true;
+    await store.getState().markAsRead("item-a");
+    await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
+    expect(mockMarkLibraryItemsAsRead).not.toHaveBeenCalled();
+  });
+
+  it("settles an unpersisted read batch without writing after viewer activation", async () => {
+    const store = await loadStore();
+    const pending = store.getState().markItemsAsRead(["item-a"]);
+    viewer.enabled = true;
+    await vi.advanceTimersByTimeAsync(READ_MARK_BATCH_DELAY_MS_FOR_TESTS);
+    await pending;
+    expect(mockMarkLibraryItemsAsRead).not.toHaveBeenCalled();
   });
 
   it("coalesces single-item and multi-item read updates into one batch", async () => {

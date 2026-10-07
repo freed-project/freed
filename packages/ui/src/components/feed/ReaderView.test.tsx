@@ -122,6 +122,35 @@ async function flushReaderEffects(): Promise<void> {
 }
 
 describe("ReaderView cache-first hydration", () => {
+  it("keeps cached reading and local focus changes without viewer Library writes", async () => {
+    vi.useFakeTimers();
+    testStoreState.updatePreferences.mockClear();
+    testStoreState.toggleSaved.mockClear();
+    testStoreState.toggleArchived.mockClear();
+    const { container, root } = await renderReaderView({
+      ...basePlatformConfig, libraryAccess: "read-only",
+      getLocalContent: vi.fn(async () => "<article><p>Viewer cached article.</p></article>"),
+    });
+    try {
+      expect(container.textContent).toContain("Viewer cached article.");
+      const save = container.querySelector<HTMLButtonElement>('button[aria-label="Save"]');
+      const archive = container.querySelector<HTMLButtonElement>('button[aria-label="Archive"]');
+      expect(save?.disabled).toBe(true);
+      expect(archive?.disabled).toBe(true);
+      await act(async () => {
+        save!.click(); archive!.click();
+        container.querySelector<HTMLButtonElement>('button[aria-label="Toggle focus reading mode"]')!.click();
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(testStoreState.toggleSaved).not.toHaveBeenCalled();
+      expect(testStoreState.toggleArchived).not.toHaveBeenCalled();
+      expect(testStoreState.updatePreferences).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+      vi.useRealTimers();
+    }
+  });
+
   it.each(["facebook", "instagram", "x"] as const)("hides replies for synthetic %s items outside the read-only demo", async (platform) => {
     const item = makeArticleItem({
       platform,

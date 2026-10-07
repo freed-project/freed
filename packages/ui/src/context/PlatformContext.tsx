@@ -503,6 +503,8 @@ export interface PlatformConfig {
 
   /** Removes durable editing and connection surfaces for a public showcase. */
   interactionMode?: "full" | "read-only";
+  /** Native-enforced Library policy; browsing and local caches remain available. */
+  libraryAccess?: "editable" | "read-only";
   /** Optional session-only read acknowledgement for a non-editable demo. */
   onReadOnlyItemOpened?: (item: FeedItem) => void;
   /** Session-only demo care simulation. Does not grant other Library mutations. */
@@ -1034,19 +1036,20 @@ export function useAppStore<T>(selector: (state: BaseAppState) => T): T {
 /** One capability policy for demo controls and their alternate entry points. */
 export function getPlatformCapabilities(platform: Partial<PlatformConfig>) {
   const demo = platform.interactionMode === "read-only";
+  const readOnly = demo || platform.libraryAccess === "read-only";
   return {
     demo,
-    libraryEdits: !demo,
-    createPerson: !demo && !!platform.replaceLibraryFriend,
-    linkAccounts: !demo && !!platform.assignLibraryAccountToPerson,
-    changeCare: demo ? !!platform.onReadOnlyPersonCareChange : !!platform.upsertLibraryPerson,
+    libraryEdits: !readOnly,
+    createPerson: !readOnly && !!platform.replaceLibraryFriend,
+    linkAccounts: !readOnly && !!platform.assignLibraryAccountToPerson,
+    changeCare: demo ? !!platform.onReadOnlyPersonCareChange : !readOnly && !!platform.upsertLibraryPerson,
     pinGraph: !!platform.mutateDeviceGraphLayout,
     externalLinks: !demo,
     liveVideo: !demo,
-    maintenance: !demo,
+    maintenance: !readOnly,
     diagnostics: !demo,
-    publishStoryWall: !demo && !!platform.publishStoryWall,
-    importStoryWall: !demo && !!platform.importInstagramStoryWallArchive,
+    publishStoryWall: !readOnly && !!platform.publishStoryWall,
+    importStoryWall: !readOnly && !!platform.importInstagramStoryWallArchive,
   };
 }
 

@@ -21,6 +21,8 @@ import { LibraryHandoffPanel } from "./LibraryHandoffPanel";
 import { ConsumerRecoveryReview } from "./ConsumerRecoveryReview";
 import {
   readLibraryCoreDesktopRole,
+  readDesktopLibraryInstallation,
+  subscribeDesktopLibraryInstallation,
   refreshLibraryCoreDesktopRole,
   type LibraryCoreDesktopRole,
 } from "../lib/library-core-desktop-role";
@@ -116,6 +118,7 @@ export function MobileSyncTab() {
   const [desktopRole, setDesktopRole] = useState<LibraryCoreDesktopRole | null>(() =>
     readLibraryCoreDesktopRole(),
   );
+  const [viewer, setViewer] = useState(() => readDesktopLibraryInstallation()?.state === "read_only_consumer");
   const [followerStatus, setFollowerStatus] =
     useState<NormalizedLibraryFollowerRuntimeStatus | null>(null);
   const [followerStatusError, setFollowerStatusError] = useState<string | null>(
@@ -143,15 +146,21 @@ export function MobileSyncTab() {
   const publishing = driveState?.stage === "upload" || syncing;
   useEffect(() => {
     let disposed = false;
+    const unsubscribe = subscribeDesktopLibraryInstallation(() => {
+      if (disposed) return;
+      const status = readDesktopLibraryInstallation();
+      setDesktopRole(status?.role ?? null);
+      setViewer(status?.state === "read_only_consumer");
+    });
     void refreshLibraryCoreDesktopRole().then((status) => {
-      if (!disposed) setDesktopRole(status.role);
+      if (!disposed) { setDesktopRole(status.role); setViewer(status.state === "read_only_consumer"); }
     }).catch((error) => {
       if (!disposed) {
         setDesktopRole(null);
         setManualError(error instanceof Error ? error.message : "Native Library role is unavailable.");
       }
     });
-    return () => { disposed = true; };
+    return () => { disposed = true; unsubscribe(); };
   }, []);
 
   useEffect(() => {
@@ -281,7 +290,7 @@ export function MobileSyncTab() {
               a controlled handoff from the current Primary.
             </p>
             <p role="status" className="mt-3 text-sm font-medium text-[var(--theme-text-primary)]">
-              {desktopRole === "primary" ? "Primary source" : desktopRole === "follower" ? "Editable consumer" : "Authority unavailable"}
+              {desktopRole === "primary" ? "Primary source" : desktopRole === "follower" ? viewer ? "Read-only viewer" : "Editable consumer" : "Authority unavailable"}
             </p>
             {desktopRole === "follower" && (
               <>
@@ -289,8 +298,8 @@ export function MobileSyncTab() {
                   role="status"
                   className="mt-3 rounded-lg border border-[rgb(var(--theme-feedback-warning-rgb)/0.35)] bg-[rgb(var(--theme-feedback-warning-rgb)/0.08)] px-3 py-2 text-xs leading-relaxed text-[var(--theme-text-secondary)]"
                 >
-                  Edits stay queued locally until the Primary accepts them.
-                  Capture runs on the Primary.
+                  {viewer ? "This device receives updates without creating Library edits, including automatic read and seen changes." : "Edits stay queued locally until the Primary accepts them."}
+                  {" "}Capture runs on the Primary.
                 </p>
                 {(consumerRecovery || followerStatus?.state === "authority_recovery_required") && (
                   <div data-testid="consumer-recovery" className="mt-3 rounded-lg border border-[var(--theme-border-subtle)] p-3 text-xs text-[var(--theme-text-secondary)]">
@@ -301,7 +310,7 @@ export function MobileSyncTab() {
                         Uploaded edits may already have been accepted by the previous Primary. These edits have not been resent.
                       </p>
                     ) : <p className="mt-2">Preserve your previous edits before enrolling with the new Primary.</p>}
-                    {consumerRecovery && <ConsumerRecoveryReview key={consumerRecovery.recoveryId} recoveryId={consumerRecovery.recoveryId} />}
+                    {consumerRecovery && <ConsumerRecoveryReview key={consumerRecovery.recoveryId} recoveryId={consumerRecovery.recoveryId} readOnly={viewer} />}
                     {!LIBRARY_TRANSFER_ENABLED && <p className="mt-2">{LIBRARY_TRANSFER_UNAVAILABLE}</p>}
                     {consumerRecovery?.state === "prepared" && <p className="mt-2">Reconnecting keeps previous edits in the archive. Their pending changes will stop appearing in the Library until they are resolved.</p>}
                     {consumerRecovery?.state !== "following" && (
