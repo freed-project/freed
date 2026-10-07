@@ -268,6 +268,19 @@ describe("normalized follower sync", () => {
     });
   });
 
+  it("keeps viewer enrollment and result reads without opening the intent publication adapter", async () => {
+    const activeRuntime = runtime();
+    const remote = transport(head(2));
+    const receipt = await syncLibraryCoreNormalizedFollowerV2(remote, activeRuntime, { publishIntents: false });
+    expect(activeRuntime.prepareEnrollment).toHaveBeenCalledOnce();
+    expect(remote.pageResultReferences).toHaveBeenCalledOnce();
+    expect(remote.openIntentAdapter).not.toHaveBeenCalled();
+    expect(activeRuntime.pageIntents).not.toHaveBeenCalled();
+    expect(activeRuntime.publishIntent).not.toHaveBeenCalled();
+    expect(receipt).toEqual({ enrollmentState: "enrolled", importedResultCount: 0,
+      publishedIntentCount: 0, recoveredIntentPublication: false });
+  });
+
   it("repairs one response-lost head from the immutable segment before continuing", async () => {
     mocks.importIntent.mockImplementation(async (input) => {
       await input.writer.stageNormalizedIntentSegment({

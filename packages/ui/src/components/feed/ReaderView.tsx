@@ -475,7 +475,7 @@ export function ReaderView({
     [onOpenUrl, platformOpenUrl],
   );
   const handleAddToOfflinePlaylist = useCallback(async () => {
-    if (!youtube || !youtubeReference || visibleOfflinePlaylistState.status === "adding") return;
+    if (!capabilities.libraryEdits || !youtube || !youtubeReference || visibleOfflinePlaylistState.status === "adding") return;
     const itemId = item.globalId;
     setOfflinePlaylistState({ status: "adding", itemId });
     try {
@@ -496,7 +496,7 @@ export function ReaderView({
         message: error instanceof Error ? error.message : "Could not update Freed Offline.",
       });
     }
-  }, [item.globalId, item.userState.saved, toggleSaved, visibleOfflinePlaylistState.status, youtube, youtubeReference]);
+  }, [item.globalId, item.userState.saved, toggleSaved, visibleOfflinePlaylistState.status, youtube, youtubeReference, capabilities.libraryEdits]);
   const supportsThreadHydration =
     !isSampleFeedItem(item) &&
     !isStory &&
@@ -759,26 +759,29 @@ export function ReaderView({
   }, [supportsThreadHydration, interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
 
   const handleToggleSaved = useCallback(() => {
+    if (!capabilities.libraryEdits) return;
     toggleSaved(item.globalId);
-  }, [toggleSaved, item.globalId]);
+  }, [toggleSaved, item.globalId, capabilities.libraryEdits]);
 
   const handleToggleArchived = useCallback(() => {
+    if (!capabilities.libraryEdits) return;
     void toggleArchived(item.globalId).then(() => {
       if (!item.userState.archived) onClose();
     }, () => {}); // The store reports failed writes; keep the reader open.
-  }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
+  }, [toggleArchived, item.globalId, item.userState.archived, onClose, capabilities.libraryEdits]);
 
   const prefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
     if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
-  }, []);
+  }, [capabilities.libraryEdits]);
 
   const toggleFocus = useCallback(() => {
     const enabled = !focusEnabledRef.current;
     focusEnabledRef.current = enabled;
     setFocusOptions((prev) => ({ ...prev, enabled }));
     if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
+    if (!capabilities.libraryEdits) return;
     prefTimerRef.current = setTimeout(() => {
       prefTimerRef.current = null;
       void updatePreferences({
@@ -791,7 +794,7 @@ export function ReaderView({
         toast.error("Freed could not save the focus setting.");
       });
     }, 1_000);
-  }, [updatePreferences]);
+  }, [updatePreferences, capabilities.libraryEdits]);
 
   const toggleDualColumn = useCallback(() => {
     if (!setDeviceDisplay({ dualColumnMode: !deviceDisplay.dualColumnMode })) {
@@ -923,6 +926,7 @@ export function ReaderView({
             <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"}>
               <button
                 onClick={handleToggleSaved}
+                disabled={!capabilities.libraryEdits}
                 className={`theme-toolbar-icon-button rounded-lg ${
                   item.userState.saved
                     ? "theme-toolbar-button-active"
@@ -946,6 +950,7 @@ export function ReaderView({
             <Tooltip label={item.userState.archived ? "Unarchive" : "Archive"}>
               <button
                 onClick={handleToggleArchived}
+                disabled={!capabilities.libraryEdits}
                 className={`theme-toolbar-icon-button rounded-lg ${
                   item.userState.archived
                     ? "theme-toolbar-button-success-active"
@@ -1070,7 +1075,7 @@ export function ReaderView({
                 <button
                   type="button"
                   onClick={() => void handleAddToOfflinePlaylist()}
-                  disabled={visibleOfflinePlaylistState.status === "adding"}
+                  disabled={!capabilities.libraryEdits || visibleOfflinePlaylistState.status === "adding"}
                   className="btn-secondary rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {visibleOfflinePlaylistState.status === "adding"

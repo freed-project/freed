@@ -52,6 +52,8 @@ mod normalized_preference_policy;
 #[cfg(test)]
 mod normalized_preference_projection;
 mod normalized_source_handoff;
+mod normalized_viewer;
+pub use normalized_viewer::normalized_library_is_read_only_v1;
 pub use normalized_handoff_activation::{
     activate_target_handoff_after_remote_verification_v1, recover_active_target_handoff_v1,
 };
@@ -61,6 +63,8 @@ pub use normalized_handoff_checkpoint::{
 pub use normalized_source_handoff::{
     adopt_source_handoff_after_remote_verification_v1, recover_demoted_source_handoff_v1,
     source_handoff_verification_plan_v1,
+    adopt_source_handoff_with_access_after_remote_verification_v2,
+    recover_demoted_source_handoff_with_access_v2,
 };
 mod normalized_handoff_writer_certificate;
 mod normalized_import;
@@ -157,6 +161,7 @@ pub use normalized_follower::{
     import_normalized_follower_result_page_v1,
     import_normalized_follower_result_transport_segment_v2,
     install_normalized_follower_actor_enrollment_v2, normalized_follower_mutation_context_v1,
+    normalized_follower_signing_context_v1,
     normalized_follower_runtime_status_v2, normalized_follower_transport_context_v2,
     page_normalized_follower_transport_v2, prepare_normalized_follower_actor_request_v2,
     record_normalized_follower_intent_publication_v1,

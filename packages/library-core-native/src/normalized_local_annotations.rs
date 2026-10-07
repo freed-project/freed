@@ -23,6 +23,7 @@ fn digest(value: u32) -> Result<&'static str, NormalizedSqliteError> {
         2 => Ok(NORMALIZED_NATIVE_SCHEMA_SHA256),
         4 => Ok(ANNOTATION_SCHEMA_SHA256),
         5 => Ok(ANNOTATION_RECOVERY_SCHEMA_SHA256),
+        6 => Ok(VIEWER_SCHEMA_SHA256),
         _ => Err(invalid("annotation storage version is unsupported")),
     }
 }
@@ -67,18 +68,25 @@ pub(crate) fn verify_catalog(db: &Connection, value: u32) -> Result<(), Normaliz
     }
     let expected = Connection::open_in_memory()?;
     expected.execute_batch(NORMALIZED_SCHEMA_SQL)?;
-    if matches!(value, 2 | 5) {
+    if matches!(value, 2 | 5 | 6) {
         expected.execute_batch(NORMALIZED_NATIVE_SCHEMA_EXTENSION_SQL)?;
     }
-    if matches!(value, 4 | 5) {
+    if matches!(value, 4..=6) {
         expected.execute_batch(ANNOTATION_SCHEMA_EXTENSION_SQL)?;
+    }
+    if value == VIEWER_STORAGE_SCHEMA_VERSION {
+        expected.execute_batch(VIEWER_SCHEMA_EXTENSION_SQL)?;
+        crate::normalized_viewer::verify_policy(db)?;
     }
     if catalog(db)? != catalog(&expected)? {
         return Err(invalid("annotation storage catalog mismatch"));
     }
-    if matches!(value, 4 | 5) {
+    if matches!(value, 4..=6) {
+        // Catalog 6 retains the historical annotation migration receipt unchanged.
+        let annotation_version = if value == VIEWER_STORAGE_SCHEMA_VERSION { 5 } else { value };
+        let annotation_hash = digest(annotation_version)?;
         let receipt: bool = db.query_row("SELECT catalog_version=?1 AND catalog_sha256=?2 AND origin_sha256=CASE origin_version WHEN 1 THEN ?3 WHEN 2 THEN ?4 END FROM library_local_annotation_migration WHERE singleton_id=1;",
-            params![value, expected_hash, NORMALIZED_SCHEMA_SHA256, NORMALIZED_NATIVE_SCHEMA_SHA256], |row| row.get(0))?;
+            params![annotation_version, annotation_hash, NORMALIZED_SCHEMA_SHA256, NORMALIZED_NATIVE_SCHEMA_SHA256], |row| row.get(0))?;
         if !receipt {
             return Err(invalid("annotation migration receipt mismatch"));
         }
@@ -92,7 +100,7 @@ pub(crate) fn reject_building(db: &Connection) -> Result<(), NormalizedSqliteErr
         // The dormant preference adapter owns its exact v3 admission separately.
         // This phase guard must not activate it or replace the ordinary catalog gate.
         1..=3 => Ok(()),
-        4 | 5 => {
+        4..=6 => {
             let ready: bool = db.query_row("SELECT phase='ready' FROM library_local_annotation_migration WHERE singleton_id=1;", [], |row| row.get(0))?;
             if ready {
                 Ok(())
@@ -105,7 +113,7 @@ pub(crate) fn reject_building(db: &Connection) -> Result<(), NormalizedSqliteErr
 }
 
 pub(crate) fn require_ready(db: &Connection) -> Result<(), NormalizedSqliteError> {
-    if !matches!(version(db)?, 4 | 5) {
+    if !matches!(version(db)?, 4..=6) {
         return Err(invalid("LOCAL_ANNOTATION_UPGRADE_REQUIRED"));
     }
     reject_building(db)

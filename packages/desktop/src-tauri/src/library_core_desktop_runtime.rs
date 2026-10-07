@@ -838,7 +838,10 @@ pub(super) fn normalized_desktop_installation_status(
                 .map_err(|error| error.to_string())?;
             if follower.library_id.is_some() {
                 return Ok(DesktopLibraryInstallationStatus {
-                    state: if follower.state == "active" {
+                    state: if freed_library_core::normalized_library_is_read_only_v1(&connection)
+                        .map_err(|error| error.to_string())? {
+                        "read_only_consumer"
+                    } else if follower.state == "active" {
                         "editable_consumer"
                     } else {
                         "awaiting_enrollment"
@@ -2112,8 +2115,10 @@ pub(super) async fn adopt_normalized_library_source_handoff(
     stage_id: String,
     canonical_control: String,
     access_token: String,
+    read_only: Option<bool>,
 ) -> Result<freed_library_core::NativeHandoffStatusV1, String> {
     freed_library_core::require_library_transfer_capability()?;
+    let read_only = read_only.unwrap_or(false);
     if canonical_control.len() > 16384 || stage_id.is_empty() || stage_id.len() > 255 {
         return Err("source adoption request exceeds its bounds".into());
     }
@@ -2136,10 +2141,11 @@ pub(super) async fn adopt_normalized_library_source_handoff(
             let _ = prepare_app;
             let binding = freed_library_core::desktop_binding().map_err(|e| e.to_string())?;
             if let Some(status) = binding
-                .recover_demoted_source_handoff_v1(
+                .recover_demoted_source_handoff_with_access_v2(
                     &handoff_id,
                     &stage_id,
                     canonical_control.as_bytes(),
+                    read_only,
                 )
                 .map_err(|e| e.to_string())?
             {
@@ -2160,11 +2166,12 @@ pub(super) async fn adopt_normalized_library_source_handoff(
                 .lock()
                 .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
             let mut connection = open_normalized_database(&prepare_app)?;
-            if let Some(status) = freed_library_core::recover_demoted_source_handoff_v1(
+            if let Some(status) = freed_library_core::recover_demoted_source_handoff_with_access_v2(
                 &mut connection,
                 &handoff_id,
                 &stage_id,
                 canonical_control.as_bytes(),
+                read_only,
             )? {
                 return Ok(Preparation::Done(status));
             }
@@ -2198,10 +2205,11 @@ pub(super) async fn adopt_normalized_library_source_handoff(
             let _ = app;
             freed_library_core::desktop_binding()
                 .map_err(|e| e.to_string())?
-                .adopt_source_handoff_after_remote_verification_v1(
+                .adopt_source_handoff_with_access_after_remote_verification_v2(
                     &verified.plan,
                     &verified.control_revision,
                     now,
+                    read_only,
                 )
                 .map_err(|e| e.to_string())
         }
@@ -2211,11 +2219,12 @@ pub(super) async fn adopt_normalized_library_source_handoff(
                 .lock()
                 .map_err(|_| "Desktop Library handoff/reset gate is poisoned")?;
             let mut connection = open_normalized_database(&app)?;
-            freed_library_core::adopt_source_handoff_after_remote_verification_v1(
+            freed_library_core::adopt_source_handoff_with_access_after_remote_verification_v2(
                 &mut connection,
                 &verified.plan,
                 &verified.control_revision,
                 now,
+                read_only,
             )
         }
     })
@@ -2696,8 +2705,11 @@ pub(super) fn sign_normalized_library_follower_operation(
     app: tauri::AppHandle,
     request: SignNormalizedOperationRequest,
 ) -> Result<DesktopLibraryOperationSignature, String> {
-    let connection = open_normalized_database(&app)?;
-    let context = freed_library_core::normalized_follower_mutation_context_v1(&connection)
+    let mut connection = open_normalized_database(&app)?;
+    let transaction = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let context = freed_library_core::normalized_follower_signing_context_v1(&transaction)
         .map_err(|error| error.to_string())?;
     if request.library_id != context.library_id
         || request.epoch_id != context.epoch_id
@@ -2712,6 +2724,7 @@ pub(super) fn sign_normalized_library_follower_operation(
         &context.actor_public_key,
         &request.operation_signing_body_digest,
     )?;
+    transaction.commit().map_err(|error| error.to_string())?;
     Ok(DesktopLibraryOperationSignature {
         actor_id: context.actor_id,
         operation_signing_body_digest: request.operation_signing_body_digest,

@@ -100,7 +100,7 @@ pub fn read_native_handoff_status_v1(
     // Read the schema, local receipt and selected Library in one snapshot.
     let transaction = connection.transaction()?;
     let version: u32 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION, 4, 5].contains(&version) {
+    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION, 4, 5, 6].contains(&version) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "handoff status requires a recognized Library schema",
         ));
@@ -179,6 +179,7 @@ pub(crate) fn require_handoff_admission(
     connection: &Connection,
     admission: HandoffAdmission,
 ) -> Result<(), NormalizedSqliteError> {
+    crate::normalized_viewer::require_editable(connection)?;
     let physical_version: u32 = connection.query_row(
         "SELECT schema_version FROM library_storage_meta WHERE singleton_id = 1;",
         [],
@@ -265,6 +266,15 @@ pub fn require_normalized_provider_handoff_admission_v2(
 pub(crate) fn require_handoff_follower_edit_admission_v1(
     connection: &Connection,
 ) -> Result<(), NormalizedSqliteError> {
+    crate::normalized_viewer::require_editable(connection)?;
+    require_handoff_follower_lifecycle_admission_v1(connection)
+}
+
+/// Enrollment recovery resumes following without granting edit permission.
+/// Keep all existing lifecycle proofs, including for installation-local viewers.
+pub(crate) fn require_handoff_follower_lifecycle_admission_v1(
+    connection: &Connection,
+) -> Result<(), NormalizedSqliteError> {
     let version: u32 = connection.query_row(
         "SELECT schema_version FROM library_storage_meta WHERE singleton_id = 1;",
         [],
@@ -278,10 +288,14 @@ pub(crate) fn require_handoff_follower_edit_admission_v1(
     }
     if version != NATIVE_STORAGE_SCHEMA_VERSION
         && version != crate::sqlite_contract_generated::ANNOTATION_RECOVERY_STORAGE_SCHEMA_VERSION
+        && version != crate::sqlite_contract_generated::VIEWER_STORAGE_SCHEMA_VERSION
     {
         return Err(NormalizedSqliteError::InvalidRequest(
             "unsupported handoff storage version",
         ));
+    }
+    if version == crate::sqlite_contract_generated::VIEWER_STORAGE_SCHEMA_VERSION {
+        crate::normalized_sqlite::install_normalized_schema_v1(connection)?;
     }
     require_existing_handoff_follower_edit_admission(connection)
 }
