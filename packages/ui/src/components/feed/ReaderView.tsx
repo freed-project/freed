@@ -1,3 +1,4 @@
+import { useArchiveAction } from "../../hooks/useArchiveAction.js";
 import type { LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -367,7 +368,7 @@ export function ReaderView({
   } = usePlatform();
   const openSavedContentEditor = useCommandSurfaceStore((state) => state.openSavedContentEditor);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
-  const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const { toggleArchived } = useArchiveAction();
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
@@ -765,7 +766,7 @@ export function ReaderView({
 
   const handleToggleArchived = useCallback(() => {
     if (!capabilities.libraryEdits) return;
-    void toggleArchived(item.globalId).then(() => {
+    void toggleArchived(item.globalId, item.userState.archived).then(() => {
       if (!item.userState.archived) onClose();
     }, () => {}); // The store reports failed writes; keep the reader open.
   }, [toggleArchived, item.globalId, item.userState.archived, onClose, capabilities.libraryEdits]);
