@@ -3,8 +3,10 @@
   "version": "26.10.800-dev",
   "channel": "dev",
   "dayKey": "26.10.8",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against the immutable source range. Search tests are synthetic and mocked IPC; no installed or live provider acceptance is claimed."
+  ],
   "generatedAt": "2026-10-08T08:21:07.529Z",
   "model": "heuristic",
   "source": {
@@ -51,10 +53,12 @@
     ]
   },
   "release": {
-    "deck": "Propagate search query cancellation",
+    "deck": "Keep search results tied to the current query.",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      "Replacing or canceling a search forwards cancellation to Freed Desktop and keeps obsolete results from updating the view. [#2191](https://github.com/freed-project/freed/pull/2191)"
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.800-dev\n\nPropagate search query cancellation\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.800-dev\n\nKeep search results tied to the current query\n\n### Fixes\n\n- Replacing or canceling a search forwards cancellation to Freed Desktop and keeps obsolete results from updating the view. [#2191](https://github.com/freed-project/freed/pull/2191)\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
