@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import {
   groupReleasesByDay,
   normalizeGitHubReleases,
+  parseReleaseBody,
   type ParsedRelease,
   type ReleaseBuild,
   type ReleaseChannel,
@@ -96,14 +97,20 @@ function getReleaseItemText(item: ReleaseArtifactItem): string | null {
   return null;
 }
 
-function toReleaseItems(
+export function toReleaseItems(
   items: ReleaseArtifactItem[] | undefined,
 ): ReleaseItem[] {
   return dedupeItems(
     (items ?? [])
       .map(getReleaseItemText)
       .filter((text): text is string => Boolean(text?.trim()))
-      .map((text) => ({ text: text.trim() })),
+      .map((text) => {
+        const trimmed = text.trim();
+        if (/\[#\d+\]\(https:\/\/github\.com\/freed-project\/freed\/pull\/\d+\)/.test(trimmed)) {
+          return parseReleaseBody(`### Features\n- ${trimmed}`).features[0] ?? { text: trimmed };
+        }
+        return { text: trimmed };
+      }),
   );
 }
 
