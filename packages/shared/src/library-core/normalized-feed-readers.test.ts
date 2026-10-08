@@ -984,4 +984,101 @@ describe("cross-platform normalized feed readers", () => {
     expect(visit).not.toHaveBeenCalled();
   });
 
+  describe("SQLite search cancellation", () => {
+    const page = {
+      nextCursor: null,
+      rows: [{ card: feedCard("cancel-match"), priority: 42, score: 7 }],
+      source: querySource,
+    };
+    const overlay = { rows: [], source: querySource };
+    const deferred = <T,>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((complete) => { resolve = complete; });
+      return { promise, resolve };
+    };
+    const search = (query: ReturnType<typeof vi.fn>, signal: AbortSignal,
+      visit: (matches: readonly unknown[]) => "continue" | "stop" | Promise<"continue" | "stop">) =>
+      searchLibraryCoreNormalizedItemsV1(
+        { query: query as unknown as LibraryCoreNormalizedQueryExecutor, randomId: () => "cancel-test" },
+        { filter: {}, identityMode: "all_content", query: "needle", signal }, visit,
+      );
+
+    it("rejects a pre-aborted search without dispatch or delivery", async () => {
+      const controller = new AbortController();
+      const reason = new Error("search already obsolete");
+      controller.abort(reason);
+      const query = vi.fn();
+      const visit = vi.fn(() => "continue" as const);
+      await expect(search(query, controller.signal, visit)).rejects.toBe(reason);
+      expect(query).not.toHaveBeenCalled();
+      expect(visit).not.toHaveBeenCalled();
+    });
+
+    it("forwards the same signal to page and overlay outside closed request payloads", async () => {
+      const controller = new AbortController();
+      const query = vi.fn().mockResolvedValueOnce(page).mockResolvedValueOnce(overlay);
+      const visit = vi.fn(() => "continue" as const);
+      await search(query, controller.signal, visit);
+      expect(query).toHaveBeenCalledTimes(2);
+      for (const [request, signal] of query.mock.calls) {
+        expect(signal).toBe(controller.signal);
+        expect(request).not.toHaveProperty("signal");
+        createLibraryCoreSqliteQueryWorkerRequest("cancel-test", request);
+      }
+      expect(visit).toHaveBeenCalledOnce();
+    });
+
+    it("rejects an aborted pending page before overlay dispatch or obsolete delivery", async () => {
+      const controller = new AbortController();
+      const reason = new Error("page became obsolete");
+      const pendingPage = deferred<typeof page>();
+      const query = vi.fn().mockImplementationOnce(() => pendingPage.promise).mockResolvedValue(overlay);
+      const visit = vi.fn(() => "continue" as const);
+      const outcome = search(query, controller.signal, visit).then(() => undefined, (error) => error);
+      controller.abort(reason);
+      pendingPage.resolve(page);
+      expect(await outcome).toBe(reason);
+      expect(query).toHaveBeenCalledOnce();
+      expect(visit).not.toHaveBeenCalled();
+    });
+
+    it("rejects an aborted pending overlay before obsolete delivery", async () => {
+      const controller = new AbortController();
+      const reason = new Error("overlay became obsolete");
+      const pendingOverlay = deferred<typeof overlay>();
+      const overlayStarted = deferred<void>();
+      const query = vi.fn().mockResolvedValueOnce(page).mockImplementationOnce(() => {
+        overlayStarted.resolve();
+        return pendingOverlay.promise;
+      });
+      const visit = vi.fn(() => "continue" as const);
+      const outcome = search(query, controller.signal, visit).then(() => undefined, (error) => error);
+      await overlayStarted.promise;
+      controller.abort(reason);
+      pendingOverlay.resolve(overlay);
+      expect(await outcome).toBe(reason);
+      expect(query).toHaveBeenCalledTimes(2);
+      expect(visit).not.toHaveBeenCalled();
+    });
+
+    it.each(["continue", "stop"] as const)("rejects cancellation during a terminal visitor returning %s", async (decision) => {
+      const controller = new AbortController();
+      const reason = new Error("visitor became obsolete");
+      const pendingVisit = deferred<typeof decision>();
+      const visitStarted = deferred<void>();
+      const query = vi.fn().mockResolvedValueOnce(page).mockResolvedValueOnce(overlay);
+      const visit = vi.fn(() => {
+        visitStarted.resolve();
+        return pendingVisit.promise;
+      });
+      const outcome = search(query, controller.signal, visit).then(() => undefined, (error) => error);
+      await visitStarted.promise;
+      controller.abort(reason);
+      pendingVisit.resolve(decision);
+      expect(await outcome).toBe(reason);
+      expect(query).toHaveBeenCalledTimes(2);
+      expect(visit).toHaveBeenCalledOnce();
+    });
+  });
+
 });
