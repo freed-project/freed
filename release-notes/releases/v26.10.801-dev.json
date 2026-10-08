@@ -3,8 +3,12 @@
   "version": "26.10.801-dev",
   "channel": "dev",
   "dayKey": "26.10.8",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Lead with the tested reader hydration contract and retain the same-day search fix. This release does not establish the installed cross-post cause or live media provenance.",
+    "Carry forward four organic-parent sponsored-marker refusals and one accessible-only primary-article disclosure miss as five synthetic failures; provider behavior is not changed by this release.",
+    "The tooling checkpoint test repair and website framework dependency update are included in the source snapshot; they do not constitute new Desktop product behavior or a website deployment."
+  ],
   "generatedAt": "2026-10-08T22:51:53.001Z",
   "model": "heuristic",
   "source": {
@@ -57,18 +61,17 @@
     ]
   },
   "release": {
-    "deck": "Keep search results tied to the current query",
+    "deck": "Keep reader images tied to accepted post data",
     "features": [],
     "fixes": [
-      "Honor newly hydrated reader image results",
-      "Supervise outcome recovery checkpoints independently",
-      "Bump next from 15.5.24 to 15.5.27",
-      "Propagate search query cancellation",
+      "The reader can use a newly hydrated first image without HTML while preserving the selected post's author and body and rejecting obsolete replies. [#2196](https://github.com/freed-project/freed/pull/2196)",
       "Replacing or canceling a search forwards cancellation to Freed Desktop and keeps obsolete results from updating the view. [#2191](https://github.com/freed-project/freed/pull/2191)"
     ],
     "followUps": [
-      "Prepare v26.10.800-dev"
+      "The installed cross-post complaint and live media provenance still need verification; the reader change has synthetic regression coverage.",
+      "Five synthetic Facebook feed and story sponsored-disclosure cases remain unresolved. Provider extraction, requests and cadence are unchanged.",
+      "Future producers that return distinct media require a new provider review. Live provider verification remains pending."
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.801-dev\n\nKeep search results tied to the current query\n\n### Fixes\n\n- Honor newly hydrated reader image results\n- Supervise outcome recovery checkpoints independently\n- Bump next from 15.5.24 to 15.5.27\n- Propagate search query cancellation\n- Replacing or canceling a search forwards cancellation to Freed Desktop and keeps obsolete results from updating the view. [#2191](https://github.com/freed-project/freed/pull/2191)\n\n### Follow-ups\n\n- Prepare v26.10.800-dev\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.801-dev\n\nKeep reader images tied to accepted post data\n\n### Fixes\n\n- The reader can use a newly hydrated first image without HTML while preserving the selected post's author and body and rejecting obsolete replies. [#2196](https://github.com/freed-project/freed/pull/2196)\n- Replacing or canceling a search forwards cancellation to Freed Desktop and keeps obsolete results from updating the view. [#2191](https://github.com/freed-project/freed/pull/2191)\n\n### Follow-ups\n\n- The installed cross-post complaint and live media provenance still need verification; the reader change has synthetic regression coverage\n- Five synthetic Facebook feed and story sponsored-disclosure cases remain unresolved. Provider extraction, requests and cadence are unchanged\n- Future producers that return distinct media require a new provider review. Live provider verification remains pending\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
