@@ -1500,6 +1500,16 @@ export function buildValidationPlan(mode, changedFiles) {
     ]));
   }
 
+  if (changedFiles.some((file) => [
+    ".github/workflows/controller-repair-proposal.yml",
+    "scripts/publish-controller-repair.mjs",
+    "scripts/publish-controller-repair.test.mjs",
+  ].includes(file))) {
+    addCommand(plan, nodeCommand("controller repair proposal tests", [
+      "--test", "scripts/publish-controller-repair.test.mjs",
+    ]));
+  }
+
   if (validateRunnerChanged) {
     addCommand(
       plan,
