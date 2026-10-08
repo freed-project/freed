@@ -5,7 +5,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { generateSampleLibraryData, type FeedItem as FeedItemType } from "@freed/shared";
-import { PlatformProvider, type PlatformConfig } from "../../context/PlatformContext.js";
+import { PlatformProvider, type PlatformConfig, type ReaderHydrationResult } from "../../context/PlatformContext.js";
 import { ReaderView } from "./ReaderView";
 
 const NOW = 1_712_147_200_000;
@@ -292,6 +292,113 @@ describe("ReaderView cache-first hydration", () => {
     expect(hydrateReaderItem).toHaveBeenCalledOnce();
 
     await act(async () => root.unmount());
+  });
+
+  // Tier 1: accepted media-only results, with no HTML/text or live requests.
+  // The first media's explicit type controls the lead; later images do not.
+  it.each(["image", "video", "link", undefined] as const)("uses only a newly hydrated first image without HTML: %s", async (type) => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Synthetic reader forbids network"));
+    const item = makeArticleItem({ contentType: "post", content: {
+      text: "Selected post body", mediaUrls: ["https://example.com/selected.jpg"], mediaTypes: ["image"],
+    } });
+    const hydrateReaderItem = vi.fn(async (): Promise<ReaderHydrationResult> => ({
+      mediaUrls: ["https://example.com/hydrated.jpg", "https://example.com/later-image.jpg"],
+      ...(type ? { mediaTypes: [type, "image"] } : {}),
+    }));
+    const { container, root } = await renderReaderView({
+      ...basePlatformConfig, getLocalContent: vi.fn(async () => null), hydrateReaderItem,
+    }, item);
+    try {
+      const article = container.querySelector("[data-testid='reader-article']")!;
+      expect(article.querySelector("img")?.getAttribute("src")).toBe(
+        type === "image" ? "https://example.com/hydrated.jpg" : "https://example.com/selected.jpg",
+      );
+      expect(article.querySelectorAll("img")).toHaveLength(1);
+      expect(container.textContent).toContain("RSS Author");
+      expect(container.textContent).toContain("Selected post body");
+      expect(hydrateReaderItem).toHaveBeenCalledExactlyOnceWith(item, { cacheMode: "saved_only", pin: false });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
+
+  // Current PWA results echo the captured request item's media. A same-ID
+  // detail update must retain its own fallback, including mixed media.
+  it.each(["image", "video", "link"] as const)("preserves same-ID detail media when hydration echoes a first %s", async (type) => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Synthetic reader forbids network"));
+    const item = makeArticleItem({ contentType: "post", content: {
+      text: "Card body", mediaUrls: ["https://example.com/card-media", "https://example.com/card-later.jpg"],
+      mediaTypes: [type, "image"],
+    } });
+    let resolve!: (result: ReaderHydrationResult) => void;
+    const hydrateReaderItem = vi.fn(() => new Promise<ReaderHydrationResult>((complete) => { resolve = complete; }));
+    const platform = { ...basePlatformConfig, getLocalContent: vi.fn(async () => null), hydrateReaderItem };
+    const { container, root } = await renderReaderView(platform, item);
+    const detail = { ...item, author: { ...item.author, displayName: "Detail Author" }, content: {
+      text: "Detail body", mediaUrls: ["https://example.com/detail.jpg"], mediaTypes: ["image" as const],
+    } };
+    try {
+      await act(async () => root.render(<PlatformProvider value={platform}>
+        <ReaderView item={detail} onClose={() => {}} />
+      </PlatformProvider>));
+      await act(async () => resolve({ mediaUrls: item.content.mediaUrls, mediaTypes: item.content.mediaTypes }));
+      expect(container.querySelector("[data-testid='reader-article'] img")?.getAttribute("src")).toBe("https://example.com/detail.jpg");
+      expect(container.textContent).toContain("Detail Author");
+      expect(container.textContent).toContain("Detail body");
+      expect(hydrateReaderItem).toHaveBeenCalledExactlyOnceWith(item, { cacheMode: "saved_only", pin: false });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
+
+  it("keeps an HTML lead image ahead of newly hydrated media", async () => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    const hydrateReaderItem = vi.fn(async (): Promise<ReaderHydrationResult> => ({
+      html: '<article><h1>Hydrated title</h1><img src="https://example.com/html-lead.jpg" alt="HTML lead"><p>Hydrated body</p></article>',
+      mediaUrls: ["https://example.com/media-lead.jpg"], mediaTypes: ["image"],
+    }));
+    const { container, root } = await renderReaderView({
+      ...basePlatformConfig, getLocalContent: vi.fn(async () => null), hydrateReaderItem,
+    });
+    try {
+      const images = container.querySelectorAll("[data-testid='reader-article'] img");
+      expect(images).toHaveLength(1);
+      expect(images[0].getAttribute("src")).toBe("https://example.com/html-lead.jpg");
+      expect(images[0].getAttribute("alt")).toBe("HTML lead");
+      expect(container.textContent).toContain("Hydrated body");
+      expect(hydrateReaderItem).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => root.unmount());
+    }
+  });
+
+  it("clears a hydrated reply lead when the next accepted result supplies no image", async () => {
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true });
+    const item = makeArticleItem({ platform: "x", content: {
+      text: "Selected body", mediaUrls: ["https://example.com/selected.jpg"], mediaTypes: ["image"],
+    } });
+    const hydrateReaderItem = vi.fn()
+      .mockResolvedValueOnce({ mediaUrls: ["https://example.com/reply-lead.jpg"], mediaTypes: ["image"] })
+      .mockResolvedValueOnce({ replies: [] });
+    const { container, root } = await renderReaderView({ ...basePlatformConfig,
+      getLocalContent: vi.fn(async () => "<article><p>Cached selected body</p></article>"), hydrateReaderItem,
+    }, item);
+    try {
+      const loadReplies = () => act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Load replies inline, beta"]')!.click());
+      await loadReplies();
+      expect(container.querySelector("[data-testid='reader-article'] img")?.getAttribute("src")).toBe("https://example.com/reply-lead.jpg");
+      await loadReplies();
+      expect(container.querySelector("[data-testid='reader-article'] img")?.getAttribute("src")).toBe("https://example.com/selected.jpg");
+      expect(container.textContent).toContain("Cached selected body");
+      expect(hydrateReaderItem).toHaveBeenCalledTimes(2);
+      expect(hydrateReaderItem.mock.calls.every(([requestItem, options]) => requestItem === item && options.includeReplies === true)).toBe(true);
+    } finally {
+      await act(async () => root.unmount());
+    }
   });
 
   it("uses the article title and lead image once when cached content includes them", async () => {

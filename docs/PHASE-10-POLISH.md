@@ -608,6 +608,16 @@ late success/failure and out-of-order local cache responses. These tests confirm
 the source defects; they do not attribute the exact installed incident or prove
 all native cache associations. Requests and provider cadence are unchanged.
 
+Accepted reader hydration may supply media without HTML. For ordinary posts,
+the reader can use a newly returned first image while preserving the selected
+author and body, HTML lead-image priority, and existing cancellation and reply
+generation fences. Echoed request media keeps the selected-item fallback,
+including after same-ID detail updates; later images, videos, and links do not
+replace it. Current PWA and Desktop producers retain their image requests.
+Synthetic regressions cover both cross-post completion orders. This does not
+attribute the installed cross-post complaint or verify live media provenance.
+A future producer supplying distinct media requires a new provider review.
+
 ### Optional local Kev evaluation
 
 AI settings offers a per-device Kev selection alongside Jev and GLiClass. Kev

@@ -262,10 +262,18 @@ function fallbackReaderTitle(item: FeedItemType): string {
   return item.content.linkPreview?.title || item.content.text?.slice(0, 100) || "Untitled";
 }
 
+function newlyHydratedLeadImage(item: FeedItemType, hydrated: ReaderHydrationResult): string | null {
+  const src = hydrated.mediaUrls?.[0];
+  // Echoed request media must not replace a newer same-ID detail fallback.
+  return hydrated.mediaTypes?.[0] === "image" && src &&
+    src !== item.content.mediaUrls[0] && isAllowedImageSrc(src) ? src : null;
+}
+
 function buildReaderPresentation(
   blocks: readonly ContentBlock[],
   item: FeedItemType,
   isStory: boolean,
+  hydratedLeadImageUrl: string | null,
 ): ReaderPresentation {
   const titleIndex = findLeadingTitleIndex(blocks);
   const titleBlock = titleIndex === null ? null : blocks[titleIndex];
@@ -282,7 +290,10 @@ function buildReaderPresentation(
   const previewLeadImage = !isStory && item.content.mediaUrls[0]
     ? { src: item.content.mediaUrls[0], alt: "" }
     : null;
-  const leadImage = articleLeadImage ?? previewLeadImage;
+  const hydratedLeadImage = !isStory && hydratedLeadImageUrl
+    ? { src: hydratedLeadImageUrl, alt: "" }
+    : null;
+  const leadImage = articleLeadImage ?? hydratedLeadImage ?? previewLeadImage;
 
   const bodyBlocks = blocks.filter((block, index) => {
     if (
@@ -396,6 +407,7 @@ export function ReaderView({
   const [hydrationMessage, setHydrationMessage] = useState<string | null>(null);
   const [readerMediaUrls, setReaderMediaUrls] = useState<string[] | null>(null);
   const [readerMediaTypes, setReaderMediaTypes] = useState<Array<"image" | "video" | "link"> | null>(null);
+  const [hydratedLeadImageUrl, setHydratedLeadImageUrl] = useState<string | null>(null);
   const [threadReplies, setThreadReplies] = useState<ReaderThreadReply[]>([]);
   const [isThreadLoading, setIsThreadLoading] = useState(false);
   const [hasRequestedThreadReplies, setHasRequestedThreadReplies] = useState(false);
@@ -422,6 +434,7 @@ export function ReaderView({
     setHydrationMessage(null);
     setReaderMediaUrls(null);
     setReaderMediaTypes(null);
+    setHydratedLeadImageUrl(null);
     setThreadReplies([]);
     setIsThreadLoading(false);
     setHasRequestedThreadReplies(false);
@@ -522,6 +535,7 @@ export function ReaderView({
       setHydrationMessage(null);
       setReaderMediaUrls(null);
       setReaderMediaTypes(null);
+      setHydratedLeadImageUrl(null);
       setThreadReplies([]);
       setIsThreadLoading(false);
       setHasRequestedThreadReplies(false);
@@ -625,6 +639,7 @@ export function ReaderView({
               setReaderMediaUrls(hydrated.mediaUrls);
               setReaderMediaTypes(hydrated.mediaTypes ?? []);
             }
+            setHydratedLeadImageUrl(newlyHydratedLeadImage(item, hydrated));
             setHydrationStatus(hydrated.status ?? null);
             setHydrationMessage(hydrated.message ?? null);
             setIsLoading(false);
@@ -742,6 +757,7 @@ export function ReaderView({
         setReaderMediaUrls(hydrated.mediaUrls);
         setReaderMediaTypes(hydrated.mediaTypes ?? []);
       }
+      setHydratedLeadImageUrl(newlyHydratedLeadImage(item, hydrated));
 
       const replies = hydrated.replies ?? [];
       setThreadReplies(replies);
@@ -819,8 +835,8 @@ export function ReaderView({
   }, [html, preservedText, item.content.text]);
 
   const readerPresentation = useMemo(
-    () => buildReaderPresentation(articleBlocks, item, isStory),
-    [articleBlocks, item, isStory],
+    () => buildReaderPresentation(articleBlocks, item, isStory, hydratedLeadImageUrl),
+    [articleBlocks, item, isStory, hydratedLeadImageUrl],
   );
 
   // Plain text for focus mode rendering
