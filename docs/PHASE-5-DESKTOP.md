@@ -1890,3 +1890,14 @@ enabling reapplication. Native restrictions survive restart and later successor
 recovery. These changes have synthetic test coverage; signed delivery, installed
 viewer acceptance and the personal Library transition remain pending. Ordinary
 transfer and recovery activation holds are unchanged.
+
+## Pending archive presentation
+
+The header, keyboard commands, reader toolbar and feed cards share pending
+archive presentation scoped to their platform store. An archive hides its row
+from the feed and retained reader window while the original mutation runs.
+A failed write restores visibility and keeps the reader open. Unarchive does
+not hide the row, and read-only viewers refuse the action before mutation.
+This temporary UI state is not a durable edit receipt. Browser coverage holds
+persistence pending and then resolves or rejects it; it does not certify
+physical-device latency or installed multi-device acceptance.
