@@ -2,7 +2,7 @@
   "channel": "dev",
   "dayKey": "26.10.8",
   "date": "2026-10-08",
-  "preferredDeck": "Keep search results tied to the current query.",
+  "preferredDeck": "Keep reader images tied to accepted post data.",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
@@ -10,7 +10,7 @@
   ],
   "pinnedHighlights": [],
   "editorialNotes": [
-    "Lead with the current-query search fix. Keep isolated transfer verification separate from installed and live provider acceptance."
+    "Lead with accepted reader image data and retain the same-day current-query search fix. Keep synthetic and installed verification claims separate; five sponsored-disclosure cases remain unresolved."
   ],
-  "updatedAt": "2026-10-08T08:21:51.119Z"
+  "updatedAt": "2026-10-08T22:54:54.796Z"
 }
