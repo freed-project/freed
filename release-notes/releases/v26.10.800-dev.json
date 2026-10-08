@@ -1,0 +1,60 @@
+{
+  "tag": "v26.10.800-dev",
+  "version": "26.10.800-dev",
+  "channel": "dev",
+  "dayKey": "26.10.8",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-08T08:21:07.529Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.702-dev",
+    "previousPublishedDayTag": "v26.10.702-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "5911c83cd9ef3d5fa6cd28cfe5a520a53782bf8f",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.702-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "635600b2796c70cd697009ed0feb1dd2cb4413f0",
+        "toInclusiveProductCommitSha": "5911c83cd9ef3d5fa6cd28cfe5a520a53782bf8f"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:7c342d52a67967e987574359750bac67ca9966bed9a68edb8a1554cb735949dc",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.800-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.800-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "fix: propagate search query cancellation"
+    ]
+  },
+  "release": {
+    "deck": "Propagate search query cancellation",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.800-dev\n\nPropagate search query cancellation\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
