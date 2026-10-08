@@ -410,25 +410,26 @@ test("reader archive removes its feed card immediately", async ({ app }) => {
   await card.click();
   await expect(app.page.getByTestId("reader-article")).toBeVisible();
 
-  const elapsedMs = await app.page.evaluate(async () => {
-    const selector = '[data-feed-item-id="test-facebook-card-ui-overhaul"]';
-    const archiveButton = document.querySelector('button[aria-label="Archive"]') as HTMLButtonElement | null;
-    if (!archiveButton) {
-      throw new Error("Archive button was not found");
-    }
-
-    const startedAt = performance.now();
-    archiveButton.click();
-    while (document.querySelector(selector)) {
-      if (performance.now() - startedAt > 1_000) {
-        throw new Error("Archived card stayed visible too long");
-      }
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-    return performance.now() - startedAt;
+  // Hold persistence explicitly so this checks ordering rather than runner speed.
+  await app.page.evaluate(() => {
+    const runtime = window as unknown as {
+      __TAURI_MOCK_HANDLERS__: Record<string, (args: unknown) => unknown>;
+      __RELEASE_ARCHIVE_WRITE__?: () => void;
+    };
+    const original = runtime.__TAURI_MOCK_HANDLERS__.commit_normalized_library_transaction;
+    const pending = new Promise<void>((resolve) => { runtime.__RELEASE_ARCHIVE_WRITE__ = resolve; });
+    runtime.__TAURI_MOCK_HANDLERS__.commit_normalized_library_transaction = async (args) => {
+      await pending;
+      return original(args);
+    };
   });
-
-  expect(elapsedMs).toBeLessThan(300);
+  await app.page.getByRole("button", { name: "Archive", exact: true }).click();
+  await expect(card).toHaveCount(0);
+  await expect(app.page.getByTestId("reader-article")).toBeVisible();
+  await app.page.evaluate(() => {
+    (window as unknown as { __RELEASE_ARCHIVE_WRITE__: () => void }).__RELEASE_ARCHIVE_WRITE__();
+  });
+  await expect(app.page.getByTestId("reader-article")).toHaveCount(0);
   await expect(card).toHaveCount(0);
 });
 
@@ -438,20 +439,35 @@ test("reader archive rollback restores its feed card after a failed mutation", a
   await injectCardUiItems(app.page);
   await app.setDeviceDisplayPreferences({ dualColumnMode: true });
 
-  await app.page.evaluate(() => {
-    (window as Window & {
-      __FREED_FAIL_OPTIMISTIC_MUTATION__?: (source: string) => string | false;
-    }).__FREED_FAIL_OPTIMISTIC_MUTATION__ = (source: string) =>
-      source === "desktop:toggleArchived" ? "forced archive failure" : false;
-  });
+
 
   const card = app.page.locator('[data-feed-item-id="test-facebook-card-ui-overhaul"]').first();
   await expect(card).toBeVisible();
   await card.click();
   await expect(app.page.getByTestId("reader-article")).toBeVisible();
 
+  await app.page.evaluate(() => {
+    const runtime = window as unknown as {
+      __TAURI_MOCK_HANDLERS__: Record<string, (args: unknown) => unknown>;
+      __REJECT_ARCHIVE_WRITE__?: () => void;
+    };
+    let rejectWrite!: () => void;
+    const held = new Promise<void>((resolve) => { rejectWrite = resolve; });
+    runtime.__REJECT_ARCHIVE_WRITE__ = rejectWrite;
+    runtime.__TAURI_MOCK_HANDLERS__.commit_normalized_library_transaction = async () => {
+      await held;
+      throw new Error("forced archive failure");
+    };
+  });
+
   const archiveButton = app.page.getByRole("button", { name: "Archive", exact: true });
   await archiveButton.click();
+  await expect(card).toHaveCount(0);
+  await expect(app.page.getByTestId("reader-article")).toBeVisible();
+  await app.page.evaluate(() => {
+    (window as unknown as { __REJECT_ARCHIVE_WRITE__: () => void }).__REJECT_ARCHIVE_WRITE__();
+  });
+
 
   await expect.poll(async () =>
     app.page.evaluate(() => {
@@ -465,6 +481,7 @@ test("reader archive rollback restores its feed card after a failed mutation", a
     }),
   ).toBe(false);
   await expect(card).toBeVisible();
+  await expect(app.page.getByTestId("reader-article")).toBeVisible();
 
   await expect.poll(() => app.page.evaluate(async (bugReportStorePath) => {
     const mod = await import(bugReportStorePath);

@@ -87,3 +87,43 @@ For an isolated connector-provenance test, submit a clearly marked QA-only JSON 
 Focused built-in Node tests cover explicit channel/tag/SHA/digest admission, controller pin, owner-review rules, branch-only environment isolation, owner policy challenges, immutable push provenance, freshness, consumed nonces and credential-step ordering. These run in changed-path tooling coverage. They do not prove GitHub environment authorization, native broker behavior or signed artifacts; existing native broker tests and an actual cloud DEV run provide those separate proofs. Controller policy, workflow, validator, broker or GitHub permission changes invalidate this evidence.
 
 This implementation intentionally proves dev first. Workflow discovery uses the default `dev` branch; production source still requires the protected `main` release-preparation identity and separate publication authority. No production version is prepared or published here.
+
+## Controller repair proposal identity
+
+`controller-repair-proposal.yml` prepares the activation-history repair as a draft
+PR authored and pushed by `github-actions[bot]`, allowing AubreyF to review it
+under the existing CODEOWNER and last-push rules. Only an original AubreyF
+workflow dispatch from `dev` is admitted. The helper copies two fixed Git blobs
+from selected product source `809b0670b8d62b68a44258b9beb493b7542d5fb4`
+onto controller base `4fddf2404f94af1b4495cab6ed273e141efebd6f`.
+It requires the full resulting tree to equal the tested repair tree
+`631fcc881fd4aa9dee6b0bf33da8fcc59c955f05`. It executes no candidate code,
+uses only the job's short-lived token, and never reads the release App key.
+This is a bounded repair proposal, not a general controller publisher.
+
+Before first use, the owner must approve enabling the repository's **Allow GitHub
+Actions to create and approve pull requests** setting. GitHub bundles those two
+capabilities. Keep default workflow permissions read-only; this job requests
+contents and pull-request write permissions. The helper never submits a review,
+merges, updates a controller pin, publishes a tag, or changes a policy. Existing
+controller protection remains the merge authority.
+
+After the tooling has merged into `dev` and the setting is enabled, dispatch
+**Controller Repair Proposal** from `dev`. Inspect the returned PR URL and exact
+head. Approve pending workflow runs if GitHub requests it, and verify required
+checks on that head before marking the proposal ready and reviewing it. A separate
+read-only job checks out the returned exact commit, verifies its parent and full
+tree, and runs the activation suite. Local tree-equivalent test evidence does not replace required exact-head CI. A successful
+proposal is not release or Library activation approval.
+
+The fixed proposal branch is never overwritten. If publication fails after branch
+creation, preserve the run and inspect the branch, its parent, tree, and any PR
+before preparing recovery. A rerun or another dispatch cannot silently replace
+that branch. If the controller base advances, review and validate a new proposal.
+Disabling the repository setting prevents future token-created PRs; it does not
+remove a proposal already created. Controller merge and pin adoption remain
+separate governed operations.
+
+This proposal workflow lives only on `dev`, the default dispatch lane. The
+controller and production lanes intentionally do not receive the publisher;
+they receive only the independently reviewed repair and normal release changes.
