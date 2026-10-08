@@ -2,13 +2,16 @@
   "channel": "dev",
   "dayKey": "26.10.7",
   "date": "2026-10-07",
-  "preferredDeck": null,
+  "preferredDeck": "Read-only viewer enforcement for transfer acceptance",
   "editorialGuidance": [
     "Keep the tone concise, professional, and specific.",
     "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
-    "Demote internal cleanup unless it clearly changes the shipped product."
+    "Demote internal cleanup unless it clearly changes the shipped product.",
+    "Preserve every earlier same-day release item. Describe viewer enforcement as an isolated transfer-acceptance capability; ordinary transfer and recovery remain held pending installed acceptance."
   ],
-  "pinnedHighlights": [],
+  "pinnedHighlights": [
+    "Desktop Settings shows the ten newest individual releases with complete notes."
+  ],
   "editorialNotes": [],
-  "updatedAt": "2026-10-07T04:28:07.888Z"
+  "updatedAt": "2026-10-08T01:47:45.952Z"
 }
