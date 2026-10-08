@@ -1,0 +1,97 @@
+{
+  "tag": "v26.10.701-dev",
+  "version": "26.10.701-dev",
+  "channel": "dev",
+  "dayKey": "26.10.7",
+  "approved": true,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-08T01:47:45.949Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.700-dev",
+    "previousPublishedDayTag": "v26.10.601-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "574af6c4d36c0622932404236bd6e238e152fbdf",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.700-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "2721d818f6bd5e6fdd62203bb07e9fc761f4f2cf",
+        "toInclusiveProductCommitSha": "574af6c4d36c0622932404236bd6e238e152fbdf"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:0de395ab3431384f6eebbd2a224d197bcf8903da05e8533e2fa51ff7336fd9d6",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.700-dev",
+      "v26.10.701-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.700-dev",
+      "v26.10.701-dev"
+    ],
+    "prNumbers": [
+      2161,
+      2174,
+      2181,
+      2182
+    ],
+    "commitSubjects": [
+      "fix: preserve iPhone feed scrolling after reader return",
+      "fix: enable owner review of controller repair proposals",
+      "fix: remove pending archives from every reader entry point (#2182)",
+      "fix: recognize reviewed snapshot promotion titles (#2181)",
+      "feat: enforce read-only Desktop viewers after Primary handoff",
+      "chore: fail the build when node_modules drifts from the lockfile",
+      "fix: run transfer e2e in the explicit acceptance mode",
+      "fix: allow disabling automatic development sample data (#2174)",
+      "fix: apply compatible native dependency security updates",
+      "fix: allow bounded annotation transfer fixture retries",
+      "chore: prepare v26.10.700-dev",
+      "feat: add Linux Library credentials and repair release admission",
+      "fix: preserve normal Library startup in transfer previews (#2161)",
+      "fix: show ten individual Desktop releases",
+      "fix: center descriptions in media-free sidebar tiles",
+      "docs: require tracked changelog release closeout"
+    ]
+  },
+  "release": {
+    "deck": "Read-only viewer enforcement for transfer acceptance",
+    "features": [
+      "The isolated transfer-acceptance app can adopt a former Primary as a persistent read-only viewer, with native enforcement that also refuses automatic read and seen edits.",
+      "Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts."
+    ],
+    "fixes": [
+      "Locked or unavailable Linux vaults return an error instead of replacing Library keys.",
+      "Transfer acceptance previews retain normal onboarding and Library selection without automatically creating a sample Library.",
+      "Desktop Settings shows the ten newest individual releases with complete notes.",
+      "Descriptions in sidebar tiles without media are centered.",
+      "Archiving from the reader, header, keyboard or feed hides the pending row immediately. A failed write restores the row and keeps the reader open.",
+      "Automatic development sample data can be disabled.",
+      "Compatible native dependencies include security updates.",
+      "The mobile PWA keeps the feed and inline reader on the document scroller when returning from a post."
+    ],
+    "followUps": [
+      "Primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit.",
+      "Installed acceptance across two independent Desktop installations and a matching PWA remains required before enabling ordinary transfer and recovery or moving an existing personal Library."
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.701-dev\n\nRead-only viewer enforcement for transfer acceptance\n\n### Features\n\n- The isolated transfer-acceptance app can adopt a former Primary as a persistent read-only viewer, with native enforcement that also refuses automatic read and seen edits\n- Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts\n\n### Fixes\n\n- Locked or unavailable Linux vaults return an error instead of replacing Library keys\n- Transfer acceptance previews retain normal onboarding and Library selection without automatically creating a sample Library\n- Desktop Settings shows the ten newest individual releases with complete notes\n- Descriptions in sidebar tiles without media are centered\n- Archiving from the reader, header, keyboard or feed hides the pending row immediately. A failed write restores the row and keeps the reader open\n- Automatic development sample data can be disabled\n- Compatible native dependencies include security updates\n- The mobile PWA keeps the feed and inline reader on the document scroller when returning from a post\n\n### Follow-ups\n\n- Primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit\n- Installed acceptance across two independent Desktop installations and a matching PWA remains required before enabling ordinary transfer and recovery or moving an existing personal Library\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
