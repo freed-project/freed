@@ -5083,94 +5083,98 @@ test("first outcome append securely creates a missing canonical ledger", (t) => 
   assert.equal(summary.entries[0].taskId, taskId);
 });
 
-test("missing outcome ledger creation recovers every durable checkpoint", async (t) => {
-  for (const [index, checkpointName] of [
-    "outcome-ledger-before-publication",
-    "outcome-ledger-appended",
-    "outcome-finalized",
-  ].entries()) {
-    await t.test(checkpointName, () => {
-      const stateRoot = temporaryOutcomeStateRoot(
-        `freed-missing-outcome-recovery-${index}-`,
-      );
-      t.after(() => rmSync(stateRoot, { recursive: true, force: true }));
-      const paths = automationControlPaths(stateRoot);
-      const taskId = `missing-outcome-recovery-${index}`;
-      const nowMs = Date.now();
-      prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
-      const authentication = outcomeAuthentication(
-        stateRoot,
-        "freed-nightly-runner",
-        nowMs + 1_000,
-      );
-      const input = {
-        id: taskId,
-        taskId,
-        kind: "stability",
-        outcome: "merged",
-        notes: `Recover missing ledger at ${checkpointName}.`,
-        evidenceDigest: String(index + 7).repeat(64),
-      };
-      const recordTime = new Date(nowMs + 2_000);
-      let interrupted = false;
-      assert.throws(
-        () =>
-          appendOutcomeLedger(paths.outcomes, input, {
-            ...authentication,
-            now: recordTime,
-            checkpoint: (checkpoint) => {
-              if (checkpoint !== checkpointName || interrupted) return;
-              interrupted = true;
-              throw new Error(`stop at ${checkpointName}`);
-            },
-          }),
-        new RegExp(`stop at ${checkpointName}`),
-      );
-      assert.equal(interrupted, true);
-
-      const recovered = appendOutcomeLedger(paths.outcomes, input, {
-        ...authentication,
-        now: recordTime,
-      });
-      assert.equal(recovered.taskId, taskId);
-      const summary = summarizeOutcomeLedger(paths.outcomes, { stateRoot });
-      assert.equal(summary.sourceHealth.ledgerHealthy, true);
-      assert.equal(
-        summary.entries.filter((entry) => entry.taskId === taskId).length,
-        1,
-      );
-      assert.equal(
-        readFileSync(paths.events, "utf8")
-          .trim()
-          .split("\n")
-          .map(JSON.parse)
-          .filter(
-            (event) =>
-              event.type === "outcome_recorded" && event.taskId === taskId,
-          ).length,
-        1,
-      );
-      assert.equal(readTask({ stateRoot, taskId }).pendingOutcome, undefined);
-      assert.deepEqual(
-        readdirSync(stateRoot).filter((entry) =>
-          entry.startsWith(".outcomes.jsonl.authority."),
-        ),
-        [],
-      );
-      const afterRecovery = {
-        ledger: readFileSync(paths.outcomes),
-        events: readFileSync(paths.events),
-        manifest: readFileSync(paths.taskManifest),
-      };
+function assertMissingOutcomeLedgerRecovery(t, index, checkpointName) {
+  const stateRoot = temporaryOutcomeStateRoot(
+    `freed-missing-outcome-recovery-${index}-`,
+  );
+  t.after(() => rmSync(stateRoot, { recursive: true, force: true }));
+  const paths = automationControlPaths(stateRoot);
+  const taskId = `missing-outcome-recovery-${index}`;
+  const nowMs = Date.now();
+  prepareTaskAtState(stateRoot, taskId, "validated", nowMs);
+  const authentication = outcomeAuthentication(
+    stateRoot,
+    "freed-nightly-runner",
+    nowMs + 1_000,
+  );
+  const input = {
+    id: taskId,
+    taskId,
+    kind: "stability",
+    outcome: "merged",
+    notes: `Recover missing ledger at ${checkpointName}.`,
+    evidenceDigest: String(index + 7).repeat(64),
+  };
+  const recordTime = new Date(nowMs + 2_000);
+  let interrupted = false;
+  assert.throws(
+    () =>
       appendOutcomeLedger(paths.outcomes, input, {
         ...authentication,
         now: recordTime,
-      });
-      assert.deepEqual(readFileSync(paths.outcomes), afterRecovery.ledger);
-      assert.deepEqual(readFileSync(paths.events), afterRecovery.events);
-      assert.deepEqual(readFileSync(paths.taskManifest), afterRecovery.manifest);
-    });
-  }
+        checkpoint: (checkpoint) => {
+          if (checkpoint !== checkpointName || interrupted) return;
+          interrupted = true;
+          throw new Error(`stop at ${checkpointName}`);
+        },
+      }),
+    new RegExp(`stop at ${checkpointName}`),
+  );
+  assert.equal(interrupted, true);
+
+  const recovered = appendOutcomeLedger(paths.outcomes, input, {
+    ...authentication,
+    now: recordTime,
+  });
+  assert.equal(recovered.taskId, taskId);
+  const summary = summarizeOutcomeLedger(paths.outcomes, { stateRoot });
+  assert.equal(summary.sourceHealth.ledgerHealthy, true);
+  assert.equal(
+    summary.entries.filter((entry) => entry.taskId === taskId).length,
+    1,
+  );
+  assert.equal(
+    readFileSync(paths.events, "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse)
+      .filter(
+        (event) =>
+          event.type === "outcome_recorded" && event.taskId === taskId,
+      ).length,
+    1,
+  );
+  assert.equal(readTask({ stateRoot, taskId }).pendingOutcome, undefined);
+  assert.deepEqual(
+    readdirSync(stateRoot).filter((entry) =>
+      entry.startsWith(".outcomes.jsonl.authority."),
+    ),
+    [],
+  );
+  const afterRecovery = {
+    ledger: readFileSync(paths.outcomes),
+    events: readFileSync(paths.events),
+    manifest: readFileSync(paths.taskManifest),
+  };
+  appendOutcomeLedger(paths.outcomes, input, {
+    ...authentication,
+    now: recordTime,
+  });
+  assert.deepEqual(readFileSync(paths.outcomes), afterRecovery.ledger);
+  assert.deepEqual(readFileSync(paths.events), afterRecovery.events);
+  assert.deepEqual(readFileSync(paths.taskManifest), afterRecovery.manifest);
+}
+
+test("missing outcome ledger creation recovers outcome-ledger-before-publication", (t) => {
+  assertMissingOutcomeLedgerRecovery(t, 0, "outcome-ledger-before-publication");
+});
+
+test("missing outcome ledger creation recovers outcome-ledger-appended", (t) => {
+  assertMissingOutcomeLedgerRecovery(t, 1, "outcome-ledger-appended");
+});
+
+test("missing outcome ledger creation recovers outcome-finalized", (t) => {
+  assertMissingOutcomeLedgerRecovery(t, 2, "outcome-finalized");
 });
 
 test("final outcome admission rejects lease receipt drift after initial planning", (t) => {
