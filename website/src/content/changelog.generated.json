@@ -1,5 +1,35 @@
 [
   {
+    "version": "26.10.800-dev",
+    "tagName": "v26.10.800-dev",
+    "channel": "dev",
+    "date": "2026-10-08T11:10:09Z",
+    "deck": "Keep search results tied to the current query.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Replacing or canceling a search forwards cancellation to Freed Desktop and keeps obsolete results from updating the view.",
+        "prNumber": 2191
+      }
+    ],
+    "followUps": [],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.800-dev",
+    "prNumbers": [
+      2191,
+      2193
+    ],
+    "builds": [
+      "26.10.800-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.10.800-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.800-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.10.702-dev",
     "tagName": "v26.10.702-dev",
     "channel": "dev",

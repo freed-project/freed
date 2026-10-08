@@ -42,6 +42,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "sharp": "0.35.4",
     "tailwindcss": "^4.1.18",
+    "tsx": "4.22.4",
     "typescript": "~5.9.3"
   }
 }
