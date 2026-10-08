@@ -594,7 +594,7 @@ jobs:
           spctl --assess --type execute --verbose=2 "$APP_PATH"
           xcrun stapler validate "$APP_PATH"
           BUNDLE_ID=$(/usr/libexec/PlistBuddy -c 'Print:CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")
-          if [ "$BUNDLE_ID" != "wtf.freed.desktop.preview.transfer-acceptance" ]; then
+          if [ "$BUNDLE_ID" != "wtf.freed.desktop.preview.transfer-acceptance-isolated" ]; then
             echo "Unexpected transfer acceptance bundle identifier: $BUNDLE_ID"
             exit 1
           fi
