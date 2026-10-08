@@ -1,0 +1,74 @@
+{
+  "tag": "v26.10.801-dev",
+  "version": "26.10.801-dev",
+  "channel": "dev",
+  "dayKey": "26.10.8",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-08T22:51:53.001Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.800-dev",
+    "previousPublishedDayTag": "v26.10.702-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "1a4d2ab5a4b61751abc40e99619e995b7d3ecb8c",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.800-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "5911c83cd9ef3d5fa6cd28cfe5a520a53782bf8f",
+        "toInclusiveProductCommitSha": "1a4d2ab5a4b61751abc40e99619e995b7d3ecb8c"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:41036f86850fbab60778a9179ec67ea50817000b9e0f74e1fb92cda745bcd419",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.800-dev",
+      "v26.10.801-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.800-dev",
+      "v26.10.801-dev"
+    ],
+    "prNumbers": [],
+    "commitSubjects": [
+      "fix: honor newly hydrated reader image results",
+      "fix: supervise outcome recovery checkpoints independently",
+      "fix: bump next from 15.5.24 to 15.5.27",
+      "chore: prepare v26.10.800-dev",
+      "fix: propagate search query cancellation"
+    ]
+  },
+  "release": {
+    "deck": "Keep search results tied to the current query",
+    "features": [],
+    "fixes": [
+      "Honor newly hydrated reader image results",
+      "Supervise outcome recovery checkpoints independently",
+      "Bump next from 15.5.24 to 15.5.27",
+      "Propagate search query cancellation",
+      "Replacing or canceling a search forwards cancellation to Freed Desktop and keeps obsolete results from updating the view. [#2191](https://github.com/freed-project/freed/pull/2191)"
+    ],
+    "followUps": [
+      "Prepare v26.10.800-dev"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.801-dev\n\nKeep search results tied to the current query\n\n### Fixes\n\n- Honor newly hydrated reader image results\n- Supervise outcome recovery checkpoints independently\n- Bump next from 15.5.24 to 15.5.27\n- Propagate search query cancellation\n- Replacing or canceling a search forwards cancellation to Freed Desktop and keeps obsolete results from updating the view. [#2191](https://github.com/freed-project/freed/pull/2191)\n\n### Follow-ups\n\n- Prepare v26.10.800-dev\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
