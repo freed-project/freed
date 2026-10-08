@@ -10,10 +10,10 @@ name = "freed_desktop_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "=2.6.3", features = [] }
+tauri-build = { version = "=2.7.1", features = [] }
 
 [dependencies]
-ort = { version = "=2.0.0-rc.10", default-features = false, features = ["std", "download-binaries", "copy-dylibs"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["std", "download-binaries", "copy-dylibs"] }
 tokenizers = { version = "=0.21.4", default-features = false, features = ["onig"] }
 freed-library-core = { path = "../../library-core-native" }
 # Decode bounded immutable checkpoint pages during native handoff verification.
@@ -26,7 +26,7 @@ tauri-plugin-store = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-log = "2"
 tauri-plugin-global-shortcut = "=2.3.2"
-tauri-plugin-clipboard-manager = "=2.3.2"
+tauri-plugin-clipboard-manager = "=2.3.3"
 log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -77,7 +77,7 @@ keyring = { version = "3.6.3", default-features = false, features = ["windows-na
 # Use the underlying Secret Service API to forbid interactive unlock prompts.
 # keyring's Linux adapter automatically unlocks matching items. Pin 4.0.3:
 # 4.1.0 replaced OsRng with noncryptographic fastrand for session key exchange.
-dbus-secret-service = { version = "=4.0.3", features = ["crypto-rust", "vendored"] }
+dbus-secret-service = { version = "=4.1.0", features = ["crypto-rust", "vendored"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 plist = "=1.10.1"
@@ -97,7 +97,7 @@ tauri = { version = "=2.11.6", features = ["test"] }
 # app_directories_override field in tauri-utils 2.10.1. Retain the compatible
 # baseline until a coherent upstream test-feature update is verified.
 # Keep Tauri's IPC security fix and the test feature enabled.
-tauri-utils = { version = "=2.9.3", default-features = false }
+tauri-utils = { version = "=2.10.1", default-features = false }
 
 [features]
 default = ["custom-protocol"]
