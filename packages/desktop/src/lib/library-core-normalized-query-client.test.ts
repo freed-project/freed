@@ -5,6 +5,7 @@ import {
   LIBRARY_CORE_FEED_BROWSE_FRIENDS_PREDICATE_SCHEMA_VERSION,
   LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
   normalizeLibraryCoreFeedBrowseFilterV1,
+  searchLibraryCoreNormalizedItemsV1,
   type LibraryCoreFeedBrowsePageRequestV3,
 } from "@freed/shared/library-core";
 
@@ -97,6 +98,38 @@ describe("Freed Desktop normalized query client", () => {
     await rejected;
     started.onmessage("late-ticket");
     expect(mocks.invoke).toHaveBeenCalledTimes(2);
+  });
+
+
+  it("propagates shared search abort before native ticket registration without late delivery", async () => {
+    const controller = new AbortController();
+    const reason = new Error("shared search became obsolete");
+    let complete!: (value: unknown) => void;
+    mocks.invoke.mockImplementation((command) => command === "query_normalized_library"
+      ? new Promise((resolve) => { complete = resolve; }) : Promise.resolve(true));
+    const visit = vi.fn(() => "continue" as const);
+    const outcome = searchLibraryCoreNormalizedItemsV1(
+      { query: queryNormalizedLibrary, randomId: () => "shared-search-test" },
+      { filter: {}, identityMode: "all_content", query: "needle", signal: controller.signal }, visit,
+    ).then(() => undefined, (error) => error);
+    const args = mocks.invoke.mock.calls[0][1];
+    controller.abort(reason);
+    args.started?.onmessage("shared-search-ticket");
+    args.started?.onmessage("shared-search-ticket");
+    complete({
+      nextCursor: null, queryId: "search_page_v1", rows: [], scannedRows: 0,
+      schemaVersion: 1, source: response.source,
+    });
+    const settled = await outcome;
+    args.started?.onmessage("late-ticket");
+    expect(settled).toBe(reason);
+    expect(args.started).toBeDefined();
+    expect(args.request).not.toHaveProperty("signal");
+    expect(mocks.invoke).toHaveBeenCalledTimes(2);
+    expect(mocks.invoke).toHaveBeenLastCalledWith("cancel_normalized_library_query", {
+      ticket: "shared-search-ticket",
+    });
+    expect(visit).not.toHaveBeenCalled();
   });
 
   it("validates the audit receipt without granting publication", async () => {

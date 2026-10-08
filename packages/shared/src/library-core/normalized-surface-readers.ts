@@ -30,7 +30,10 @@ import {
   LIBRARY_CORE_ITEM_DETAIL_SCHEMA_VERSION,
   type LibraryCoreItemBodyLocatorV1,
 } from "./item-detail-contracts.js";
-import type { LibraryCoreNormalizedReaderRuntime } from "./normalized-feed-readers.js";
+import type {
+  LibraryCoreNormalizedQueryExecutor,
+  LibraryCoreNormalizedReaderRuntime,
+} from "./normalized-feed-readers.js";
 import { createLibraryCoreOperationInstanceId } from "./protocol-scalars.js";
 import { applyLibraryCoreVisibleOptimisticFieldsV1 } from "./optimistic-field-contracts.js";
 import {
@@ -749,13 +752,21 @@ export async function searchLibraryCoreNormalizedItemsV1(
     normalizeLibraryCoreFeedBrowseFilterV1(input.filter),
   );
   if (!parsedFilter.ok) throw new TypeError(parsedFilter.error);
-  const readerSessionId = operationId(runtime, "search-reader");
-  let cursor: string | null = null;
-  do {
+  const throwIfAborted = () => {
     if (input.signal?.aborted) {
       throw input.signal.reason ?? new DOMException("Aborted", "AbortError");
     }
-    const response: LibraryCoreSearchPageResponseV1 = await runtime.query({
+  };
+  const query: LibraryCoreNormalizedQueryExecutor = (request) => {
+    throwIfAborted();
+    return input.signal
+      ? runtime.query(request, input.signal)
+      : runtime.query(request);
+  };
+  const readerSessionId = operationId(runtime, "search-reader");
+  let cursor: string | null = null;
+  do {
+    const response: LibraryCoreSearchPageResponseV1 = await query({
       cancellationId: operationId(runtime, "search-page"),
       cursor,
       filter: parsedFilter.value,
@@ -770,25 +781,23 @@ export async function searchLibraryCoreNormalizedItemsV1(
         LIBRARY_CORE_FEED_RECOMMENDATION_ORDER_SCHEMA_VERSION,
       schemaVersion: LIBRARY_CORE_SEARCH_PAGE_SCHEMA_VERSION,
     });
-    if (
-      response.rows.length > 0 &&
-      (await visit(
-        (
-          await applyLibraryCoreVisibleOptimisticFieldsV1(
-            runtime.query,
-            response.rows.map((row) => ({
-              ...libraryCoreFeedCardToItemV1(row.card),
-              priority: row.priority,
-            })),
-            response.source.projectionRevision,
-          )
-        ).map((item, index) => ({
-          item,
-          score: response.rows[index]!.score,
+    throwIfAborted();
+    if (response.rows.length > 0) {
+      const items = await applyLibraryCoreVisibleOptimisticFieldsV1(
+        query,
+        response.rows.map((row) => ({
+          ...libraryCoreFeedCardToItemV1(row.card),
+          priority: row.priority,
         })),
-      )) === "stop"
-    ) {
-      return;
+        response.source.projectionRevision,
+      );
+      throwIfAborted();
+      const decision = await visit(items.map((item, index) => ({
+        item,
+        score: response.rows[index]!.score,
+      })));
+      throwIfAborted();
+      if (decision === "stop") return;
     }
     if (response.nextCursor !== null && response.nextCursor === cursor) {
       throw new Error("SQLite Library search cursor did not advance");

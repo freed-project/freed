@@ -79,6 +79,7 @@ export type LibraryCoreNormalizedQueryExecutor = <
   T extends LibraryCoreSqliteQueryRequest,
 >(
   request: T,
+  signal?: AbortSignal,
 ) => Promise<LibraryCoreSqliteQueryResponseFor<T>>;
 
 export interface LibraryCoreNormalizedFeedPage {
