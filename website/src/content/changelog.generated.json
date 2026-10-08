@@ -1,16 +1,22 @@
 [
   {
-    "version": "26.10.700-dev",
-    "tagName": "v26.10.700-dev",
+    "version": "26.10.702-dev",
+    "tagName": "v26.10.702-dev",
     "channel": "dev",
-    "date": "2026-10-07T08:08:06Z",
-    "deck": "Linux Library keys and transfer preview startup",
+    "date": "2026-10-08T08:02:13Z",
+    "deck": "Independent test credentials",
     "features": [
+      {
+        "text": "The isolated transfer-acceptance app can adopt a former Primary as a persistent read-only viewer, with native enforcement that also refuses automatic read and seen edits."
+      },
       {
         "text": "Linux stores Library signing keys in an existing unlocked Secret Service vault and preserves the same identity across app and vault restarts."
       }
     ],
     "fixes": [
+      {
+        "text": "The transfer-acceptance app uses a new application identity and its own Library credential vault, preserving existing ordinary and preview installations."
+      },
       {
         "text": "Locked or unavailable Linux vaults return an error instead of replacing Library keys."
       },
@@ -22,28 +28,62 @@
       },
       {
         "text": "Descriptions in sidebar tiles without media are centered."
+      },
+      {
+        "text": "Archiving from the reader, header, keyboard or feed hides the pending row immediately. A failed write restores the row and keeps the reader open."
+      },
+      {
+        "text": "Automatic development sample data can be disabled."
+      },
+      {
+        "text": "Compatible native dependencies include security updates."
+      },
+      {
+        "text": "The mobile PWA keeps the feed and inline reader on the document scroller when returning from a post."
       }
     ],
     "followUps": [
       {
         "text": "Primary transfer remains disabled in ordinary builds. Synthetic handoff acceptance uses the separate signed transfer-acceptance app and a PWA built from the same release commit."
+      },
+      {
+        "text": "Installed acceptance across two independent Desktop installations and a matching PWA remains required before enabling ordinary transfer and recovery or moving an existing personal Library."
+      },
+      {
+        "text": "Verify the new acceptance identity on both Macs before enrolling a disposable Library. Packaging isolation does not establish installed transfer acceptance."
       }
     ],
-    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.700-dev",
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.702-dev",
     "prNumbers": [
       2156,
       2158,
       2159,
       2161,
-      2163
+      2163,
+      2174,
+      2181,
+      2182,
+      2189
     ],
     "builds": [
-      "26.10.700-dev"
+      "26.10.700-dev",
+      "26.10.701-dev",
+      "26.10.702-dev"
     ],
     "buildLinks": [
       {
         "version": "26.10.700-dev",
         "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.700-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.701-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.701-dev",
+        "channel": "dev"
+      },
+      {
+        "version": "26.10.702-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.10.702-dev",
         "channel": "dev"
       }
     ]
