@@ -1901,3 +1901,14 @@ not hide the row, and read-only viewers refuse the action before mutation.
 This temporary UI state is not a durable edit receipt. Browser coverage holds
 persistence pending and then resolves or rejects it; it does not certify
 physical-device latency or installed multi-device acceptance.
+
+
+### Acceptance credential isolation
+
+The fresh transfer-acceptance bundle has its own application data root and Library
+Keychain service. Existing ordinary, preview and legacy acceptance identities
+retain their original service mappings. Two Macs can therefore use their existing
+macOS accounts for disposable-Library acceptance after installed identity and
+isolation checks. No credentials or databases are copied into the new identity.
+Installed convergence, viewer enforcement and authority handoff remain separate
+acceptance gates; ordinary transfer and recovery holds remain unchanged.

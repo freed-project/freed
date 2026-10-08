@@ -469,7 +469,8 @@ test("dev transfer acceptance stays isolated and outside the updater", () => {
   assert.match(acceptance, /Print:CFBundleIdentifier[\s\S]*wtf\.freed\.desktop\.preview\.transfer-acceptance/);
   const config = JSON.parse(readFileSync(path.join(scriptsDir, "..",
     "packages/desktop/src-tauri/tauri.transfer-acceptance.conf.json"), "utf8"));
-  assert.equal(config.identifier, "wtf.freed.desktop.preview.transfer-acceptance");
+  assert.equal(config.identifier, "wtf.freed.desktop.preview.transfer-acceptance-isolated");
+  assert.ok(acceptance.includes(`if [ "$BUNDLE_ID" != "${config.identifier}" ]; then`));
   assert.equal(config.build.beforeBuildCommand, "npm run build:transfer-acceptance");
   assert.equal(config.bundle.createUpdaterArtifacts, false);
   assert.deepEqual(config.plugins.updater.endpoints, []);

@@ -53,7 +53,7 @@ export FREED_BUILD_COMMIT_REF="$(git branch --show-current)"
 From `packages/desktop`, run
 `npm run tauri:build:transfer-acceptance -- --bundles app` on macOS. The named
 configuration enables the frontend acceptance mode and native transfer feature,
-uses application identifier `wtf.freed.desktop.preview.transfer-acceptance`,
+uses application identifier `wtf.freed.desktop.preview.transfer-acceptance-isolated`,
 disables updater endpoints and omits updater artifacts. The native feature also
 requires the isolated preview data root. This local app is not a signed dev
 release or evidence that the ordinary release has enabled transfer.
@@ -64,8 +64,14 @@ browser profile. Do not deploy this build to the production PWA origin. Record
 both source identities and the acceptance commands with the artifact digests.
 A frontend acceptance mode alone cannot enable the native lifecycle.
 
-Use separate macOS user accounts or separate Macs even for the isolated app:
-preview builds share a preview keyring service within one user. Create and join
+Use two separate Macs or two separate macOS user accounts. The current
+acceptance configuration uses bundle identifier
+`wtf.freed.desktop.preview.transfer-acceptance-isolated` and a dedicated Library
+Keychain service, so each Mac may use its existing user account. Verify the
+installed identifier before enrollment. Older acceptance bundles with identifier
+`wtf.freed.desktop.preview.transfer-acceptance` share the legacy preview vault;
+do not use them for fresh acceptance alongside existing previews. Preserve their
+data and keys rather than migrating or clearing them. Create and join
 a synthetic test Library first. Do not copy an existing installation's private
 keys, database or provider sessions into these test identities. Transferring the
 owner's actual Library remains a later, separately evidenced operation. After

@@ -48,8 +48,13 @@ fn preview_keyring_service(config: Option<&str>) -> Result<String, String> {
     {
         return Err("invalid isolated Library Core identifier".to_string());
     }
-    // Preserve every existing preview service. Only new measurement candidates
-    // receive a distinct service; legacy account reads remain inside that service.
+    // Never retarget an existing preview: that would orphan its private keys.
+    // The fresh acceptance bundle has a fresh data root and must also keep all
+    // subject and legacy account reads inside its own vault namespace.
+    if identifier == "wtf.freed.desktop.preview.transfer-acceptance-isolated" {
+        return Ok(format!("{KEYRING_SERVICE}.{identifier}"));
+    }
+    // Measurement candidates retain their existing distinct services.
     if let Some(suffix) = identifier.strip_prefix("wtf.freed.desktop.preview.measurement.") {
         if suffix.is_empty() {
             return Err("missing measurement identity".to_string());
@@ -82,6 +87,25 @@ mod measurement_namespace_tests {
         let b = service("wtf.freed.desktop.preview.measurement.r1.a2").unwrap();
         assert_ne!(a, b);
         assert_ne!(a, KEYRING_SERVICE);
+    }
+    #[test]
+    fn acceptance_vault_is_separate_from_legacy_previews_and_measurements() {
+        let acceptance =
+            preview_keyring_service(Some(include_str!("../tauri.transfer-acceptance.conf.json")))
+                .unwrap();
+        assert_eq!(
+            acceptance,
+            format!("{KEYRING_SERVICE}.wtf.freed.desktop.preview.transfer-acceptance-isolated")
+        );
+        assert_ne!(
+            acceptance,
+            service("wtf.freed.desktop.preview.transfer-acceptance").unwrap()
+        );
+        assert_ne!(
+            acceptance,
+            service("wtf.freed.desktop.preview.measurement.r1.a1").unwrap()
+        );
+        assert_ne!(acceptance, "wtf.freed.library-core");
     }
     #[test]
     fn invalid_configuration_fails_before_vault_access() {

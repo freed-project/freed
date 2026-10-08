@@ -1,6 +1,6 @@
 {
   "productName": "Freed Transfer Acceptance",
-  "identifier": "wtf.freed.desktop.preview.transfer-acceptance",
+  "identifier": "wtf.freed.desktop.preview.transfer-acceptance-isolated",
   "build": {
     "beforeBuildCommand": "npm run build:transfer-acceptance"
   },
