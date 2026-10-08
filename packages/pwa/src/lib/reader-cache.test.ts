@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { FeedItem } from "@freed/shared";
-import { pinReaderItemInPwa } from "./reader-cache";
+import { hydrateReaderItemInPwa, pinReaderItemInPwa } from "./reader-cache";
 
 const mocks = vi.hoisted(() => ({
   pinLibraryContent: vi.fn(async () => undefined),
@@ -69,6 +69,25 @@ describe("PWA reader cache", () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     window.localStorage.clear();
+  });
+
+  // Tier 1: actual non-story producer contract, with no cache or network work.
+  it("returns the request item's media without HTML for an unpinned post without a linked URL", async () => {
+    const { open } = installPinnedCacheStorage();
+    const fetchMock = vi.fn(async () => { throw new Error("Unpinned media must not fetch"); });
+    vi.stubGlobal("fetch", fetchMock);
+    const item = makePost({ userState: { hidden: false, saved: false, archived: false, tags: [] } });
+
+    const result = await hydrateReaderItemInPwa(item, { cacheMode: "saved_only", pin: false });
+
+    expect(item.contentType).toBe("post");
+    expect(item.content.linkPreview).toBeUndefined();
+    expect(result).toEqual({ html: undefined, mediaUrls: item.content.mediaUrls, mediaTypes: item.content.mediaTypes, status: "partial" });
+    expect(result.mediaUrls).toBe(item.content.mediaUrls);
+    expect(result.mediaTypes).toBe(item.content.mediaTypes);
+    expect(open).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.pinLibraryContent).not.toHaveBeenCalled();
   });
 
   it("pins saved social posts into the permanent cache without a network URL", async () => {
