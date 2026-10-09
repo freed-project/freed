@@ -1321,7 +1321,7 @@ test.describe("FREED PWA", () => {
     expect(mapAvatarUrl ?? "").toBe(friendAvatarUrl ?? "");
   });
 
-  test("friends workspace shows overview filters and detail back navigation", async ({ page }) => {
+  test("friends workspace searches the directory and preserves detail back navigation", async ({ page }) => {
     await page.goto("/");
     await acceptLegalGate(page);
     await seedFriendsWorkspace(page);
@@ -1329,19 +1329,27 @@ test.describe("FREED PWA", () => {
     await expect(page.getByTestId("friends-sidebar")).toBeVisible();
     await expect(page.getByPlaceholder("Search friends")).toBeVisible();
     await expect(page.getByRole("button", { name: "Fit all" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Need outreach" })).toBeVisible();
+    const directory = page.getByTestId("friends-sidebar");
+    await expect(directory.getByText("Showing 3 of 3")).toBeVisible();
+    await expect(directory.getByRole("combobox")).toBeVisible();
+    // Outreach controls are withheld until the complete contact workflow ships.
+    await expect(page.getByRole("button", { name: "Need outreach" })).toHaveCount(0);
+    await directory.getByPlaceholder("Search friends").fill("Ada");
+    await expect(directory.getByText("Showing 1 of 1")).toBeVisible();
+    await expect(directory.getByRole("button", { name: /Ada Lovelace/ })).toBeVisible();
+    await expect(directory.getByRole("button", { name: /Maya Chen/ })).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Need outreach" }).click();
-    await expect(page.getByRole("button", { name: /Ada Lovelace/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Maya Chen/ })).toHaveCount(0);
-
-    await page.getByRole("button", { name: /Ada Lovelace/ }).click();
+    // Click the name, avoiding the relationship slider inside the card.
+    await directory.getByText("Ada Lovelace", { exact: true }).click();
     await expect(page.getByRole("button", { name: "Back to all friends" })).toBeVisible();
     await expect(page.locator("main").getByText("Last seen")).toBeVisible();
 
     await page.getByRole("button", { name: "Back to all friends" }).click();
     await expect(page.getByPlaceholder("Search friends")).toBeVisible();
     await expect(page.locator("main").getByText("Last seen")).toHaveCount(0);
+    await directory.getByPlaceholder("Search friends").fill("");
+    await expect(directory.getByText("Showing 3 of 3")).toBeVisible();
+    await expect(directory.getByRole("button", { name: /Maya Chen/ })).toBeVisible();
   });
 
   test("friends sidebar width persists across view switches", async ({ page }) => {
@@ -1529,7 +1537,10 @@ test.describe("FREED PWA", () => {
       ? await livePopup.boundingBox()
       : await fallbackPopup.boundingBox();
     expect(popupBox).not.toBeNull();
-    expect(Math.round(popupBox!.width)).toBeGreaterThanOrEqual(420);
+    // The shared popup contract caps desktop cards at 360px.
+    expect(Math.round(popupBox!.width)).toBe(360);
+    expect(popupBox!.x).toBeGreaterThanOrEqual(0);
+    expect(popupBox!.x + popupBox!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
     if (useLivePopup) {
       await expect(page.locator(".maplibregl-popup-tip")).toBeHidden();
     }
@@ -1629,10 +1640,11 @@ test.describe("FREED PWA", () => {
     expect(geometry.sidebarZIndex).toBeGreaterThan(50);
     expect(geometry.sidebarWidth).toBe(geometry.viewportWidth);
     expect(geometry.sidebarBoxShadow).toBe("none");
-    expect(geometry.searchEdgeGap).toBe(geometry.menuEdgeGap);
+    // Sidebar controls share their own 8px inset, independent of the toolbar.
+    expect(geometry.searchEdgeGap).toBe(8);
     expect(Math.abs(geometry.searchHeight - geometry.sourceButtonHeight)).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.sourceEdgeGap - geometry.menuEdgeGap)).toBeLessThanOrEqual(1);
-    expect(Math.abs(geometry.settingsEdgeGap - geometry.menuEdgeGap)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.sourceEdgeGap - geometry.searchEdgeGap)).toBeLessThanOrEqual(1);
+    expect(Math.abs(geometry.settingsEdgeGap - geometry.searchEdgeGap)).toBeLessThanOrEqual(1);
     expect(geometry.searchTop - geometry.sidebarTop).toBeGreaterThanOrEqual(8);
     expect(geometry.searchToFirstRowGap).toBeGreaterThanOrEqual(16);
     expect(geometry.footerBottomGap).toBeLessThanOrEqual(1);
@@ -1709,23 +1721,31 @@ test.describe("FREED PWA", () => {
     });
     const sectionMetrics = await scrollContainer.evaluate((container) => {
       const updates = container.querySelector('[data-section="updates"]') as HTMLElement | null;
+      const newsletter = container.querySelector('[data-section="newsletter"]') as HTMLElement | null;
       const legal = container.querySelector('[data-section="legal"]') as HTMLElement | null;
-      if (!updates || !legal) {
+      if (!updates || !newsletter || !legal) {
         throw new Error("Expected mobile settings sections were not found");
       }
       const containerRect = container.getBoundingClientRect();
       const updatesRect = updates.getBoundingClientRect();
+      const newsletterRect = newsletter.getBoundingClientRect();
       const legalRect = legal.getBoundingClientRect();
       return {
         updatesVisible: updatesRect.bottom > containerRect.top && updatesRect.top < containerRect.bottom,
         legalVisible: legalRect.bottom > containerRect.top && legalRect.top < containerRect.bottom,
-        sectionGap: Math.round(legalRect.top - updatesRect.bottom),
+        // Newsletter is between Updates and Legal; measure adjacent sections.
+        sectionGaps: [
+          Math.round(newsletterRect.top - updatesRect.bottom),
+          Math.round(legalRect.top - newsletterRect.bottom),
+        ],
       };
     });
     expect(sectionMetrics.updatesVisible).toBe(true);
     expect(sectionMetrics.legalVisible).toBe(true);
-    expect(sectionMetrics.sectionGap).toBeGreaterThanOrEqual(24);
-    expect(sectionMetrics.sectionGap).toBeLessThanOrEqual(64);
+    for (const gap of sectionMetrics.sectionGaps) {
+      expect(gap).toBeGreaterThanOrEqual(24);
+      expect(gap).toBeLessThanOrEqual(64);
+    }
 
     await page.getByLabel("Back to settings").click();
     await expect(page.getByRole("heading", { name: "Freed Settings" })).toBeVisible();
