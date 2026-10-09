@@ -457,3 +457,108 @@ test("day helpers ignore the dev suffix", () => {
   assert.equal(versionDayKey("26.4.1207-dev"), "26.4.12");
   assert.equal(dayDateFromVersion("26.4.1207-dev"), "2026-04-12");
 });
+
+// Generator contracts run offline at the entry collection boundary, before writes.
+// Importing the CLI must not start release preparation.
+const { collectReleaseEntries } = await import("./prepare-release-notes.mjs");
+const provenanceSha = "2721d818f6bd5e6fdd62203bb07e9fc761f4f2cf";
+function mergedProvenancePull(overrides = {}) {
+  return {
+    number: 2163,
+    html_url: "https://github.com/freed-project/freed/pull/2163",
+    merge_commit_sha: provenanceSha,
+    merged_at: "2026-10-07T01:00:00Z",
+    base: { ref: "dev", repo: { full_name: "freed-project/freed" } },
+    title: "feat: repair release admission",
+    body: "## What changed\n\n- Release admission uses the exact source.",
+    ...overrides,
+  };
+}
+function collectProvenance(associations, options = {}) {
+  return collectReleaseEntries(
+    [{ sha: provenanceSha, subject: "feat: repair release admission (#9999)" }],
+    { channel: "dev", headers: {}, requestJson: async () => associations, ...options },
+  );
+}
+
+test("release provenance resolves a merged squash without a subject suffix", async () => {
+  const calls = [];
+  const result = await collectReleaseEntries(
+    [{ sha: provenanceSha, subject: "feat: add Linux Library credentials and repair release admission" }],
+    { channel: "dev", headers: {}, requestJson: async (url) => {
+      calls.push(url);
+      return [mergedProvenancePull()];
+    } },
+  );
+  assert.deepEqual(calls, [`https://api.github.com/repos/freed-project/freed/commits/${provenanceSha}/pulls?per_page=100&page=1`]);
+  assert.deepEqual(result.prNumbers, [2163]);
+  assert.equal(result.entries[0].prNumber, 2163);
+  assert.equal(result.entries[0].title, "Repair release admission");
+  assert.deepEqual(result.entries[0].details, ["Release admission uses the exact source"]);
+});
+
+test("release provenance ignores suffix guesses and mismatched commit, repository or lane", async (t) => {
+  for (const [name, overrides] of [
+    ["commit", { merge_commit_sha: "a".repeat(40) }],
+    ["repository", { base: { ref: "dev", repo: { full_name: "other/freed" } } }],
+    ["lane", { base: { ref: "www", repo: { full_name: "freed-project/freed" } } }],
+    ["production lane in dev", { base: { ref: "main", repo: { full_name: "freed-project/freed" } } }],
+    ["unmerged", { merged_at: null }],
+    ["missing", null],
+  ]) {
+    await t.test(name, async () => {
+      const result = await collectProvenance(overrides === null ? [] : [mergedProvenancePull(overrides)]);
+      assert.deepEqual(result.prNumbers, []);
+      assert.equal(result.entries[0].prNumber, null);
+      assert.deepEqual(result.entries[0].details, []);
+    });
+  }
+  const verified = await collectProvenance([mergedProvenancePull()]);
+  assert.deepEqual(verified.prNumbers, [2163]);
+});
+
+test("release provenance stops on unavailable, malformed or ambiguous authoritative lookup", async () => {
+  const cause = new Error("transport unavailable");
+  await assert.rejects(collectProvenance([], { requestJson: async () => { throw cause; } }),
+    (error) => /lookup unavailable/.test(error.message) && error.cause === cause);
+  await assert.rejects(collectProvenance({ message: "rate limited" }), /Invalid PR association response/);
+  await assert.rejects(collectProvenance([mergedProvenancePull({ html_url: "https://github.com/other/freed/pull/2163" })]), /Invalid merged PR identity/);
+  await assert.rejects(collectProvenance([
+    mergedProvenancePull(),
+    mergedProvenancePull({ number: 2164, html_url: "https://github.com/freed-project/freed/pull/2164" }),
+  ]), /Ambiguous merged PR association/);
+});
+
+test("release provenance paginates, deduplicates immutable lookups and bounds total requests", async () => {
+  let requests = 0;
+  const unrelated = mergedProvenancePull({ merge_commit_sha: "a".repeat(40) });
+  const result = await collectReleaseEntries([
+    { sha: provenanceSha, subject: "feat: repair admission" },
+    { sha: provenanceSha, subject: "feat: repair admission" },
+    { sha: "b".repeat(40), subject: "docs: release instructions (#9999)" },
+  ], { channel: "dev", headers: {}, requestJson: async (url) => {
+    requests += 1;
+    assert.ok(url.endsWith(`page=${requests}`));
+    return requests === 1 ? Array(100).fill(unrelated) : [mergedProvenancePull()];
+  } });
+  assert.equal(requests, 2);
+  assert.deepEqual(result.prNumbers, [2163]);
+  requests = 0;
+  await assert.rejects(collectProvenance([], { requestJson: async () => {
+    requests += 1;
+    return Array(100).fill(unrelated);
+  } }), /lookup budget exceeded/);
+  assert.equal(requests, 500);
+});
+
+test("production provenance accepts exact dev and main merges but excludes website merges", async () => {
+  for (const lane of ["dev", "main", "www"]) {
+    const result = await collectProvenance([mergedProvenancePull({
+      base: { ref: lane, repo: { full_name: "freed-project/freed" } },
+    })], { channel: "production" });
+    assert.deepEqual(result.prNumbers, lane === "www" ? [] : [2163]);
+  }
+  await assert.rejects(collectReleaseEntries([{ sha: "short", subject: "feat: change" }], {
+    channel: "dev", headers: {}, requestJson: async () => { assert.fail("invalid SHA must not reach transport"); },
+  }), /full immutable commit SHAs/);
+});

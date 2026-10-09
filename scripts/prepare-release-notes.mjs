@@ -205,7 +205,7 @@ async function fetchJson(url, headers) {
     if (!response.ok) {
       throw new Error(`Request failed: ${response.status} ${url}`);
     }
-    return response.json();
+    return await response.json();
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error(
@@ -645,14 +645,6 @@ async function listPublishedReleases(channel) {
     .sort(compareReleases);
 }
 
-async function fetchPull(prNumber) {
-  const headers = githubHeaders();
-  return fetchJson(
-    `${GITHUB_API}/repos/freed-project/freed/pulls/${prNumber}`,
-    headers,
-  );
-}
-
 function parseArguments(argv) {
   const force = argv.includes("--force");
   const historicalPublishedTag = argv.includes("--historical-published-tag");
@@ -876,6 +868,131 @@ function collectIntermediaryDevReleases(
   });
 }
 
+// Subjects are editorial input only. Provenance requires the actual merge commit.
+// Cap total sequential requests, including pagination, independently of editorial detail limits.
+const MAX_PR_ASSOCIATION_REQUESTS = 500;
+const PR_ASSOCIATION_PAGE_SIZE = 100;
+
+export async function collectReleaseEntries(
+  commits,
+  { channel, requestJson = fetchJson, headers } = {},
+) {
+  if (channel !== "dev" && channel !== "production") {
+    throw new Error("PR provenance requires a dev or production release channel.");
+  }
+  const eligibleCommits = commits.filter(({ subject }) =>
+    !/^(release:|docs:|test:|build:|ci:|Merge )/.test(normalizeSubject(subject)),
+  );
+  const pulls = new Map();
+  const seen = new Set();
+  let requests = 0;
+  const requestHeaders = headers ?? (eligibleCommits.length ? githubHeaders() : {});
+  for (const { sha } of eligibleCommits) {
+    if (!/^[0-9a-f]{40}$/.test(sha)) {
+      throw new Error("PR provenance requires full immutable commit SHAs.");
+    }
+    if (seen.has(sha)) continue;
+    seen.add(sha);
+    const matches = new Map();
+    for (let page = 1; ; page += 1) {
+      if (++requests > MAX_PR_ASSOCIATION_REQUESTS) {
+        throw new Error("PR association lookup budget exceeded; release notes were not generated.");
+      }
+      let associations;
+      try {
+        associations = await requestJson(
+          `${GITHUB_API}/repos/freed-project/freed/commits/${sha}/pulls?per_page=${PR_ASSOCIATION_PAGE_SIZE}&page=${page}`,
+          requestHeaders,
+        );
+      } catch (cause) {
+        throw new Error(`Authoritative PR association lookup unavailable for ${sha}; release notes were not generated.`, { cause });
+      }
+      if (!Array.isArray(associations) || associations.length > PR_ASSOCIATION_PAGE_SIZE) {
+        throw new Error(`Invalid PR association response for ${sha}.`);
+      }
+      for (const pull of associations) {
+        if (
+          pull?.merge_commit_sha !== sha ||
+          !pull.merged_at || !Number.isFinite(Date.parse(pull.merged_at)) ||
+          pull.base?.repo?.full_name !== "freed-project/freed" ||
+          !(pull.base.ref === "dev" || (channel === "production" && pull.base.ref === "main"))
+        ) continue;
+        if (
+          !Number.isSafeInteger(pull.number) || pull.number <= 0 ||
+          pull.html_url !== `https://github.com/freed-project/freed/pull/${pull.number}`
+        ) {
+          throw new Error(`Invalid merged PR identity for ${sha}.`);
+        }
+        matches.set(pull.number, pull);
+      }
+      if (associations.length < PR_ASSOCIATION_PAGE_SIZE) break;
+    }
+    if (matches.size > 1) {
+      throw new Error(`Ambiguous merged PR association for ${sha}.`);
+    }
+    if (matches.size === 1) pulls.set(sha, matches.values().next().value);
+  }
+  const entries = [];
+  const prNumbers = new Set();
+  const prDetailCount = pulls.size;
+  const shouldFetchPrDetails = prDetailCount <= MAX_PR_DETAILS;
+
+  if (!shouldFetchPrDetails) {
+    console.warn(
+      `[prepare-release-notes] Skipping PR body details for ${prDetailCount.toLocaleString()} PRs. Set RELEASE_NOTES_MAX_PR_DETAILS to raise the cap.`,
+    );
+  }
+
+  for (const { sha, subject } of eligibleCommits) {
+    const pull = pulls.get(sha);
+    const prNumber = pull?.number;
+    const fallback = stripPrefix(subject);
+    const kind = releaseEntryKind(subject);
+
+    let title = fallback;
+    let details = [];
+
+    if (prNumber && shouldFetchPrDetails) {
+      prNumbers.add(prNumber);
+      try {
+        title = stripPrefix(pull.title || fallback);
+        const preferredSections = [
+          new Set(["## what changed"]),
+          new Set(["## summary"]),
+          new Set(["## impact"]),
+        ];
+
+        for (const headings of preferredSections) {
+          details = parseDetails(extractSection(pull.body || "", headings));
+          if (details.length > 0) {
+            break;
+          }
+        }
+
+        if (details.length === 0) {
+          details = parseDetails(
+            normalizeBodyText(pull.body || "").split("\n"),
+          );
+        }
+      } catch {
+        details = [];
+      }
+    } else if (prNumber) {
+      prNumbers.add(prNumber);
+    }
+
+    entries.push({
+      kind,
+      prNumber: prNumber ?? null,
+      subject,
+      title,
+      fallback,
+      details,
+    });
+  }
+  return { entries, prNumbers: [...prNumbers].sort((a, b) => a - b) };
+}
+
 async function collectReleaseContext(
   tag,
   version,
@@ -1059,77 +1176,15 @@ async function collectReleaseContext(
     ? previousPublishedDay?.tag_name
     : previousPublished?.tag_name;
   const range = rangeStart ? `${rangeStart}..${compareRef}` : compareRef;
-  const subjects = git(["log", range, "--format=%s"])
+  const commits = git(["log", range, "--format=%H%x09%s"])
     .split("\n")
-    .map((subject) => subject.trim())
-    .filter(Boolean);
-
-  const entries = [];
-  const prNumbers = new Set();
-  const prDetailCount = subjects.filter((subject) =>
-    /\(#(\d+)\)$/.test(subject),
-  ).length;
-  const shouldFetchPrDetails = prDetailCount <= MAX_PR_DETAILS;
-
-  if (!shouldFetchPrDetails) {
-    console.warn(
-      `[prepare-release-notes] Skipping PR body fetches for ${prDetailCount.toLocaleString()} PRs. Set RELEASE_NOTES_MAX_PR_DETAILS to raise the cap.`,
-    );
-  }
-
-  for (const subject of subjects) {
-    const normalizedSubject = normalizeSubject(subject);
-    if (/^(release:|docs:|test:|build:|ci:|Merge )/.test(normalizedSubject)) {
-      continue;
-    }
-
-    const prMatch = subject.match(/\(#(\d+)\)$/);
-    const prNumber = prMatch ? Number(prMatch[1]) : undefined;
-    const fallback = stripPrefix(subject);
-    const kind = releaseEntryKind(subject);
-
-    let title = fallback;
-    let details = [];
-
-    if (prNumber && shouldFetchPrDetails) {
-      prNumbers.add(prNumber);
-      try {
-        const pull = await fetchPull(prNumber);
-        title = stripPrefix(pull.title || fallback);
-        const preferredSections = [
-          new Set(["## what changed"]),
-          new Set(["## summary"]),
-          new Set(["## impact"]),
-        ];
-
-        for (const headings of preferredSections) {
-          details = parseDetails(extractSection(pull.body || "", headings));
-          if (details.length > 0) {
-            break;
-          }
-        }
-
-        if (details.length === 0) {
-          details = parseDetails(
-            normalizeBodyText(pull.body || "").split("\n"),
-          );
-        }
-      } catch {
-        details = [];
-      }
-    } else if (prNumber) {
-      prNumbers.add(prNumber);
-    }
-
-    entries.push({
-      kind,
-      prNumber: prNumber ?? null,
-      subject,
-      title,
-      fallback,
-      details,
+    .filter(Boolean)
+    .map((line) => {
+      const separator = line.indexOf("\t");
+      return { sha: line.slice(0, separator), subject: line.slice(separator + 1) };
     });
-  }
+  const subjects = commits.map(({ subject }) => subject);
+  const { entries, prNumbers } = await collectReleaseEntries(commits, { channel });
 
   return {
     tag,
@@ -1154,7 +1209,7 @@ async function collectReleaseContext(
       : [tag],
     publishedReleases,
     commitSubjects: subjects,
-    prNumbers: [...prNumbers].sort((a, b) => a - b),
+    prNumbers,
     entries,
   };
 }
@@ -1561,14 +1616,16 @@ async function main() {
   console.log(`- ${path.relative(REPO_ROOT, dailyPath(dayKey, channel))}`);
 }
 
-main()
-  .then(() => {
-    // Node's fetch implementation can leave connection handles open long enough
-    // to wedge release.sh after all files have already been written.
-    process.exit(0);
-  })
-  .catch((error) => {
-    console.error("[prepare-release-notes] Failed.");
-    console.error(error);
-    process.exit(1);
-  });
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main()
+    .then(() => {
+      // Node's fetch implementation can leave connection handles open long enough
+      // to wedge release.sh after all files have already been written.
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error("[prepare-release-notes] Failed.");
+      console.error(error);
+      process.exit(1);
+    });
+}
