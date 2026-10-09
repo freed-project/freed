@@ -3,8 +3,10 @@
   "version": "26.10.900-dev",
   "channel": "dev",
   "dayKey": "26.10.9",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Reviewed against exact merged PR2201 and source c6a4d498. Describe the fixture repair without claiming new runtime behavior. Previous external Dev801 remains the release boundary; no duplicate publication."
+  ],
   "generatedAt": "2026-10-09T05:41:06.556Z",
   "model": "heuristic",
   "source": {
@@ -51,10 +53,14 @@
     ]
   },
   "release": {
-    "deck": "Respect bounded annotation upgrade in transfer-hold fixtures",
+    "deck": "Wait for annotation progress in regression setup",
     "features": [],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Transfer-hold coverage retains all three original safety assertions while allowing up to sixteen setup attempts. [#2201](https://github.com/freed-project/freed/pull/2201)"
+    ],
+    "followUps": [
+      "The source change is test-only. Runtime timing, Library storage authority and provider behavior are unchanged."
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.900-dev\n\nRespect bounded annotation upgrade in transfer-hold fixtures\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.900-dev\n\nWait for annotation progress in regression setup\n\n### Fixes\n\n- Transfer-hold coverage retains all three original safety assertions while allowing up to sixteen setup attempts. [#2201](https://github.com/freed-project/freed/pull/2201)\n\n### Follow-ups\n\n- The source change is test-only. Runtime timing, Library storage authority and provider behavior are unchanged\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
