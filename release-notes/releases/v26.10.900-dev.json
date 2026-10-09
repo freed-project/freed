@@ -3,8 +3,10 @@
   "version": "26.10.900-dev",
   "channel": "dev",
   "dayKey": "26.10.9",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Test setup and release provenance only; no runtime behavior or Library Core activation change."
+  ],
   "generatedAt": "2026-10-09T19:43:56.256Z",
   "model": "heuristic",
   "source": {
@@ -55,10 +57,19 @@
     ]
   },
   "release": {
-    "deck": "Verify release PR provenance by commit identity and respect bounded annotation upgrade in transfer-hold fixtures",
+    "deck": "More reliable annotation regression tests and release provenance",
     "features": [],
-    "fixes": [],
+    "fixes": [
+      {
+        "text": "Annotation transfer-hold tests wait within the existing bounded setup convention while preserving all three hold assertions.",
+        "pr": 2201
+      },
+      {
+        "text": "Release notes resolve pull requests from authoritative merged-commit associations and reject missing or mismatched provenance.",
+        "pr": 2202
+      }
+    ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.900-dev\n\nVerify release PR provenance by commit identity and respect bounded annotation upgrade in transfer-hold fixtures\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.900-dev\n\nMore reliable annotation regression tests and release provenance\n\n### Fixes\n\n- [object Object]\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
