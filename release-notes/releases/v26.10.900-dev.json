@@ -1,0 +1,64 @@
+{
+  "tag": "v26.10.900-dev",
+  "version": "26.10.900-dev",
+  "channel": "dev",
+  "dayKey": "26.10.9",
+  "approved": false,
+  "editorialNotes": [],
+  "generatedAt": "2026-10-09T19:43:56.256Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.801-dev",
+    "previousPublishedDayTag": "v26.10.801-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "d7494682581ccc6ae2291cc4e486e9204cf11f90",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.801-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "1a4d2ab5a4b61751abc40e99619e995b7d3ecb8c",
+        "toInclusiveProductCommitSha": "d7494682581ccc6ae2291cc4e486e9204cf11f90"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:5fe7b9e1540eebab609019a5dfff8d622ac79bfc4052a89039ae450df81371fd",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.900-dev"
+    ],
+    "prNumbers": [
+      2201,
+      2202
+    ],
+    "commitSubjects": [
+      "fix: resolve release PR provenance from merged commits",
+      "fix: respect bounded annotation upgrade in transfer-hold fixtures"
+    ]
+  },
+  "release": {
+    "deck": "Verify release PR provenance by commit identity and respect bounded annotation upgrade in transfer-hold fixtures",
+    "features": [],
+    "fixes": [],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.900-dev\n\nVerify release PR provenance by commit identity and respect bounded annotation upgrade in transfer-hold fixtures\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
