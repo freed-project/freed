@@ -5,11 +5,25 @@ import {
   fetchComparePrNumbers,
   assertReleaseCoverage,
   generateChangelog,
+  toReleaseItems,
 } from "./generate-changelog";
 import {
   normalizeGitHubReleases,
   groupReleasesByDay,
 } from "../src/content/changelog";
+
+test("curated artifact PR references retain their link identity without raw Markdown", () => {
+  assert.deepEqual(
+    toReleaseItems([
+      "Keeps obsolete search results from updating the view. [#2191](https://github.com/freed-project/freed/pull/2191)",
+      { text: "A separately approved plain-language item." },
+    ]),
+    [
+      { text: "Keeps obsolete search results from updating the view.", prNumber: 2191 },
+      { text: "A separately approved plain-language item." },
+    ],
+  );
+});
 
 test("loads approved PR provenance from the published tag without a local artifact", async (t) => {
   const artifact = {
