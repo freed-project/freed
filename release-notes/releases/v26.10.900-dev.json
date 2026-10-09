@@ -60,16 +60,10 @@
     "deck": "More reliable annotation regression tests and release provenance",
     "features": [],
     "fixes": [
-      {
-        "text": "Annotation transfer-hold tests wait within the existing bounded setup convention while preserving all three hold assertions.",
-        "pr": 2201
-      },
-      {
-        "text": "Release notes resolve pull requests from authoritative merged-commit associations and reject missing or mismatched provenance.",
-        "pr": 2202
-      }
+      "Annotation transfer-hold tests wait within the existing bounded setup convention while preserving all three hold assertions. [#2201](https://github.com/freed-project/freed/pull/2201)",
+      "Release notes link pull requests using verified merged-commit associations. Empty or mismatched associations stay unlinked; unavailable, malformed or ambiguous lookups stop generation. [#2202](https://github.com/freed-project/freed/pull/2202)"
     ],
     "followUps": []
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.10.900-dev\n\nMore reliable annotation regression tests and release provenance\n\n### Fixes\n\n- [object Object]\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.900-dev\n\nMore reliable annotation regression tests and release provenance\n\n### Fixes\n\n- Annotation transfer-hold tests wait within the existing bounded setup convention while preserving all three hold assertions. [#2201](https://github.com/freed-project/freed/pull/2201)\n- Release notes link pull requests using verified merged-commit associations. Empty or mismatched associations stay unlinked; unavailable, malformed or ambiguous lookups stop generation. [#2202](https://github.com/freed-project/freed/pull/2202)\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
