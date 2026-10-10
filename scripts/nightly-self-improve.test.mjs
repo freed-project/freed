@@ -4042,6 +4042,27 @@ test("repo snapshot preserves leading status columns for changed paths", () => {
   assert.match(snapshot.status, /^ M docs\/example\.md$/);
 });
 
+test("collectPeerWorktrees avoids GitHub lookup when no peer can be inspected", () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "freed-peer-empty-"));
+  const repo = path.join(dir, "repo");
+  const bin = path.join(dir, "bin");
+  const marker = path.join(dir, "github-lookup");
+  mkdirSync(repo);
+  mkdirSync(bin);
+  execFileSync("git", ["init", "--quiet"], { cwd: repo });
+  writeFileSync(path.join(bin, "gh"), `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(marker)}, 'called');\nprocess.stdout.write('[]');\n`, { mode: 0o700 });
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${previousPath}`;
+  try {
+    assert.deepEqual(collectPeerWorktrees(repo, [], false), []);
+    assert.deepEqual(collectPeerWorktrees(repo, [repo, path.join(dir, "missing")], false), []);
+    assert.deepEqual(collectPeerWorktrees(repo, [], true), []);
+    assert.equal(existsSync(marker), false, "no peer requires no merged-PR lookup");
+  } finally {
+    process.env.PATH = previousPath;
+  }
+});
+
 test("nightly JSON plan exposes only sanitized control-task state", () => {
   const dir = realpathSync(
     mkdtempSync(path.join(os.tmpdir(), "freed-plan-sanitized-")),

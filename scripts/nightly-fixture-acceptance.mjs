@@ -12,6 +12,8 @@ const names = [
   "nightly fixture child operations fail inside their explicit bound",
   measuredTest,
   "collectPeerWorktrees ignores peers with only generated validation artifacts",
+  "collectPeerWorktrees avoids GitHub lookup when no peer can be inspected",
+  "nightly JSON plan exposes only sanitized control-task state",
   "nightly authority snapshots reject hard-linked ledger and event files",
 ];
 runToolingSmokeShard({
