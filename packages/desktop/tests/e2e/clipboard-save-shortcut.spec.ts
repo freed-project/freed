@@ -1,4 +1,4 @@
-import { test, expect, resolveViteFsModulePath } from "./fixtures/app";
+import { test, expect, resolveViteFsModulePath, type IpcFixture } from "./fixtures/app";
 
 const LIBRARY_DETAIL_RUNTIME_PATH = resolveViteFsModulePath(
   "../../src/lib/library-core-item-detail-runtime.ts",
@@ -46,6 +46,44 @@ async function triggerShortcut(page: import("@playwright/test").Page, shortcut: 
     }
     await w.__TAURI_MOCK_TRIGGER_GLOBAL_SHORTCUT__(value);
   }, shortcut);
+}
+
+type DeferredUrlPreviewWindow = Window & {
+  __FREED_E2E_CLIPBOARD_URL_PREVIEW__?: {
+    response: Promise<string>;
+    resolve: () => void;
+  };
+};
+
+async function deferUrlPreview(
+  page: import("@playwright/test").Page,
+  ipc: IpcFixture,
+  html: string,
+): Promise<void> {
+  // IPC handlers are serialized into the browser, so keep the promise there too.
+  await page.evaluate((responseHtml) => {
+    let resolve!: () => void;
+    const response = new Promise<string>((finish) => {
+      resolve = () => finish(responseHtml);
+    });
+    (window as DeferredUrlPreviewWindow).__FREED_E2E_CLIPBOARD_URL_PREVIEW__ = {
+      response,
+      resolve,
+    };
+  }, html);
+  await ipc.setHandler("fetch_url", () => {
+    const preview = (window as DeferredUrlPreviewWindow).__FREED_E2E_CLIPBOARD_URL_PREVIEW__;
+    if (!preview) throw new Error("Deferred URL preview fixture missing");
+    return preview.response;
+  });
+}
+
+async function resolveUrlPreview(page: import("@playwright/test").Page): Promise<void> {
+  await page.evaluate(() => {
+    const preview = (window as DeferredUrlPreviewWindow).__FREED_E2E_CLIPBOARD_URL_PREVIEW__;
+    if (!preview) throw new Error("Deferred URL preview fixture missing");
+    preview.resolve();
+  });
 }
 
 async function openSettingsDialog(app: { goto: () => Promise<void>; waitForReady: () => Promise<void> }, page: import("@playwright/test").Page) {
@@ -127,10 +165,9 @@ test("global clipboard shortcut opens Save Content blank for non-URL clipboard t
 test("URL preview shows activity and fills untouched notes", async ({ app, page, ipc }) => {
   await app.goto();
   await app.waitForReady();
-  await ipc.setHandler("fetch_url", async () => {
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    return '<html><head><meta name="description" content="A useful preview note." /></head></html>';
-  });
+  await deferUrlPreview(page, ipc,
+    '<html><head><meta name="description" content="A useful preview note." /></head></html>',
+  );
 
   const shortcut = await waitForRegisteredShortcut(page);
   await page.evaluate(() => {
@@ -140,17 +177,18 @@ test("URL preview shows activity and fills untouched notes", async ({ app, page,
   await triggerShortcut(page, shortcut);
 
   await expect(page.getByRole("status", { name: "Reading URL details" })).toBeVisible();
+  await resolveUrlPreview(page);
   await expect(page.getByLabel("Notes")).toHaveValue("A useful preview note.");
+  await expect(page.getByRole("status", { name: "Reading URL details" })).toBeHidden();
   await expect(page.getByPlaceholder("Notes will be auto-populated from the URL when available.")).toBeVisible();
 });
 
 test("URL preview never replaces notes after the user edits them", async ({ app, page, ipc }) => {
   await app.goto();
   await app.waitForReady();
-  await ipc.setHandler("fetch_url", async () => {
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    return '<html><head><meta name="description" content="Fetched note that must not win." /></head></html>';
-  });
+  await deferUrlPreview(page, ipc,
+    '<html><head><meta name="description" content="Fetched note that must not win." /></head></html>',
+  );
 
   const shortcut = await waitForRegisteredShortcut(page);
   await page.evaluate(() => {
@@ -162,6 +200,7 @@ test("URL preview never replaces notes after the user edits them", async ({ app,
   const notes = page.getByLabel("Notes");
   await notes.fill("My note");
   await expect(page.getByRole("status", { name: "Reading URL details" })).toBeVisible();
+  await resolveUrlPreview(page);
   await expect(page.getByRole("status", { name: "Reading URL details" })).toBeHidden();
   await expect(notes).toHaveValue("My note");
 });
