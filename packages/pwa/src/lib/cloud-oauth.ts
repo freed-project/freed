@@ -1,7 +1,9 @@
 import {
   createGoogleOAuthState,
   getGoogleOAuthRedirectUri,
+  getGoogleOAuthStartBlocker,
   storeGoogleOAuthRedirectUri,
+  storeGoogleOAuthStateNonce,
   storePwaOAuthRuntimeGeneration,
 } from "./oauth-redirect";
 import { capturePwaRuntimeLifecycle } from "./factory-reset-coordinator";
@@ -29,6 +31,8 @@ async function generateCodeChallenge(verifier: string): Promise<string> {
 export async function initiateGDriveOAuth(): Promise<void> {
   const runtimeLifecycle = capturePwaRuntimeLifecycle();
   runtimeLifecycle.assertCurrent();
+  const startBlocker = getGoogleOAuthStartBlocker();
+  if (startBlocker) throw new Error(startBlocker);
   const verifier = generateCodeVerifier();
   const challenge = await generateCodeChallenge(verifier);
   runtimeLifecycle.assertCurrent();
@@ -37,6 +41,8 @@ export async function initiateGDriveOAuth(): Promise<void> {
   sessionStorage.setItem("freed_pkce_verifier", verifier);
   sessionStorage.setItem("freed_pkce_provider", "gdrive");
   storeGoogleOAuthRedirectUri(redirectUri);
+  const stateNonce = crypto.randomUUID();
+  storeGoogleOAuthStateNonce(stateNonce);
 
   const params = new URLSearchParams({
     client_id: GDRIVE_CLIENT_ID,
@@ -48,7 +54,7 @@ export async function initiateGDriveOAuth(): Promise<void> {
     code_challenge_method: "S256",
     access_type: "offline",
     prompt: "consent",
-    state: createGoogleOAuthState(),
+    state: createGoogleOAuthState(window.location.origin, stateNonce),
   });
 
   window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;

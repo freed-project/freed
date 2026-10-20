@@ -16,7 +16,25 @@
  *
  * The Vercel Node.js Lambda runtime invokes the function with (req, res) and
  * expects the handler to call res.json() / res.send(), not return a Response.
+ *
+ * Abuse hardening. Freed Desktop and the Node library service call this
+ * endpoint from native or server code and send no Origin header, so a missing
+ * Origin stays allowed. A browser request must come from the same origin as
+ * this deployment or an exact first-party origin. That blocks cross-site
+ * pages from using the server-held secret through a victim's browser. It does
+ * not stop direct non-browser callers; per-IP rate limiting belongs in a
+ * Vercel Firewall rule.
  */
+
+const MAX_FIELD_LENGTH = 4096;
+const DEFAULT_ALLOWED_ORIGINS = new Set([
+  "https://app.freed.wtf",
+  "https://dev-app.freed.wtf",
+  "tauri://localhost",
+  "http://tauri.localhost",
+  "https://tauri.localhost",
+]);
+const OAUTH_ERROR_CODE_PATTERN = /^[a-z_]{1,64}$/;
 
 interface GoogleClientCredentials {
   clientId: string;
@@ -63,6 +81,52 @@ function resolveClientCredentials(requestedClientId?: string): GoogleClientCrede
   return clients.find((client) => client.clientId === requestedClientId) ?? null;
 }
 
+function headerValue(value: unknown): string {
+  if (Array.isArray(value)) return typeof value[0] === "string" ? value[0] : "";
+  return typeof value === "string" ? value : "";
+}
+
+function allowedOrigins(): Set<string> {
+  const origins = new Set(DEFAULT_ALLOWED_ORIGINS);
+  for (const entry of (process.env.FREED_OAUTH_PROXY_ALLOWED_ORIGINS ?? "").split(",")) {
+    const origin = entry.trim();
+    if (origin) origins.add(origin);
+  }
+  return origins;
+}
+
+/** A missing Origin is allowed. A present Origin must be same-host or listed exactly. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isRequestOriginAllowed(req: any): boolean {
+  const origin = headerValue(req.headers?.origin);
+  if (!origin) return true;
+  if (allowedOrigins().has(origin)) return true;
+  const host = headerValue(req.headers?.["x-forwarded-host"]) || headerValue(req.headers?.host);
+  if (!host) return false;
+  try {
+    const parsed = new URL(origin);
+    return parsed.origin === origin && parsed.host === host.trim().toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+function optionalField(value: unknown): string | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "string" || value.length === 0 || value.length > MAX_FIELD_LENGTH) {
+    return null;
+  }
+  return value;
+}
+
+function publicOAuthError(data: unknown): string {
+  const code =
+    data && typeof data === "object" ? (data as { error?: unknown }).error : undefined;
+  return typeof code === "string" && OAUTH_ERROR_CODE_PATTERN.test(code)
+    ? code
+    : "token_exchange_failed";
+}
+
 // Vercel extends IncomingMessage / ServerResponse at runtime.
 // Using any avoids installing @vercel/node as a devDependency.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -72,16 +136,28 @@ export default async function handler(req: any, res: any): Promise<void> {
     return;
   }
 
-  const { code, verifier, redirectUri, grantType, refreshToken, clientId: requestedClientId } = (req.body ?? {}) as {
-    code?: string;
-    verifier?: string;
-    redirectUri?: string;
-    grantType?: string;
-    refreshToken?: string;
-    clientId?: string;
-  };
+  if (!isRequestOriginAllowed(req)) {
+    res.status(403).json({ error: "Origin not allowed" });
+    return;
+  }
 
-  const credentials = resolveClientCredentials(requestedClientId);
+  const rawBody: Record<string, unknown> =
+    req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+  const code = optionalField(rawBody.code);
+  const verifier = optionalField(rawBody.verifier);
+  const redirectUri = optionalField(rawBody.redirectUri);
+  const grantType = optionalField(rawBody.grantType);
+  const refreshToken = optionalField(rawBody.refreshToken);
+  const requestedClientId = optionalField(rawBody.clientId);
+  if (
+    [code, verifier, redirectUri, grantType, refreshToken, requestedClientId].includes(null) ||
+    (grantType !== undefined && grantType !== "refresh_token" && grantType !== "authorization_code")
+  ) {
+    res.status(400).json({ error: "Invalid request body" });
+    return;
+  }
+
+  const credentials = resolveClientCredentials(requestedClientId ?? undefined);
   if (!credentials) {
     res.status(requestedClientId ? 400 : 500).json({
       error: requestedClientId
@@ -126,8 +202,9 @@ export default async function handler(req: any, res: any): Promise<void> {
     const data = (await upstream.json()) as any;
 
     if (!upstream.ok) {
-      const msg: string = data.error_description ?? data.error ?? "token exchange failed";
-      res.status(upstream.status).json({ error: msg });
+      // Return only the OAuth error code. Upstream descriptions can echo
+      // request details and are not needed by any Freed client.
+      res.status(upstream.status).json({ error: publicOAuthError(data) });
       return;
     }
 
@@ -137,8 +214,7 @@ export default async function handler(req: any, res: any): Promise<void> {
       refresh_token: data.refresh_token,
       expires_in: data.expires_in,
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    res.status(500).json({ error: `Token exchange failed: ${message}` });
+  } catch {
+    res.status(500).json({ error: "Token exchange failed" });
   }
 }
