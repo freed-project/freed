@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   githubCliCandidates,
+  isTrustedIssueAuthor,
   resolveGitHubCli,
 } from "./github-tooling.mjs";
 
@@ -61,4 +62,26 @@ test("GitHub CLI resolution fails with actionable remediation", () => {
     }),
     "",
   );
+});
+
+test("trusted issue authors are the owner and verified GitHub Actions only", () => {
+  assert.equal(isTrustedIssueAuthor({ login: "AubreyF", is_bot: false }), true);
+  assert.equal(isTrustedIssueAuthor({ login: "AubreyF" }), true);
+  assert.equal(isTrustedIssueAuthor({ login: "app/github-actions", is_bot: true }), true);
+  assert.equal(isTrustedIssueAuthor({ login: "github-actions[bot]", is_bot: true }), true);
+  for (const author of [
+    { login: "outsider", is_bot: false },
+    { login: "aubreyf", is_bot: false },
+    { login: "AubreyF", is_bot: true },
+    { login: "github-actions", is_bot: false },
+    { login: "app/github-actions", is_bot: false },
+    { login: "app/dependabot", is_bot: true },
+    { login: "", is_bot: false },
+    { login: 1 },
+    "AubreyF",
+    null,
+    undefined,
+  ]) {
+    assert.equal(isTrustedIssueAuthor(author), false, JSON.stringify(author));
+  }
 });

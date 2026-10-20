@@ -56,6 +56,7 @@ import {
   validateOutcomeVerdictProvenance,
 } from "./build-outcome-verdict.mjs";
 import { isProviderVisiblePath } from "./lib/provider-visible-paths.mjs";
+import { isTrustedIssueAuthor } from "./lib/github-tooling.mjs";
 import {
   OUTCOME_LEDGER_REPAIR_ACTION,
   OUTCOME_LEDGER_REPAIR_DECISION_FORMAT,
@@ -4515,7 +4516,7 @@ export function readOpenGovernedGithubIssues({ exec = execFileSync } = {}) {
           "--limit",
           "1000",
           "--json",
-          "number,url,title,labels",
+          "number,url,title,labels,author",
         ],
         { encoding: "utf8" },
       ),
@@ -4537,6 +4538,11 @@ export function readOpenGovernedGithubIssues({ exec = execFileSync } = {}) {
       ? issue.labels.map((label) => label?.name)
       : [];
     if (!labels.includes("debt") && !labels.includes("automation-triage")) {
+      continue;
+    }
+    // Labels are not provenance. Ignore governed-label issues from anyone
+    // other than the repository owner or a trusted bot.
+    if (!isTrustedIssueAuthor(issue.author)) {
       continue;
     }
     if (

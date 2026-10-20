@@ -45,6 +45,7 @@ import {
   validateStoredCanaryRecordProvenance,
 } from "./canary-summarize.mjs";
 import { validateStoredSoakVerdictProvenance } from "./canary-context.mjs";
+import { isTrustedIssueAuthor } from "./lib/github-tooling.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
@@ -446,11 +447,15 @@ export function readCiIssues({ exec = execFileSync } = {}) {
         "--state",
         "open",
         "--json",
-        "number,title,body,updatedAt,url",
+        "number,title,body,updatedAt,url,author",
       ],
       { cwd: REPO_ROOT, encoding: "utf8", timeout: 30_000 },
     );
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    // Labels are not provenance. Only owner or trusted-bot issues feed triage.
+    return Array.isArray(parsed)
+      ? parsed.filter((issue) => isTrustedIssueAuthor(issue?.author))
+      : [];
   } catch {
     return []; // Offline or gh unavailable: triage degrades, never fails.
   }

@@ -16,6 +16,7 @@ import {
   BUCKETS,
   buildCandidates,
   emitCandidates,
+  readCiIssues,
   readHealthEntries,
   readLatestCanary,
   readLatestCanaries,
@@ -1037,5 +1038,22 @@ test("emitCandidates atomically publishes one current immutable generation", () 
   assert.equal(
     loaded[0].evidenceWindowEnd,
     new Date(NOW + 1_000).toISOString(),
+  );
+});
+
+test("triage reads CI incident issues only from trusted authors", () => {
+  const issues = readCiIssues({
+    exec: () =>
+      JSON.stringify([
+        { number: 1, title: "CI failed", author: { login: "app/github-actions", is_bot: true } },
+        { number: 2, title: "Owner note", author: { login: "AubreyF", is_bot: false } },
+        { number: 3, title: "Injected", author: { login: "outsider", is_bot: false } },
+        { number: 4, title: "Fake bot", author: { login: "github-actions", is_bot: false } },
+        { number: 5, title: "No author" },
+      ]),
+  });
+  assert.deepEqual(
+    issues.map((issue) => issue.number),
+    [1, 2],
   );
 });
