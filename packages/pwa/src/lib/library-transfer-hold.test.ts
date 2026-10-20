@@ -7,11 +7,18 @@ import { PwaLibraryCoreSqliteEngine } from "./library-core-sqlite-engine";
 import { preparePwaConsumerRecovery, commitPwaConsumerRecovery } from "./library-core-consumer-recovery";
 import { migratePwaLibraryRecoverySchema } from "./library-core-recovery-schema";
 let sqlite:Sqlite3Static, db:Database, engine:PwaLibraryCoreSqliteEngine;
+function finishAnnotationUpgrade():void {
+ // Match the annotation fixture's bound; a cooperative budget can return false.
+ for(let attempt=0;attempt<16;attempt++) {
+  if(resumePwaAnnotationUpgrade(db,sqlite.capi,()=>new sqlite.oo1.DB(":memory:","c"))) return;
+ }
+ throw new Error("Bounded synthetic annotation upgrade did not finish after 16 attempts");
+}
 beforeEach(async()=>{
  sqlite=await sqlite3InitModule();db=new sqlite.oo1.DB(":memory:","c");
  engine=new PwaLibraryCoreSqliteEngine(db,sqlite.version.libVersion,{capi:sqlite.capi});
  engine.initialize();
- expect(resumePwaAnnotationUpgrade(db,sqlite.capi,()=>new sqlite.oo1.DB(":memory:","c"))).toBe(true);
+ finishAnnotationUpgrade();
  engine.initialize();
  db.exec("INSERT INTO library_checkpoint_stages(stage_id,library_id,authority_epoch,source_revision,expected_record_count,created_at) VALUES('stage','library','epoch',0,1,0);");
 });

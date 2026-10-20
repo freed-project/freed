@@ -1,0 +1,53 @@
+name: Controller Repair Proposal
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: controller-repair-proposal
+  cancel-in-progress: false
+jobs:
+  propose:
+    if: github.repository == 'freed-project/freed' && github.ref == 'refs/heads/dev' && github.actor == 'AubreyF' && github.actor_id == '2789037' && github.triggering_actor == 'AubreyF' && github.run_attempt == 1
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      head: ${{ steps.proposal.outputs.head }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+      - name: Propose the pinned two-file repair for owner review
+        id: proposal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-controller-repair.mjs
+  verify-proposal:
+    needs: propose
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.propose.outputs.head }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: .nvmrc
+      - name: Verify exact proposal identity and activation contract
+        env:
+          EXPECTED_HEAD: ${{ needs.propose.outputs.head }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          test "$(git rev-parse HEAD^)" = "4fddf2404f94af1b4495cab6ed273e141efebd6f"
+          test "$(git rev-parse HEAD^{tree})" = "631fcc881fd4aa9dee6b0bf33da8fcc59c955f05"
+          node --test scripts/lib/library-core-release-activation.test.mjs

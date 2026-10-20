@@ -26,6 +26,19 @@ npm run tauri:build
 
 Desktop previews launched through `worktree-preview.sh` are marked as feature previews. They accept local legal gates and seed sample data before the app opens.
 
+To disable automatic sample population while keeping hot reload and native APIs,
+set `FREED_AUTO_SEED_SAMPLE_DATA=0` in `packages/desktop/.env.local` and
+restart the dev server. This also overrides sample seeding in feature previews.
+For a single native development session, run from `packages/desktop`:
+
+```bash
+FREED_AUTO_SEED_SAMPLE_DATA=0 npm run tauri:dev
+```
+
+Existing sample records remain until you use **Clear sample data** in Settings.
+Manual **Populate sample data** still works. Unset the flag to restore automatic
+seeding; setting it to `1` does not enable seeding in ordinary production builds.
+
 ### Installed sync soaks without focus theft
 
 Use the file trigger when an installed development build needs a provider sync soak from the terminal. This avoids System Events clicks and keeps the user's current app focus alone.

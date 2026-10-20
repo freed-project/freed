@@ -802,15 +802,26 @@ impl LibraryCoreDesktopBinding {
         stage_id: &str,
         canonical_control: &[u8],
     ) -> Result<Option<crate::NativeHandoffStatusV1>, LibraryCoreStorageError> {
+        self.recover_demoted_source_handoff_with_access_v2(handoff_id, stage_id, canonical_control, false)
+    }
+
+    pub fn recover_demoted_source_handoff_with_access_v2(
+        &self,
+        handoff_id: &str,
+        stage_id: &str,
+        canonical_control: &[u8],
+        read_only: bool,
+    ) -> Result<Option<crate::NativeHandoffStatusV1>, LibraryCoreStorageError> {
         let _reset = self.reset_gate.lock().map_err(|_| {
             LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
         })?;
         let mut connection = self.connect_selected_normalized()?;
-        crate::recover_demoted_source_handoff_v1(
+        crate::recover_demoted_source_handoff_with_access_v2(
             &mut connection,
             handoff_id,
             stage_id,
             canonical_control,
+            read_only,
         )
         .map_err(LibraryCoreStorageError::from)
     }
@@ -821,15 +832,26 @@ impl LibraryCoreDesktopBinding {
         revision: &str,
         adopted_at: u64,
     ) -> Result<crate::NativeHandoffStatusV1, LibraryCoreStorageError> {
+        self.adopt_source_handoff_with_access_after_remote_verification_v2(plan, revision, adopted_at, false)
+    }
+
+    pub fn adopt_source_handoff_with_access_after_remote_verification_v2(
+        &self,
+        plan: &crate::HandoffVerificationPlanV1,
+        revision: &str,
+        adopted_at: u64,
+        read_only: bool,
+    ) -> Result<crate::NativeHandoffStatusV1, LibraryCoreStorageError> {
         let _reset = self.reset_gate.lock().map_err(|_| {
             LibraryCoreStorageError::from("Desktop Library reset gate is poisoned".to_string())
         })?;
         let mut connection = self.connect_selected_normalized()?;
-        crate::adopt_source_handoff_after_remote_verification_v1(
+        crate::adopt_source_handoff_with_access_after_remote_verification_v2(
             &mut connection,
             plan,
             revision,
             adopted_at,
+            read_only,
         )
         .map_err(LibraryCoreStorageError::from)
     }

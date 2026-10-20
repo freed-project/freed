@@ -80,6 +80,15 @@ describe("FatalErrorScreen recovery confirmation", () => {
     await act(async () => buttonByText(container, "Reload demo").click());
     expect(retry).toHaveBeenCalledOnce();
     expect(replace).not.toHaveBeenCalled();
+    await act(async () => root.render(
+      <PlatformProvider value={{ interactionMode: "read-only" } as PlatformConfig}>
+        <FatalErrorScreen error={{ message: "SQLite worker failed" }} productName="Freed" onRetry={retry} onSecondaryAction={replace} secondaryActionLabel="Replace local Library" showDemoErrorDetails />
+      </PlatformProvider>,
+    ));
+    expect(container.textContent).toContain("Preview error details");
+    expect(container.textContent).toContain("SQLite worker failed");
+    expect(container.textContent).not.toContain("Replace local Library");
+    expect(container.querySelectorAll("button")).toHaveLength(1);
     await act(async () => root.unmount());
   });
 

@@ -192,8 +192,6 @@ test("YouTube login requires provider consent", async ({ app }) => {
     .locator("button")
     .filter({ hasText: "Legal" })
     .first();
-  await legalSection.evaluate((button) => {
-    (button as HTMLButtonElement).click();
-  });
+  await legalSection.click();
   await expect(settingsDialog.getByText("2026-07-10-youtube")).toBeVisible();
 });

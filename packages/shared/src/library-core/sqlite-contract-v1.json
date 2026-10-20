@@ -3,6 +3,7 @@
   "contractVersion": 1,
   "schemaVersion": 1,
   "nativeStorageSchemaVersion": 2,
+  "viewerStorageSchemaVersion": 6,
   "protocolVersion": 2,
   "nativeCommandProtocolVersion": 1,
   "localActorProtocolVersion": 2,

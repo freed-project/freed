@@ -617,7 +617,7 @@ pub(crate) fn retained_follower_tables(
     Ok(RETAINED_FOLLOWER_TABLES
         .iter()
         .copied()
-        .filter(|table| *table != "library_local_annotation_unresolved" || matches!(version, 4 | 5))
+        .filter(|table| *table != "library_local_annotation_unresolved" || matches!(version, 4..=6))
         .collect())
 }
 

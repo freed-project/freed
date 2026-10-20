@@ -1,0 +1,16 @@
+{
+  "channel": "dev",
+  "dayKey": "26.10.8",
+  "date": "2026-10-08",
+  "preferredDeck": "Keep reader images tied to accepted post data.",
+  "editorialGuidance": [
+    "Keep the tone concise, professional, and specific.",
+    "Lead with user-facing outcomes, shipping milestones, trust wins, and installability improvements.",
+    "Demote internal cleanup unless it clearly changes the shipped product."
+  ],
+  "pinnedHighlights": [],
+  "editorialNotes": [
+    "Lead with accepted reader image data and retain the same-day current-query search fix. Keep synthetic and installed verification claims separate; five sponsored-disclosure cases remain unresolved."
+  ],
+  "updatedAt": "2026-10-08T22:54:54.796Z"
+}

@@ -664,10 +664,9 @@ export function Sidebar({
     syncRssNow,
     syncSourceNow,
     getSourceStatus,
-    interactionMode,
   } = usePlatform();
   const capabilities = usePlatformCapabilities();
-  const readOnly = interactionMode === "read-only";
+  const readOnly = !capabilities.libraryEdits;
   const isMobileViewport = useIsMobile();
   const activeFilter = useAppStore((s) => s.activeFilter);
   const setFilter = useAppStore((s) => s.setFilter);

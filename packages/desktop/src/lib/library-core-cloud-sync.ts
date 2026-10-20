@@ -1880,7 +1880,7 @@ async function syncSqliteLibraryFollowerGoogleDriveOnceInternal(input: {
         signal: input.signal,
       }),
       createDesktopNormalizedFollowerRuntime(),
-      { signal: input.signal },
+      { signal: input.signal, publishIntents: installation.state !== "read_only_consumer" },
     );
   }
   throwIfPublicationCanceled(input.signal);

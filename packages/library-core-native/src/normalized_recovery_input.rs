@@ -116,7 +116,7 @@ pub(crate) fn load_archived_intent_input(
     let version: u32 = connection
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .map_err(|e| e.to_string())?;
-    if !matches!(version, 2 | 5) {
+    if !matches!(version, 2 | 5 | 6) {
         return Err("archived intent requires native recovery storage".into());
     }
     crate::normalized_sqlite::install_normalized_schema_v1(connection)

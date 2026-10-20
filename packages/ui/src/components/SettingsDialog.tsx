@@ -507,7 +507,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
     setReleaseChannel,
     updateDownloadProgress,
     interactionMode,
+    libraryAccess,
   } = usePlatform();
+  const libraryViewer = libraryAccess === "read-only";
   const preferences = useAppStore((s) => s.preferences);
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const toggleDebug = useDebugStore((s) => s.toggle);
@@ -621,16 +623,18 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
 
   const handleDisplayChange = useCallback(
     (update: Partial<typeof display>) => {
+      if (libraryViewer) return;
       setDisplay((prev) => ({ ...prev, ...update }));
       void updatePreferences({ display: update } as Parameters<typeof updatePreferences>[0]).catch(() => {
         toast.error("Could not save settings");
       });
     },
-    [updatePreferences],
+    [libraryViewer, updatePreferences],
   );
 
   const handleReadingChange = useCallback(
     (update: Partial<typeof display.reading>) => {
+      if (libraryViewer) return;
       setDisplay((prev) => ({
         ...prev,
         reading: { ...prev.reading, ...update },
@@ -641,7 +645,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
         toast.error("Could not save settings");
       });
     },
-    [updatePreferences],
+    [libraryViewer, updatePreferences],
   );
 
   useEffect(() => {
@@ -1486,6 +1490,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               </div>
             )}
             <SectionHeading label="Appearance" />
+            {libraryViewer && <p className="mb-4 text-sm text-text-muted">Library preferences are read-only on this device. Device-local appearance and cache settings remain available.</p>}
             <div data-testid="settings-display-scale-controls" className="space-y-5">
               <div
                 className="theme-card-soft theme-settings-theme-card rounded-2xl p-4 sm:p-5"
@@ -1550,24 +1555,28 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                 </div>
               </div>
               <SettingsToggle
+                disabled={libraryViewer}
                 label="Mark read on scroll"
                 checked={display.reading.markReadOnScroll}
                 onChange={(v) => handleReadingChange({ markReadOnScroll: v })}
                 description="Mark items as read when you scroll past them in the feed"
               />
               <SettingsToggle
+                disabled={libraryViewer}
                 label="Show read in grayscale"
                 checked={display.reading.showReadInGrayscale}
                 onChange={(v) => handleReadingChange({ showReadInGrayscale: v })}
                 description="Desaturate items after they have been marked read"
               />
               <SettingsToggle
+                disabled={libraryViewer}
                 label="Show engagement counts"
                 checked={display.showEngagementCounts}
                 onChange={(v) => handleDisplayChange({ showEngagementCounts: v })}
                 description="Show likes, reposts, and views on posts"
               />
               <SettingsToggle
+                disabled={libraryViewer}
                 label="Focus mode"
                 checked={display.reading.focusMode}
                 onChange={(v) => handleReadingChange({ focusMode: v })}
@@ -1580,6 +1589,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     {(["light", "normal", "strong"] as const).map((level) => (
                       <button
                         key={level}
+                        disabled={libraryViewer}
                         onClick={() => handleReadingChange({ focusIntensity: level })}
                         className={`flex-1 py-1.5 rounded-lg text-sm capitalize transition-colors border ${
                           display.reading.focusIntensity === level
@@ -1600,6 +1610,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     <button
                       key={option.value}
                       type="button"
+                      disabled={libraryViewer}
                       onClick={() => handleDisplayChange({ animationIntensity: option.value })}
                       className={`flex-1 rounded-lg border py-1.5 text-sm transition-colors ${
                         display.animationIntensity === option.value
@@ -1638,6 +1649,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                   <p className="mt-0.5 text-xs text-text-muted">Saved items are never deleted</p>
                 </div>
                 <select
+                  disabled={libraryViewer}
                   value={display.archivePruneDays ?? 30}
                   onChange={(e) => handleDisplayChange({ archivePruneDays: Number(e.target.value) })}
                   className="theme-input theme-select shrink-0 rounded-xl px-3 py-2 text-sm text-text-primary focus:outline-none"

@@ -1,3 +1,4 @@
+import { useArchiveAction } from "../../hooks/useArchiveAction.js";
 import { resolveFeedCountPresentation, type KnownFeedCount } from "../../lib/feed-count-presentation.js";
 import {
   useState,
@@ -30,7 +31,7 @@ import {
   type SavedFeedSelectionPin,
 } from "./saved-feed-presentation-patch.js";
 import { AddFeedDialog } from "../AddFeedDialog.js";
-import { useAppStore, usePlatform } from "../../context/PlatformContext.js";
+import { useAppStore, usePlatform, getPlatformCapabilities } from "../../context/PlatformContext.js";
 import { useSearchResults } from "../../hooks/useSearchResults.js";
 import { useLibraryFacetSummary } from "../../hooks/useLibraryFacetSummary.js";
 import { useLibraryItemDetail, annotationFailureLabel } from "../../hooks/useLibraryItemDetail.js";
@@ -301,8 +302,8 @@ export function FeedView() {
     queryLibraryCore,
     readLibraryAccountDetail,
   } = platform;
-  const readOnly = platform.interactionMode === "read-only";
-  const canAddFeeds = !!addRssFeed;
+  const readOnly = !getPlatformCapabilities(platform).libraryEdits;
+  const canAddFeeds = !readOnly && !!addRssFeed;
   const activeFilter = useAppStore((s) => s.activeFilter);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const searchCorpusVersion = useAppStore((s) => s.searchCorpusVersion);
@@ -330,7 +331,7 @@ export function FeedView() {
   const markAsRead = useAppStore((s) => s.markAsRead);
   const markItemsAsRead = useAppStore((s) => s.markItemsAsRead);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
-  const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const { toggleArchived, pendingArchiveIds } = useArchiveAction();
   const toggleLiked = useAppStore((s) => s.toggleLiked);
   const libraryFacets = useLibraryFacetSummary(searchCorpusVersion);
   const [deviceDisplay] = useDeviceDisplayPreferences();
@@ -586,7 +587,10 @@ export function FeedView() {
     JSON.stringify([boundedSelectionIdentity, searchQuery]),
     boundedFeed.windowStartIndex === 0,
   );
-  const visibleItems = presentation.items;
+  const visibleItems = useMemo(
+    () => presentation.items.filter((item) => !pendingArchiveIds.has(item.globalId)),
+    [presentation.items, pendingArchiveIds],
+  );
   const lastKnownFeedCountRef = useRef<KnownFeedCount | null>(null);
   useLayoutEffect(() => {
     // Selection identity excludes source revision: an exact count survives a
@@ -774,10 +778,10 @@ export function FeedView() {
       !residentItems.some((item) => item.globalId === selectedItemId)
         ? selectedItem
         : null;
-    return pinnedSelection
-      ? [pinnedSelection, ...residentItems]
-      : residentItems;
+    const rows = pinnedSelection ? [pinnedSelection, ...residentItems] : residentItems;
+    return rows.filter((item) => !pendingArchiveIds.has(item.globalId));
   }, [
+    pendingArchiveIds,
     readerWindow,
     boundedFeedEligible,
     selectedItem,

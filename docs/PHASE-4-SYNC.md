@@ -1232,3 +1232,15 @@ existing optional summarization remain governed by their existing settings. This
 exact correction was explicitly approved on 2026-10-04; no cadence, credential or
 AI-setting change is introduced. The original selection complaint remains
 unattributed.
+
+### Read-only Desktop following
+
+A former Primary can explicitly adopt its successor as an installation-local
+read-only viewer in the transfer-acceptance configuration. Enrollment and inbound
+sync continue; native signing, intent export and provider admission remain denied.
+The consumer coordinator skips intent publication for viewers. Same-epoch
+checkpoints and later verified successor recovery preserve the restriction.
+Later recovery retains the original source consent and adoption bytes atomically
+with the new archive and lifecycle record. Synthetic native coverage includes
+restart, exact retry, malformed consent and archive-failure rollback. Installed
+two-Desktop/PWA convergence and removal of ordinary activation holds remain pending.

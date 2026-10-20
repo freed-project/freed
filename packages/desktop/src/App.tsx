@@ -562,7 +562,7 @@ function App() {
   }), []);
   const [installationError, setInstallationError] = useState<string | null>(null);
   const handoffPaused = useSyncExternalStore(subscribeDesktopHandoffPause, isDesktopHandoffPaused);
-  const installationReady = installation !== null && ["standalone_primary", "shared_primary", "awaiting_enrollment", "editable_consumer"].includes(installation.state);
+  const installationReady = installation !== null && ["standalone_primary", "shared_primary", "awaiting_enrollment", "editable_consumer", "read_only_consumer"].includes(installation.state);
 
   useEffect(() => {
     if (!legalAccepted || lockedStartupState !== "ready") return;
@@ -1455,9 +1455,11 @@ function App() {
 
   // Local feature previews should open with a useful library. E2E tests keep
   // deterministic control unless the preview helper opts in explicitly.
+  // Allow native development with hot reload and no automatic sample writes.
   useEffect(() => {
     const shouldAutoSeedPreview =
-      IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1");
+      import.meta.env.FREED_AUTO_SEED_SAMPLE_DATA !== "0" &&
+      (IS_FEATURE_PREVIEW || (import.meta.env.DEV && import.meta.env.VITE_TEST_TAURI !== "1"));
     if (!isInitialized || !shouldAutoSeedPreview || previewPopulationStarted.current) return;
 
     const guardKey = "freed_dev_seeded";
@@ -1497,6 +1499,7 @@ function App() {
   const platform: PlatformConfig = useMemo(
     () => ({
       store: useAppStore,
+      libraryAccess: installation?.state === "read_only_consumer" ? "read-only" : "editable",
       feedMediaPreviews: "lazy-thumbnails",
       sampleMediaPreviews: IS_FEATURE_PREVIEW ? "inline" : undefined,
       addRssFeed,
@@ -1812,7 +1815,7 @@ function App() {
       })(),
       bugReporting: desktopBugReporting,
     }),
-     [checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, isInitialized, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
+     [installation?.state, checkForUpdates, applyUpdate, connectGoogleContacts, fetchGoogleContactsForDesktop, handleFactoryReset, hasKeyboardShortcutSettingsSurface, installedReleaseChannel, isInitialized, reconnectCloudProvider, releaseChannel, releaseChannelResolved, retryCloudProvider, seedSocialConnections, setReleaseChannel, ShortcutsSettingsContent, tauriRuntimeAvailable, updateState],
   );
 
   if (lockedStartupState !== "ready") {

@@ -592,6 +592,7 @@ Large app store distribution is not part of the current strategy. The mobile rea
 - **Internal navigation history** — Desktop keeps a browser-style serialized navigation stack so `Cmd+[` and `Cmd+]` move through views and open reader state
 - **Blank-state testing escape hatch** — Desktop empty states now offer a lightweight sample-data section below the primary blank-state prompt, so fresh installs can seed realistic data without detouring into Settings
 - **Fingerprinted sample-data cleanup** - New sample batches carry an internal marker across feeds, items, people, and accounts, so accidental sample population can be cleared without matching on names, URLs, or content patterns
+- **Development sample opt-out** - `FREED_AUTO_SEED_SAMPLE_DATA=0` disables automatic sample population in native development and feature previews while preserving hot reload, native APIs, existing records, and manual sample controls.
 - **Explicit local-only primary authority** - A provider-free Freed Desktop establishes signed Library authority and a durable local writer admission during startup, so ordinary mutations and sample-data cleanup work without configuring cloud sync. Existing cloud and follower authority remain fail-closed.
 - **Archived saved-item repair control** — Archived views now surface a one-click `Unarchive Saved Content` action when legacy or imported items end up both saved and archived
 - **Live sidebar snap preview** — During desktop resize drag, the expanded card still tracks the grab rail directly, while compact and closed thresholds now animate in place so the sidebar snaps to the icon rail or slides offscreen before mouseup
@@ -1876,3 +1877,38 @@ Linux native feature and integration gates run it explicitly. It requires
 `dbus-daemon`, `dbus-send`, and `gnome-keyring-daemon` on `PATH`; it does
 not use the login session's vault. This credential test does not establish
 installed multi-Desktop/PWA convergence or authorize a Library activation.
+
+### Strict viewer after source handoff
+
+The transfer-acceptance UI offers an explicit read-only choice when the former
+Primary adopts its verified successor. Native catalog 6 commits that choice with
+source demotion and checkpoint selection; retries verify the same choice before
+sync resumes. Feed, reader and synchronized settings controls respect viewer
+access, including automatic read state. Device-local appearance, cache and AI
+configuration remain available. Archive browsing preserves proof checks without
+enabling reapplication. Native restrictions survive restart and later successor
+recovery. These changes have synthetic test coverage; signed delivery, installed
+viewer acceptance and the personal Library transition remain pending. Ordinary
+transfer and recovery activation holds are unchanged.
+
+## Pending archive presentation
+
+The header, keyboard commands, reader toolbar and feed cards share pending
+archive presentation scoped to their platform store. An archive hides its row
+from the feed and retained reader window while the original mutation runs.
+A failed write restores visibility and keeps the reader open. Unarchive does
+not hide the row, and read-only viewers refuse the action before mutation.
+This temporary UI state is not a durable edit receipt. Browser coverage holds
+persistence pending and then resolves or rejects it; it does not certify
+physical-device latency or installed multi-device acceptance.
+
+
+### Acceptance credential isolation
+
+The fresh transfer-acceptance bundle has its own application data root and Library
+Keychain service. Existing ordinary, preview and legacy acceptance identities
+retain their original service mappings. Two Macs can therefore use their existing
+macOS accounts for disposable-Library acceptance after installed identity and
+isolation checks. No credentials or databases are copied into the new identity.
+Installed convergence, viewer enforcement and authority handoff remain separate
+acceptance gates; ordinary transfer and recovery holds remain unchanged.

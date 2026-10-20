@@ -7,7 +7,8 @@ import type {
 export interface LibraryCountSelectionIdentity {
   readonly libraryId: string;
   readonly authorityEpochId: string;
-  readonly actorId: string;
+  /** Null is a verified viewer awaiting enrollment, never a synthetic actor. */
+  readonly actorId: string | null;
 }
 export interface LibraryCountSnapshot {
   readonly selection: LibraryCountSelectionIdentity;

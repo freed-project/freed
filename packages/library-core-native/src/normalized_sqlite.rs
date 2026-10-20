@@ -308,7 +308,7 @@ pub fn install_normalized_schema_v1(connection: &Connection) -> Result<(), Norma
         connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let application_id: u32 =
         connection.pragma_query_value(None, "application_id", |row| row.get(0))?;
-    if matches!(user_version, 4 | 5) {
+    if matches!(user_version, 4..=6) {
         crate::normalized_local_annotations::verify_catalog(connection, user_version)?;
         return crate::normalized_local_annotations::require_ready(connection);
     }
@@ -850,7 +850,7 @@ pub fn describe_normalized_cloud_preflight_identity_v1(
     // Opening already configured the handle. Recheck supported schema/storage
     // identity in the pinned snapshot without replaying DDL or migrating.
     let schema: u32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION, 4, 5].contains(&schema) {
+    if ![SQLITE_SCHEMA_VERSION, NATIVE_STORAGE_SCHEMA_VERSION, 4, 5, 6].contains(&schema) {
         return Err(NormalizedSqliteError::InvalidRequest(
             "normalized SQLite version identity is unsupported",
         ));

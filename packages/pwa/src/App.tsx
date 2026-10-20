@@ -735,6 +735,7 @@ function App() {
       <PlatformProvider value={platform}>
         <FatalErrorScreen
           error={{ message: error }}
+          showDemoErrorDetails={import.meta.env.DEV}
           productName="Freed"
           onRetry={() => window.location.reload()}
           onSecondaryAction={handleLocalLibraryRecovery}
@@ -754,6 +755,7 @@ function App() {
       <PlatformProvider value={platform}>
         <FatalErrorScreen
           error={fatalError}
+          showDemoErrorDetails={import.meta.env.DEV}
           productName="Freed"
           onRetry={() => {
             clearFatalRuntimeError();

@@ -453,6 +453,13 @@ test("parseArgs supports printing the full plan without executing", () => {
   assert.equal(parsed.planOnly, true);
 });
 
+test("feature plan runs dependency tree regressions when the checker or tests change", () => {
+  for (const file of ["scripts/check-installed-tree.mjs", "scripts/check-installed-tree.test.mjs"]) {
+    const labels = describePlan(buildValidationPlan("feature", [file]));
+    assert.deepEqual(labels, ["root typecheck", "installed dependency tree tests"]);
+  }
+});
+
 test("feature plan for validation runner changes runs only runner tests", () => {
   const labels = describePlan(
     buildValidationPlan("feature", [
@@ -1301,5 +1308,16 @@ test("preview process changes run scoped cleanup proof without product suites", 
     assert.deepEqual(plan[1].args, [
       "--test", "scripts/worktree-preview.test.mjs", "scripts/task-decisions.test.mjs",
     ]);
+  }
+});
+
+
+test("controller proposal paths run their bounded publication contract", () => {
+  for (const file of [
+    ".github/workflows/controller-repair-proposal.yml",
+    "scripts/publish-controller-repair.mjs",
+    "scripts/publish-controller-repair.test.mjs",
+  ]) {
+    assert.ok(describePlan(buildValidationPlan("feature", [file])).includes("controller repair proposal tests"));
   }
 });

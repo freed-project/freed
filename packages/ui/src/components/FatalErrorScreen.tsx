@@ -16,6 +16,8 @@ interface FatalErrorScreenProps {
   productName: string;
   secondaryActionConfirmation?: FatalErrorSecondaryConfirmation;
   secondaryActionLabel?: string;
+  /** Local previews can expose the failure without enabling demo data recovery. */
+  showDemoErrorDetails?: boolean;
 }
 
 export function FatalErrorScreen({
@@ -25,6 +27,7 @@ export function FatalErrorScreen({
   productName,
   secondaryActionConfirmation,
   secondaryActionLabel,
+  showDemoErrorDetails = false,
 }: FatalErrorScreenProps) {
   const capabilities = usePlatformCapabilities();
   const [confirmingSecondaryAction, setConfirmingSecondaryAction] =
@@ -47,6 +50,12 @@ export function FatalErrorScreen({
       <section role="alert" className="theme-card-soft w-full max-w-lg rounded-2xl p-6 text-center">
         <h1 className="text-xl font-semibold">The demo needs a fresh start</h1>
         <p className="mt-3 text-sm text-[var(--theme-text-muted)]">Reload to start a fresh demo. If it still cannot open, try another browser.</p>
+        {showDemoErrorDetails && (
+          <div className="theme-feedback-panel-danger mt-4 break-words rounded-xl p-4 text-left text-sm">
+            <p className="font-semibold">Preview error details</p>
+            <p className="mt-2 whitespace-pre-wrap">{error?.message || "Unknown demo startup error"}</p>
+          </div>
+        )}
         <button type="button" className="btn-primary mt-5 rounded-xl px-4 py-3" onClick={onRetry}>Reload demo</button>
       </section>
     </div>

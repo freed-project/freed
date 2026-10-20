@@ -308,7 +308,7 @@ async function importResults(
 export async function syncLibraryCoreNormalizedFollowerV2(
   transport: LibraryCoreNormalizedFollowerTransportV2,
   runtime: LibraryCoreNormalizedFollowerSyncRuntimeV2,
-  options: Readonly<{ signal?: AbortSignal }> = {},
+  options: Readonly<{ signal?: AbortSignal; publishIntents?: boolean }> = {},
 ): Promise<LibraryCoreNormalizedFollowerSyncReceiptV2> {
   const enrollmentState = await ensureEnrollment(
     transport,
@@ -324,7 +324,8 @@ export async function syncLibraryCoreNormalizedFollowerV2(
     });
   }
   const context = await runtime.readContext();
-  const intents = await reconcileOrPublishIntents(
+  // A viewer still enrolls and receives results, but never enters edit publication.
+  const intents = options.publishIntents === false ? { count: 0, recovered: false } : await reconcileOrPublishIntents(
     transport,
     runtime,
     context,

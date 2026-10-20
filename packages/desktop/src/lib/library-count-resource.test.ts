@@ -20,6 +20,21 @@ function deferred<T>() { let resolve!: (v: T) => void; let reject!: (e: unknown)
 const tick = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 const setup = () => { const resource = createDesktopLibraryCountResource(); resource.setSelection(A); return resource; };
 describe("runtime navigation count publication", () => {
+  it("publishes an unenrolled viewer identity and retires it upon enrollment", async () => {
+    const resource = createDesktopLibraryCountResource();
+    const viewer = { ...A, actorId: null };
+    resource.setSelection(viewer);
+    await resource.refresh(queryFor(), async () => viewer);
+    expect(resource.getSnapshot().committed?.selection).toEqual(viewer);
+    const gate = deferred<void>(), query = queryFor(2);
+    const pending = resource.refresh(async request => { await gate.promise; return query(request); }, async () => viewer);
+    const failure = expect(pending).rejects.toBeInstanceOf(LibraryCountSupersededError);
+    resource.setSelection(A);
+    expect(resource.getSnapshot().committed).toBeNull();
+    gate.resolve(); await failure;
+    await resource.refresh(queryFor(), async () => A);
+    expect(resource.getSnapshot().committed?.selection).toEqual(A);
+  });
   it("publishes one immutable receipt from three bounded reads", async () => {
     const resource = setup(), query = queryFor(), seen: string[] = [];
     resource.subscribe(() => seen.push(resource.getSnapshot().status));

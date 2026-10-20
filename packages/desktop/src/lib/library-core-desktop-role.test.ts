@@ -30,6 +30,16 @@ describe("native Desktop installation role", () => {
     expect(requireFollowerLibraryCoreDesktopRole).not.toThrow();
   });
 
+  it("retains native viewer restriction before and after enrollment without granting Primary", async () => {
+    for (const actorId of [null, primary.actorId]) {
+      native.invoke.mockResolvedValue({ ...primary, role: "follower", state: "read_only_consumer", actorId });
+      await refreshLibraryCoreDesktopRole();
+      expect(readDesktopLibraryInstallation()?.state).toBe("read_only_consumer");
+      expect(requireFollowerLibraryCoreDesktopRole).not.toThrow();
+      expect(requirePrimaryLibraryCoreDesktopRole).toThrow();
+    }
+  });
+
   it("admits Primary only after native selection and clears stale admission on failure", async () => {
     native.invoke.mockResolvedValue(primary);
     await selectDesktopLibrarySetup({ role: "primary" });

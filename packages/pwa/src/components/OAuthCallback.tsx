@@ -23,9 +23,11 @@ import {
 } from "../lib/sync";
 import {
   clearStoredGoogleOAuthRedirectUri,
+  consumeGoogleOAuthStateNonce,
   consumePwaOAuthRuntimeGeneration,
   createGoogleOAuthRelayTarget,
   getStoredGoogleOAuthRedirectUri,
+  isGoogleOAuthCallbackStateValid,
   isPwaOAuthRuntimeGenerationValid,
 } from "../lib/oauth-redirect";
 import { capturePwaRuntimeLifecycle } from "../lib/factory-reset-coordinator";
@@ -104,6 +106,7 @@ export function OAuthCallback() {
       const verifier = sessionStorage.getItem("freed_pkce_verifier");
       const googleRedirectUri = getStoredGoogleOAuthRedirectUri();
       const oauthGeneration = consumePwaOAuthRuntimeGeneration();
+      const expectedStateNonce = consumeGoogleOAuthStateNonce();
 
       // Clean up PKCE state immediately, single-use.
       sessionStorage.removeItem("freed_pkce_provider");
@@ -122,6 +125,11 @@ export function OAuthCallback() {
         !code ||
         provider !== "gdrive" ||
         !verifier ||
+        !isGoogleOAuthCallbackStateValid(
+          window.location.origin,
+          params.get("state"),
+          expectedStateNonce,
+        ) ||
         !isPwaOAuthRuntimeGenerationValid(
           oauthGeneration,
           runtimeLifecycle.generation,

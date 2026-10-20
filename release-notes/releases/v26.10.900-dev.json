@@ -1,0 +1,69 @@
+{
+  "tag": "v26.10.900-dev",
+  "version": "26.10.900-dev",
+  "channel": "dev",
+  "dayKey": "26.10.9",
+  "approved": true,
+  "editorialNotes": [
+    "Test setup and release provenance only; no runtime behavior or Library Core activation change."
+  ],
+  "generatedAt": "2026-10-09T19:43:56.256Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.801-dev",
+    "previousPublishedDayTag": "v26.10.801-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "d7494682581ccc6ae2291cc4e486e9204cf11f90",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.801-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "1a4d2ab5a4b61751abc40e99619e995b7d3ecb8c",
+        "toInclusiveProductCommitSha": "d7494682581ccc6ae2291cc4e486e9204cf11f90"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:5fe7b9e1540eebab609019a5dfff8d622ac79bfc4052a89039ae450df81371fd",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.10.900-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.10.900-dev"
+    ],
+    "prNumbers": [
+      2201,
+      2202
+    ],
+    "commitSubjects": [
+      "fix: resolve release PR provenance from merged commits",
+      "fix: respect bounded annotation upgrade in transfer-hold fixtures"
+    ]
+  },
+  "release": {
+    "deck": "More reliable annotation regression tests and release provenance",
+    "features": [],
+    "fixes": [
+      "Annotation transfer-hold tests wait within the existing bounded setup convention while preserving all three hold assertions. [#2201](https://github.com/freed-project/freed/pull/2201)",
+      "Release notes link pull requests using verified merged-commit associations. Empty or mismatched associations stay unlinked; unavailable, malformed or ambiguous lookups stop generation. [#2202](https://github.com/freed-project/freed/pull/2202)"
+    ],
+    "followUps": []
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.10.900-dev\n\nMore reliable annotation regression tests and release provenance\n\n### Fixes\n\n- Annotation transfer-hold tests wait within the existing bounded setup convention while preserving all three hold assertions. [#2201](https://github.com/freed-project/freed/pull/2201)\n- Release notes link pull requests using verified merged-commit associations. Empty or mismatched associations stay unlinked; unavailable, malformed or ambiguous lookups stop generation. [#2202](https://github.com/freed-project/freed/pull/2202)\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}

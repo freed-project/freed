@@ -23,6 +23,18 @@ process.env.PLAYWRIGHT_PERF_PORT = String(perfPort);
 const PERF_BASE_URL = process.env.PERF_BASE_URL ?? (USE_LOCAL_SERVER
   ? `http://127.0.0.1:${String(perfPort)}`
   : BASE_URL);
+const configuredTransferPort = Number.parseInt(process.env.PLAYWRIGHT_TRANSFER_PORT ?? "", 10);
+const transferPort = Number.isInteger(configuredTransferPort) && configuredTransferPort > 0 && configuredTransferPort <= 65_535
+  ? configuredTransferPort
+  : await findFreePort(perfPort + 1);
+process.env.PLAYWRIGHT_TRANSFER_PORT = String(transferPort);
+const TRANSFER_BASE_URL = process.env.TRANSFER_BASE_URL ?? (USE_LOCAL_SERVER
+  ? `http://127.0.0.1:${String(transferPort)}`
+  : BASE_URL);
+const TRANSFER_ACCEPTANCE_TESTS = [
+  "**/consumer-recovery-review.spec.ts",
+  "**/library-handoff-resume.spec.ts",
+];
 const FEED_SCROLL_TIMING_TESTS = /perf-feed\.spec\.ts.*(?:Scroll performance|frame delivery during fast scroll)/;
 
 export default defineConfig({
@@ -46,8 +58,14 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
+      testIgnore: TRANSFER_ACCEPTANCE_TESTS,
       grepInvert: FEED_SCROLL_TIMING_TESTS,
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "chromium-transfer-acceptance",
+      testMatch: TRANSFER_ACCEPTANCE_TESTS,
+      use: { ...devices["Desktop Chrome"], baseURL: TRANSFER_BASE_URL },
     },
     {
       name: "chromium-feed-perf",
@@ -76,6 +94,17 @@ export default defineConfig({
           VITE_TEST_TAURI: "1",
           NODE_ENV: "production",
           FREED_E2E_PERF: "1",
+        },
+      }, {
+        // Browser-only Tauri mocks exercise the already gated acceptance UI.
+        // Ordinary servers retain the disabled product capability.
+        command: `${process.execPath} ../../node_modules/vite/bin/vite.js --config vite.config.ts --mode library-transfer-acceptance --host 127.0.0.1 --port ${String(transferPort)} --strictPort`,
+        url: TRANSFER_BASE_URL,
+        reuseExistingServer: false,
+        timeout: 60_000,
+        env: {
+          VITE_TEST_TAURI: "1",
+          NODE_ENV: "development",
         },
       }]
     : undefined,

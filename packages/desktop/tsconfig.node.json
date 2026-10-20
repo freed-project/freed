@@ -1,11 +1,26 @@
 {
+  // `composite` requires emit, so this project cannot use `noEmit` like the
+  // main one does. Without an outDir it wrote vite.config.js, vite.config.d.ts
+  // and the compiled e2e fixtures next to their sources, where they got
+  // committed and then drifted from the .ts files they came from. Nothing
+  // consumes those outputs: Vite loads vite.config.ts directly and Playwright
+  // runs the .ts fixtures. Sending emit to an ignored directory keeps the
+  // project reference intact and stops `npm run build` rewriting tracked files.
   "compilerOptions": {
     "composite": true,
+    "outDir": "./.tsbuild",
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "strict": true
   },
-  "include": ["vite.config.ts", "tests/e2e/fixtures/tauri-init.ts"]
+  // package.json is listed because vite.config.ts imports it as JSON. Without
+  // an outDir tsc never needed an output path for it; with one it does, and
+  // omitting it fails as TS6307.
+  "include": [
+    "vite.config.ts",
+    "tests/e2e/fixtures/tauri-init.ts",
+    "package.json"
+  ]
 }

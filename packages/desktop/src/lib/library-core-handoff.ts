@@ -73,7 +73,7 @@ export function prepareDesktopLibraryTargetReadiness(): Promise<string> {
         || (status.installationRole === "source" && status.phase === "demoted"))) {
         const role = await refreshLibraryCoreDesktopRole().catch(() => null);
         const epoch = status.installationRole === "target" ? status.predecessorEpochId : status.successorEpochId;
-        canResume = role?.state === "editable_consumer" && role.role === "follower"
+        canResume = (role?.state === "editable_consumer" || role?.state === "read_only_consumer") && role.role === "follower"
           && role.libraryId === status.libraryId && role.authorityEpochId === epoch;
       }
       if (canResume) { pause = null; owner.resume(); }
@@ -386,7 +386,7 @@ export function commitDesktopLibraryConsumerRecovery(recoveryId: string): Promis
 
 /** Adopt only after native verification of the staged checkpoint and remote winner. */
 export function adoptDesktopLibrarySourceHandoff(input: {
-  handoffId: string; accessToken: string; googleFetch?: GoogleDriveFetch; signal?: AbortSignal;
+  handoffId: string; accessToken: string; googleFetch?: GoogleDriveFetch; signal?: AbortSignal; readOnly?: boolean;
 }): Promise<NormalizedLibraryHandoffStatus> {
   requireLibraryTransferCapability();
   return exclusively(async () => {
@@ -410,13 +410,16 @@ export function adoptDesktopLibrarySourceHandoff(input: {
     }
     const result = await runSqliteLibraryHandoffLifecycle(async () => {
       if (input.signal?.aborted) throw new DOMException("Source adoption canceled", "AbortError");
-      const stored = await adoptNormalizedLibrarySourceHandoff({ handoffId: input.handoffId, accessToken: input.accessToken, ...staged });
+      const stored = await adoptNormalizedLibrarySourceHandoff({ handoffId: input.handoffId, accessToken: input.accessToken, ...staged, ...(input.readOnly === undefined ? {} : { readOnly: input.readOnly }) });
       const after = await readNormalizedLibraryHandoffStatus();
       if (!after || after.handoffId !== input.handoffId || after.installationRole !== "source" || after.phase !== "demoted"
         || after.successorEpochId === null || after.successorEpochId !== stored.successorEpochId || after.canonicalAuthorization !== before.canonicalAuthorization
         || after.canonicalActivation !== stored.canonicalActivation || after.observedControlRevision !== stored.observedControlRevision) throw new Error("Source consumer selection could not be verified");
       const role = await refreshLibraryCoreDesktopRole();
       if (role.role !== "follower" || role.libraryId !== after.libraryId || role.authorityEpochId !== after.successorEpochId) throw new Error("Demoted source consumer role could not be verified");
+      if ((role.state === "read_only_consumer") !== (input.readOnly === true)) {
+        throw new Error("Demoted source access mode could not be verified");
+      }
       return after;
     });
     pause = null; owner.resume();

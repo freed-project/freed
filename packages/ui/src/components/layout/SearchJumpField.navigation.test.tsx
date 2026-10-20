@@ -17,7 +17,7 @@ describe('profile Map navigation does not create relationships', () => {
  beforeEach(async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   fixture.socialCurrent = true; fixture.scopeCount = 0; fixture.searchCurrent = true; fixture.mark.mockClear(); fixture.setDisplay.mockClear(); fixture.display = { mapMode: 'friends', friendsMode: 'friends' };
-  fixture.state = { activeView: 'feed', activeFilter: {}, searchQuery: '', searchCorpusVersion: 1, selectedItemId: null,
+  fixture.state = { toggleArchived: vi.fn(async () => {}), activeView: 'feed', activeFilter: {}, searchQuery: '', searchCorpusVersion: 1, selectedItemId: null,
    setSearchQuery: vi.fn(), setFilter: vi.fn(), setActiveView: vi.fn(), setSelectedItem: vi.fn(), setSelectedPerson: vi.fn(), setSelectedAccount: vi.fn() };
   fixture.platform = { readLibraryAccountDetail: vi.fn(async () => profile), readLibraryPersonDetail: vi.fn(async () => null), replaceLibraryFriend: vi.fn(), upsertLibraryPerson: vi.fn() };
   host = document.createElement('div'); document.body.append(host); root = createRoot(host);

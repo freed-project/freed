@@ -15,7 +15,8 @@ const fixture = vi.hoisted(() => ({
   detail: { item: null },
   display: [{ friendsMode: "all_content", savedContentSortMode: "date_saved", dualColumnMode: false, sidebarMode: "closed" }],
 }));
-vi.mock("../../context/PlatformContext.js", () => ({
+vi.mock("../../context/PlatformContext.js", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../context/PlatformContext.js")>(),
   usePlatform: () => fixture.platform,
   useAppStore: (selector: (state: any) => unknown) => selector(fixture.state),
 }));

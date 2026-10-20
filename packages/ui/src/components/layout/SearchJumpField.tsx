@@ -1,3 +1,4 @@
+import { useArchiveAction } from "../../hooks/useArchiveAction.js";
 import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { createPortal } from "react-dom";
 import {
@@ -352,7 +353,7 @@ export function SearchJumpField({
   const setSelectedPerson = useAppStore((s) => s.setSelectedPerson);
   const setSelectedAccount = useAppStore((s) => s.setSelectedAccount);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
-  const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const { toggleArchived } = useArchiveAction();
   const toggleLiked = useAppStore((s) => s.toggleLiked);
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
@@ -665,7 +666,7 @@ export function SearchJumpField({
         toggleCurrentItemArchived: selectedItem && !readOnly
           ? async () => {
               const wasArchived = selectedItem.userState.archived;
-              await toggleArchived(selectedItem.globalId);
+              await toggleArchived(selectedItem.globalId, selectedItem.userState.archived);
               if (!wasArchived) {
                 setSelectedItem(null);
               }

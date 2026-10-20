@@ -1,3 +1,4 @@
+import { useArchiveAction } from "../../hooks/useArchiveAction.js";
 import { formatFeedItemCount } from "../../lib/feed-count-presentation.js";
 import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import {
@@ -372,7 +373,7 @@ export function Header({
   const unarchiveSavedItems = useAppStore((s) => s.unarchiveSavedItems);
   const deleteAllArchived = useAppStore((s) => s.deleteAllArchived);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
-  const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const { toggleArchived } = useArchiveAction();
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const setSelectedItem = useAppStore((s) => s.setSelectedItem);
   const setFilter = useAppStore((s) => s.setFilter);
@@ -873,7 +874,7 @@ export function Header({
   const handleToggleReaderArchived = useCallback(() => {
     if (!selectedItem) return;
     const wasArchived = selectedItem.userState.archived;
-    void toggleArchived(selectedItem.globalId).then(() => {
+    void toggleArchived(selectedItem.globalId, selectedItem.userState.archived).then(() => {
       if (!wasArchived) setSelectedItem(null);
     }, () => {}); // The store reports failed writes; keep the reader open.
   }, [selectedItem, setSelectedItem, toggleArchived]);
@@ -2037,7 +2038,7 @@ export function Header({
                   type="button"
                   role="menuitem"
                   disabled={action.disabled}
-                  title={action.disabled ? (readOnly ? "Unavailable in this read-only demo" : "Refreshing counts") : undefined}
+                  title={action.disabled ? (readOnly ? "Unavailable in read-only mode" : "Refreshing counts") : undefined}
                   onClick={() => {
                     action.onClick();
                     if (action.id !== "delete-archived" || action.danger) {

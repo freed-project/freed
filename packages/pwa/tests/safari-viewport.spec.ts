@@ -283,6 +283,20 @@ test.describe("Safari viewport layout — iPhone 14 / WebKit", () => {
       expect(Math.max(...positions) - Math.min(...positions)).toBeLessThanOrEqual(1);
       await page.screenshot({ path: testInfo.outputPath(`rotation-${viewport.width}.png`) });
     }
+
+    // Reader round trips must keep the phone's document as the scroll owner.
+    // Programmatic scroll checks layout; physical touch still needs an iPhone.
+    for (let cycle = 0; cycle < 3; cycle++) {
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+      await page.locator("[data-feed-row-index] [role=button]").first().click();
+      await expect(page.locator(".reader-inline")).toBeVisible();
+      await expect(page.locator(".reader-inline")).toHaveCSS("overflow-y", "visible");
+      await page.getByRole("button", { name: "Back to list", exact: true }).click();
+      await expect(page.locator("[data-feed-row-index]").first()).toBeVisible();
+      await page.evaluate(() => window.scrollTo({ top: 300, behavior: "instant" }));
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(300);
+      expect(await page.evaluate(() => document.body.style.overflow)).toBe("");
+    }
   });
 
   test("dvh and lvh resolve to non-zero pixel values", async ({ page }) => {

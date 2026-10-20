@@ -1,3 +1,4 @@
+import { useArchiveAction } from "../../hooks/useArchiveAction.js";
 import type { LibraryCoreHydratedAnnotations } from "@freed/shared/library-core";
 import { usePlatformCapabilities } from "../../context/PlatformContext.js";
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
@@ -261,10 +262,18 @@ function fallbackReaderTitle(item: FeedItemType): string {
   return item.content.linkPreview?.title || item.content.text?.slice(0, 100) || "Untitled";
 }
 
+function newlyHydratedLeadImage(item: FeedItemType, hydrated: ReaderHydrationResult): string | null {
+  const src = hydrated.mediaUrls?.[0];
+  // Echoed request media must not replace a newer same-ID detail fallback.
+  return hydrated.mediaTypes?.[0] === "image" && src &&
+    src !== item.content.mediaUrls[0] && isAllowedImageSrc(src) ? src : null;
+}
+
 function buildReaderPresentation(
   blocks: readonly ContentBlock[],
   item: FeedItemType,
   isStory: boolean,
+  hydratedLeadImageUrl: string | null,
 ): ReaderPresentation {
   const titleIndex = findLeadingTitleIndex(blocks);
   const titleBlock = titleIndex === null ? null : blocks[titleIndex];
@@ -281,7 +290,10 @@ function buildReaderPresentation(
   const previewLeadImage = !isStory && item.content.mediaUrls[0]
     ? { src: item.content.mediaUrls[0], alt: "" }
     : null;
-  const leadImage = articleLeadImage ?? previewLeadImage;
+  const hydratedLeadImage = !isStory && hydratedLeadImageUrl
+    ? { src: hydratedLeadImageUrl, alt: "" }
+    : null;
+  const leadImage = articleLeadImage ?? hydratedLeadImage ?? previewLeadImage;
 
   const bodyBlocks = blocks.filter((block, index) => {
     if (
@@ -367,7 +379,7 @@ export function ReaderView({
   } = usePlatform();
   const openSavedContentEditor = useCommandSurfaceStore((state) => state.openSavedContentEditor);
   const toggleSaved = useAppStore((s) => s.toggleSaved);
-  const toggleArchived = useAppStore((s) => s.toggleArchived);
+  const { toggleArchived } = useArchiveAction();
   const updatePreferences = useAppStore((s) => s.updatePreferences);
   const storedDisplay = useAppStore((s) => s.preferences.display);
   const [deviceDisplay, setDeviceDisplay] = useDeviceDisplayPreferences();
@@ -395,6 +407,7 @@ export function ReaderView({
   const [hydrationMessage, setHydrationMessage] = useState<string | null>(null);
   const [readerMediaUrls, setReaderMediaUrls] = useState<string[] | null>(null);
   const [readerMediaTypes, setReaderMediaTypes] = useState<Array<"image" | "video" | "link"> | null>(null);
+  const [hydratedLeadImageUrl, setHydratedLeadImageUrl] = useState<string | null>(null);
   const [threadReplies, setThreadReplies] = useState<ReaderThreadReply[]>([]);
   const [isThreadLoading, setIsThreadLoading] = useState(false);
   const [hasRequestedThreadReplies, setHasRequestedThreadReplies] = useState(false);
@@ -421,6 +434,7 @@ export function ReaderView({
     setHydrationMessage(null);
     setReaderMediaUrls(null);
     setReaderMediaTypes(null);
+    setHydratedLeadImageUrl(null);
     setThreadReplies([]);
     setIsThreadLoading(false);
     setHasRequestedThreadReplies(false);
@@ -475,7 +489,7 @@ export function ReaderView({
     [onOpenUrl, platformOpenUrl],
   );
   const handleAddToOfflinePlaylist = useCallback(async () => {
-    if (!youtube || !youtubeReference || visibleOfflinePlaylistState.status === "adding") return;
+    if (!capabilities.libraryEdits || !youtube || !youtubeReference || visibleOfflinePlaylistState.status === "adding") return;
     const itemId = item.globalId;
     setOfflinePlaylistState({ status: "adding", itemId });
     try {
@@ -496,7 +510,7 @@ export function ReaderView({
         message: error instanceof Error ? error.message : "Could not update Freed Offline.",
       });
     }
-  }, [item.globalId, item.userState.saved, toggleSaved, visibleOfflinePlaylistState.status, youtube, youtubeReference]);
+  }, [item.globalId, item.userState.saved, toggleSaved, visibleOfflinePlaylistState.status, youtube, youtubeReference, capabilities.libraryEdits]);
   const supportsThreadHydration =
     !isSampleFeedItem(item) &&
     !isStory &&
@@ -521,6 +535,7 @@ export function ReaderView({
       setHydrationMessage(null);
       setReaderMediaUrls(null);
       setReaderMediaTypes(null);
+      setHydratedLeadImageUrl(null);
       setThreadReplies([]);
       setIsThreadLoading(false);
       setHasRequestedThreadReplies(false);
@@ -624,6 +639,7 @@ export function ReaderView({
               setReaderMediaUrls(hydrated.mediaUrls);
               setReaderMediaTypes(hydrated.mediaTypes ?? []);
             }
+            setHydratedLeadImageUrl(newlyHydratedLeadImage(item, hydrated));
             setHydrationStatus(hydrated.status ?? null);
             setHydrationMessage(hydrated.message ?? null);
             setIsLoading(false);
@@ -741,6 +757,7 @@ export function ReaderView({
         setReaderMediaUrls(hydrated.mediaUrls);
         setReaderMediaTypes(hydrated.mediaTypes ?? []);
       }
+      setHydratedLeadImageUrl(newlyHydratedLeadImage(item, hydrated));
 
       const replies = hydrated.replies ?? [];
       setThreadReplies(replies);
@@ -759,26 +776,29 @@ export function ReaderView({
   }, [supportsThreadHydration, interactionMode, hydrateReaderItem, isThreadLoading, item, replyPlatformLabel]);
 
   const handleToggleSaved = useCallback(() => {
+    if (!capabilities.libraryEdits) return;
     toggleSaved(item.globalId);
-  }, [toggleSaved, item.globalId]);
+  }, [toggleSaved, item.globalId, capabilities.libraryEdits]);
 
   const handleToggleArchived = useCallback(() => {
-    void toggleArchived(item.globalId).then(() => {
+    if (!capabilities.libraryEdits) return;
+    void toggleArchived(item.globalId, item.userState.archived).then(() => {
       if (!item.userState.archived) onClose();
     }, () => {}); // The store reports failed writes; keep the reader open.
-  }, [toggleArchived, item.globalId, item.userState.archived, onClose]);
+  }, [toggleArchived, item.globalId, item.userState.archived, onClose, capabilities.libraryEdits]);
 
   const prefTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
     if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
-  }, []);
+  }, [capabilities.libraryEdits]);
 
   const toggleFocus = useCallback(() => {
     const enabled = !focusEnabledRef.current;
     focusEnabledRef.current = enabled;
     setFocusOptions((prev) => ({ ...prev, enabled }));
     if (prefTimerRef.current) clearTimeout(prefTimerRef.current);
+    if (!capabilities.libraryEdits) return;
     prefTimerRef.current = setTimeout(() => {
       prefTimerRef.current = null;
       void updatePreferences({
@@ -791,7 +811,7 @@ export function ReaderView({
         toast.error("Freed could not save the focus setting.");
       });
     }, 1_000);
-  }, [updatePreferences]);
+  }, [updatePreferences, capabilities.libraryEdits]);
 
   const toggleDualColumn = useCallback(() => {
     if (!setDeviceDisplay({ dualColumnMode: !deviceDisplay.dualColumnMode })) {
@@ -815,8 +835,8 @@ export function ReaderView({
   }, [html, preservedText, item.content.text]);
 
   const readerPresentation = useMemo(
-    () => buildReaderPresentation(articleBlocks, item, isStory),
-    [articleBlocks, item, isStory],
+    () => buildReaderPresentation(articleBlocks, item, isStory, hydratedLeadImageUrl),
+    [articleBlocks, item, isStory, hydratedLeadImageUrl],
   );
 
   // Plain text for focus mode rendering
@@ -834,7 +854,7 @@ export function ReaderView({
     <div
       className={
         inline
-          ? "flex-1 min-w-0 overflow-auto bg-transparent"
+          ? "reader-inline flex-1 min-w-0 overflow-auto bg-transparent"
           : "reader-overlay fixed inset-0 z-50 overflow-auto bg-[var(--theme-bg-root)]"
       }
     >
@@ -923,6 +943,7 @@ export function ReaderView({
             <Tooltip label={item.userState.saved ? "Remove bookmark" : "Bookmark"}>
               <button
                 onClick={handleToggleSaved}
+                disabled={!capabilities.libraryEdits}
                 className={`theme-toolbar-icon-button rounded-lg ${
                   item.userState.saved
                     ? "theme-toolbar-button-active"
@@ -946,6 +967,7 @@ export function ReaderView({
             <Tooltip label={item.userState.archived ? "Unarchive" : "Archive"}>
               <button
                 onClick={handleToggleArchived}
+                disabled={!capabilities.libraryEdits}
                 className={`theme-toolbar-icon-button rounded-lg ${
                   item.userState.archived
                     ? "theme-toolbar-button-success-active"
@@ -1070,7 +1092,7 @@ export function ReaderView({
                 <button
                   type="button"
                   onClick={() => void handleAddToOfflinePlaylist()}
-                  disabled={visibleOfflinePlaylistState.status === "adding"}
+                  disabled={!capabilities.libraryEdits || visibleOfflinePlaylistState.status === "adding"}
                   className="btn-secondary rounded-lg px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {visibleOfflinePlaylistState.status === "adding"
