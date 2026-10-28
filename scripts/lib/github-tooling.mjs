@@ -60,3 +60,22 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exitCode = 1;
   }
 }
+
+// Issue authors whose issues autonomous automation may select as work. The
+// repository is public, so labels alone are not provenance: an issue form can
+// apply labels for anyone. Bot logins must also carry `is_bot`, because a
+// human account can hold a bot-like plain login.
+export const TRUSTED_ISSUE_OWNER_LOGINS = Object.freeze(["AubreyF"]);
+export const TRUSTED_ISSUE_BOT_LOGINS = Object.freeze([
+  "app/github-actions",
+  "github-actions[bot]",
+]);
+
+/** Accepts a `gh --json author` value. Anything unexpected fails closed. */
+export function isTrustedIssueAuthor(author) {
+  if (!author || typeof author !== "object") return false;
+  const login = typeof author.login === "string" ? author.login : "";
+  if (!login) return false;
+  if (author.is_bot === true) return TRUSTED_ISSUE_BOT_LOGINS.includes(login);
+  return TRUSTED_ISSUE_OWNER_LOGINS.includes(login);
+}

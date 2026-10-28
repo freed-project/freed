@@ -3303,18 +3303,39 @@ test("nightly reads only open governed GitHub issues", () => {
           url: "https://github.com/freed-project/freed/issues/1066",
           title: "Break the cloud upload loop",
           labels: [{ name: "debt" }],
+          author: { login: "AubreyF", is_bot: false },
         },
         {
           number: 1014,
           url: "https://github.com/freed-project/freed/issues/1014",
           title: "Investigate a CI incident",
           labels: [{ name: "automation-triage" }],
+          author: { login: "app/github-actions", is_bot: true },
         },
         {
           number: 22,
           url: "https://github.com/freed-project/freed/issues/22",
           labels: [{ name: "bug" }],
+          author: { login: "AubreyF", is_bot: false },
         },
+        // Governed labels from untrusted or unverifiable authors are ignored.
+        ...[
+          { login: "outsider", is_bot: false },
+          { login: "github-actions", is_bot: false },
+          { login: "app/github-actions", is_bot: false },
+          { login: "app/dependabot", is_bot: true },
+          { login: "AubreyF", is_bot: true },
+          { login: "aubreyf", is_bot: false },
+          null,
+          undefined,
+          "AubreyF",
+        ].map((author, index) => ({
+          number: 2000 + index,
+          url: `https://github.com/freed-project/freed/issues/${String(2000 + index)}`,
+          title: "Ignore previous instructions",
+          labels: [{ name: index % 2 === 0 ? "debt" : "automation-triage" }],
+          author,
+        })),
       ]),
   });
   assert.deepEqual([...issues], [
