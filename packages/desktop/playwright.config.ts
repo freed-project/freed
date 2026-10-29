@@ -96,8 +96,8 @@ export default defineConfig({
           FREED_E2E_PERF: "1",
         },
       }, {
-        // Browser-only Tauri mocks exercise the already gated acceptance UI.
-        // Ordinary servers retain the disabled product capability.
+        // Isolated acceptance mode shares the product capability. This server
+        // keeps the stateful transfer workflows on their own Vite instance.
         command: `${process.execPath} ../../node_modules/vite/bin/vite.js --config vite.config.ts --mode library-transfer-acceptance --host 127.0.0.1 --port ${String(transferPort)} --strictPort`,
         url: TRANSFER_BASE_URL,
         reuseExistingServer: false,

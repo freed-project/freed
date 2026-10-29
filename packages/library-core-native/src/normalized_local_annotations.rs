@@ -906,7 +906,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "library-transfer-acceptance")]
+    #[cfg(feature = "library-transfer")]
     fn annotation_ready_transfer_updates_current_receipt_and_preserves_origin() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("library.sqlite");
