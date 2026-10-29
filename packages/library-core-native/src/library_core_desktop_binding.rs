@@ -1532,7 +1532,7 @@ mod tests {
         fs::set_permissions(&app_root, fs::Permissions::from_mode(0o700)).unwrap();
         let binding = LibraryCoreDesktopBinding::open(&app_root, TEST_IDENTITY).unwrap();
         install_test_selected_authority(&binding, &"b".repeat(64), &"a".repeat(64));
-        #[cfg(feature = "library-transfer-acceptance")]
+        #[cfg(feature = "library-transfer")]
         {
             let mut connection = binding.connect_selected_normalized().unwrap();
             let transaction = connection.transaction().unwrap();

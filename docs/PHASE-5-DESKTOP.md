@@ -1757,7 +1757,7 @@ Synthetic signed handoff coverage verifies retained actor identity across promot
 
 ### Isolated transfer acceptance, October 3, 2026
 
-An explicit transfer-acceptance build pairs native and frontend capabilities, requires the isolated preview data root, and disables update endpoints. Ordinary release transfer holds remain in place. Installed multi-device acceptance is still required.
+An explicit transfer-acceptance build requires the isolated preview data root and disables update endpoints. Since October 28, 2026, ordinary Freed Desktop builds also include Primary transfer and consumer recovery; see the ordinary-build transfer capability in Phase 11. Installed multi-device acceptance is still required before production promotion.
 
 The dev release workflow also builds a separately named, signed and notarized Apple Silicon transfer-acceptance app. It uses the explicit acceptance configuration, has no updater endpoint, and cannot be selected by the ordinary updater asset pattern. Signing-job success and actual installed multi-device acceptance remain separate evidence.
 
@@ -1911,4 +1911,4 @@ retain their original service mappings. Two Macs can therefore use their existin
 macOS accounts for disposable-Library acceptance after installed identity and
 isolation checks. No credentials or databases are copied into the new identity.
 Installed convergence, viewer enforcement and authority handoff remain separate
-acceptance gates; ordinary transfer and recovery holds remain unchanged.
+acceptance gates. Ordinary builds include transfer and recovery from October 28, 2026.

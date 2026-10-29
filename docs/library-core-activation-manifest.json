@@ -65,6 +65,17 @@
         "roll_forward_recovery_receipt",
         "schema_migration_receipt"
       ]
+    },
+    {
+      "activationId": "ordinary-build-primary-handoff-v1",
+      "gate": "F",
+      "kind": "authority_key_rotation",
+      "failureResponse": "Ordinary Desktop and PWA builds may run the approved cooperative handoff and consumer recovery. Before signed source authorization, cancel only through the verified path. After authorization, keep the predecessor fenced and resume the exact saved target transition with a compatible successor build. Never reinstall a held build to reclaim authority, infer a winner or restore predecessor writes.",
+      "receiptExpectations": [
+        "authority_rotation_receipt",
+        "authority_transition_certificate",
+        "roll_forward_recovery_receipt"
+      ]
     }
   ]
 }
