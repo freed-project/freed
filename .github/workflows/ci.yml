@@ -5,10 +5,15 @@ on:
     branches: [dev]
   pull_request:
     branches: [dev, main]
+  merge_group:
+    types: [checks_requested]
+    branches: [dev]
 
 # Superseded dev pushes cancel too. Only the latest dev tree carries the
 # integration proof that release admission inherits, so validating an
 # intermediate commit that a newer push already replaced is wasted runner time.
+# Each merge-group entry has a unique gh-readonly-queue ref, so cancellation
+# cannot cancel a different queue entry. Reruns of the same entry share a group.
 concurrency:
   group: validation-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -50,9 +55,11 @@ jobs:
       - name: Resolve tooling smoke plan
         id: plan
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           BEFORE_SHA: ${{ github.event.before }}
         run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "$EVENT_NAME" = "push" ]; then
             if [ -n "$BEFORE_SHA" ] \
               && ! [[ "$BEFORE_SHA" =~ ^0+$ ]] \
               && git cat-file -e "${BEFORE_SHA}^{commit}"; then
@@ -62,12 +69,25 @@ jobs:
             else
               node scripts/plan-tooling-smoke.mjs --all --github-output
             fi
-          else
+          elif [ "$EVENT_NAME" = "pull_request" ]; then
             git fetch --no-tags origin "${{ github.base_ref }}"
             node scripts/plan-tooling-smoke.mjs \
               --base-ref "origin/${{ github.base_ref }}" \
               --scope-manifests \
               --github-output
+          elif [ "$EVENT_NAME" = "merge_group" ]; then
+            if [[ "$MERGE_GROUP_BASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] \
+              && git cat-file -e "${MERGE_GROUP_BASE_SHA}^{commit}"; then
+              node scripts/plan-tooling-smoke.mjs \
+                --base-ref "$MERGE_GROUP_BASE_SHA" \
+                --scope-manifests \
+                --github-output
+            else
+              node scripts/plan-tooling-smoke.mjs --all --github-output
+            fi
+          else
+            echo "Unexpected validation event: $EVENT_NAME"
+            exit 1
           fi
 
       - name: Summarize the plan
@@ -160,6 +180,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
+          MERGE_GROUP_BASE_REF: ${{ github.event.merge_group.base_ref }}
           REF: ${{ github.ref }}
           FEATURE_RESULT: ${{ needs.feature.result }}
           OPFS_REQUIRED: ${{ needs.feature.outputs.needs-webkit }}
@@ -173,10 +194,24 @@ jobs:
           PREVIEW_RESULT: ${{ needs.preview-process-acceptance.result }}
           JOB_COUNT: ${{ needs.tooling-smoke-plan.outputs.job-count }}
         run: |
-          # Feature planning only runs for dev PRs. Never interpret a missing
+          # Feature planning runs for dev PRs and dev merge groups. Never interpret a missing
           # selection as permission to omit the mandatory native proof.
           case "$EVENT_NAME/$BASE_REF/$REF" in
             pull_request/dev/*)
+              if [ "$FEATURE_RESULT" != "success" ]; then
+                echo "Feature validation did not succeed: $FEATURE_RESULT"
+                exit 1
+              fi
+              case "$OPFS_REQUIRED/$OPFS_RESULT" in
+                true/success|false/skipped) ;;
+                *) echo "Invalid OPFS plan/result: $OPFS_REQUIRED/$OPFS_RESULT"; exit 1 ;;
+              esac
+              ;;
+            merge_group/*)
+              if [ "$MERGE_GROUP_BASE_REF" != "refs/heads/dev" ]; then
+                echo "Unexpected merge group base: $MERGE_GROUP_BASE_REF"
+                exit 1
+              fi
               if [ "$FEATURE_RESULT" != "success" ]; then
                 echo "Feature validation did not succeed: $FEATURE_RESULT"
                 exit 1
@@ -335,7 +370,7 @@ jobs:
 
   feature:
     name: Feature validation
-    if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+    if: (github.event_name == 'pull_request' && github.base_ref == 'dev') || (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/dev')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     outputs:
@@ -479,7 +514,8 @@ jobs:
     needs: feature
     if: >-
       ${{ always() &&
-          ((github.event_name == 'pull_request' &&
+          ((((github.event_name == 'pull_request' && github.base_ref == 'dev') ||
+             (github.event_name == 'merge_group' && github.event.merge_group.base_ref == 'refs/heads/dev')) &&
             needs.feature.outputs.needs-webkit == 'true') ||
            github.event_name == 'push') }}
     runs-on: macos-latest
