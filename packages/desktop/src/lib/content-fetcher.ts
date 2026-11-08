@@ -660,7 +660,9 @@ async function processNext(): Promise<ProcessOutcome> {
       preservedContent: {
         text: summaryText,
         ...(resolvedAuthor !== undefined ? { author: resolvedAuthor } : {}),
-        publishedAt: metadata.publishedAt,
+        ...(Number.isFinite(metadata.publishedAt)
+          ? { publishedAt: metadata.publishedAt }
+          : {}),
         wordCount: content.wordCount,
         readingTime: content.readingTime,
         preservedAt: Date.now(),

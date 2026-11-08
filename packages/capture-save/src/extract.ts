@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import { parseMetaTimestamp } from "./timestamp.js";
 import type { UrlMetadata } from "./types.js";
 
 /**
@@ -47,9 +48,7 @@ export async function extractMetadata(url: string): Promise<UrlMetadata> {
     getMetaContent(doc, 'meta[property="article:published_time"]') ||
     getMetaContent(doc, 'meta[name="date"]');
 
-  const publishedAt = publishedTimeStr
-    ? new Date(publishedTimeStr).getTime()
-    : undefined;
+  const publishedAt = parseMetaTimestamp(publishedTimeStr);
 
   const type = getMetaContent(doc, 'meta[property="og:type"]');
 

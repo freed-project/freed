@@ -70,6 +70,7 @@ test("feature plan for shared changes covers both desktop and pwa surfaces", () 
     "shared unit tests",
     "packages/capture-medium tests",
     "packages/capture-rss tests",
+    "packages/capture-save tests",
     "packages/capture-substack tests",
     "packages/capture-youtube tests",
     "ui unit tests",
