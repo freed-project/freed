@@ -4140,7 +4140,7 @@ fn format_duration_for_user(duration: Duration) -> String {
             if total_seconds == 1 { "" } else { "s" }
         )
     } else {
-        let minutes = ((total_seconds + 59) / 60).max(1);
+        let minutes = total_seconds.div_ceil(60).max(1);
         format!(
             "about {} minute{}",
             minutes,
