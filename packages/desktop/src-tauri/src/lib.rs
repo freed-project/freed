@@ -9239,10 +9239,11 @@ async fn fb_scrape_feed(
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability) simulates re-reading.
-        if {
+        let should_backscroll = {
             use rand::RngExt;
             rand::rng().random_bool(0.12)
-        } {
+        };
+        if should_backscroll {
             let back = {
                 use rand::RngExt;
                 rand::rng().random_range(80u64..250)
@@ -9253,10 +9254,11 @@ async fn fb_scrape_feed(
         }
 
         // Gaussian pause between scroll passes; ~25% chance of a longer "reading" pause.
-        let pause = if {
+        let should_read_longer = {
             use rand::RngExt;
             rand::rng().random_bool(0.25)
-        } {
+        };
+        let pause = if should_read_longer {
             gaussian_ms(6000.0, 1500.0)
         } else {
             gaussian_ms(2750.0, 600.0)
@@ -10119,10 +10121,11 @@ async fn ig_scrape_feed(
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Micro-backscroll ~12% of the time.
-        if {
+        let should_backscroll = {
             use rand::RngExt;
             rand::rng().random_bool(0.12)
-        } {
+        };
+        if should_backscroll {
             let back = {
                 use rand::RngExt;
                 rand::rng().random_range(80u64..250)
@@ -10133,10 +10136,11 @@ async fn ig_scrape_feed(
         }
 
         // Gaussian pause; ~25% chance of longer "reading" pause.
-        let pause = if {
+        let should_read_longer = {
             use rand::RngExt;
             rand::rng().random_bool(0.25)
-        } {
+        };
+        let pause = if should_read_longer {
             gaussian_ms(5500.0, 1500.0)
         } else {
             gaussian_ms(4500.0, 700.0)
@@ -10792,10 +10796,11 @@ async fn li_scrape_feed(
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability).
-        if {
+        let should_backscroll = {
             use rand::RngExt;
             rand::rng().random_bool(0.12)
-        } {
+        };
+        if should_backscroll {
             let back = {
                 use rand::RngExt;
                 rand::rng().random_range(80u64..200)
@@ -10806,10 +10811,11 @@ async fn li_scrape_feed(
         }
 
         // Gaussian pause; longer pauses more common than FB (LinkedIn users scroll slower).
-        let pause = if {
+        let should_read_longer = {
             use rand::RngExt;
             rand::rng().random_bool(0.30)
-        } {
+        };
+        let pause = if should_read_longer {
             gaussian_ms(7000.0, 2000.0)
         } else {
             gaussian_ms(4000.0, 800.0)
