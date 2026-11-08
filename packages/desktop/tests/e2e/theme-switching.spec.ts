@@ -631,7 +631,8 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
   await expect(page.getByTestId("friends-context-menu")).toHaveCount(0);
 
   await expect.poll(async () => {
-    return page.evaluate(() => {
+    return page.evaluate(async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const graph = document.querySelector('[data-testid="friend-graph-viewport"]');
       const fitAll = Array.from(document.querySelectorAll("button")).find((button) =>
         button.getAttribute("aria-label") === "Fit All",
@@ -642,6 +643,8 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
       const friendsSidebar = document.querySelector('[data-testid="friends-sidebar"]');
       const handle = document.querySelector('[aria-label="Resize friends sidebar"]');
       const header = document.querySelector("header");
+      const main = document.querySelector("main");
+      const contentFrame = document.querySelector('[data-testid="workspace-content-frame"]');
       if (!(graph instanceof HTMLElement)) return null;
       if (!(fitAll instanceof HTMLElement)) return null;
       if (!(controls instanceof HTMLElement)) return null;
@@ -650,14 +653,28 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
       if (!(friendsSidebar instanceof HTMLElement)) return null;
       if (!(handle instanceof HTMLElement)) return null;
       if (!(header instanceof HTMLElement)) return null;
+      if (!(main instanceof HTMLElement)) return null;
+      if (!(contentFrame instanceof HTMLElement)) return null;
+      if (document.querySelector('[data-testid="friends-graph-loading"]')) return null;
+      if (!graph.hasAttribute("data-graph-renderer")) return null;
 
-      const graphRect = graph.getBoundingClientRect();
-      const controlsRect = controls.getBoundingClientRect();
-      const sidebarRect = sidebar.getBoundingClientRect();
-      const navigationHandleRect = navigationHandle.getBoundingClientRect();
-      const friendsSidebarRect = friendsSidebar.getBoundingClientRect();
-      const handleRect = handle.getBoundingClientRect();
-      const headerRect = header.getBoundingClientRect();
+      const measuredElements = [
+        graph, controls, sidebar, navigationHandle, friendsSidebar, handle, header, main, contentFrame,
+      ];
+      const rects = measuredElements.map((element) => element.getBoundingClientRect());
+      // Compare complete, unrounded rectangles on consecutive frames so a
+      // visible viewport cannot pass while the shell or graph is still settling.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (measuredElements.some((element, index) =>
+        !element.isConnected || JSON.stringify(element.getBoundingClientRect()) !== JSON.stringify(rects[index])
+      )) return null;
+      if (document.querySelector('[data-testid="friends-graph-loading"]')) return null;
+      if (!graph.hasAttribute("data-graph-renderer")) return null;
+
+      const [
+        graphRect, controlsRect, sidebarRect, navigationHandleRect, friendsSidebarRect,
+        handleRect, headerRect, mainRect, contentFrameRect,
+      ] = rects;
       const navigationHandleCenter = navigationHandleRect.left + navigationHandleRect.width / 2;
       const friendsHandleCenter = handleRect.left + handleRect.width / 2;
       return {
@@ -668,7 +685,10 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
         rightGapPx: Math.round(handleRect.left - graphRect.right),
         graphToRightRailPx: Math.round(friendsHandleCenter - graphRect.right),
         rightRailToSidebarPx: Math.round(friendsSidebarRect.left - friendsHandleCenter),
-        bottomGapPx: Math.round(window.innerHeight - graphRect.bottom),
+        graphToMainBottomPx: Math.round(mainRect.bottom - graphRect.bottom),
+        graphToContentFrameBottomPx: Math.round(contentFrameRect.bottom - graphRect.bottom),
+        navigationSidebarBottomInsetPx: Math.round(contentFrameRect.bottom - sidebarRect.bottom),
+        friendsSidebarBottomInsetPx: Math.round(contentFrameRect.bottom - friendsSidebarRect.bottom),
         controlsTopDeltaPx: Math.round(controlsRect.top - friendsSidebarRect.top),
         controlsToFriendsSidebarGapPx: Math.round(friendsSidebarRect.left - controlsRect.right),
         friendsSidebarOuterGapPx: Math.round(window.innerWidth - friendsSidebarRect.right),
@@ -687,8 +707,11 @@ test("friends graph controls align and its sidebar menu follows shared nav behav
     graphToRightRailPx: 6,
     rightRailToSidebarPx: 6,
     // The graph is the primary full-height canvas. Each floating sidebar owns
-    // its panel inset, so the graph itself reaches the window edge.
-    bottomGapPx: 0,
+    // its panel inset; the graph reaches both shared lane boundaries.
+    graphToMainBottomPx: 0,
+    graphToContentFrameBottomPx: 0,
+    navigationSidebarBottomInsetPx: 8,
+    friendsSidebarBottomInsetPx: 8,
     controlsTopDeltaPx: 0,
     controlsToFriendsSidebarGapPx: 8,
     friendsSidebarOuterGapPx: 8,
