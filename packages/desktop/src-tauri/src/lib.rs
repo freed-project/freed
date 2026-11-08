@@ -7952,7 +7952,7 @@ async fn handle_oauth_stream(stream: TcpStream, app: tauri::AppHandle) {
         .unwrap_or("")
         .to_string();
 
-    let query = path.splitn(2, '?').nth(1).unwrap_or("");
+    let query = path.split_once('?').map_or("", |(_, query)| query);
     let mut code = String::new();
     let mut state = String::new();
 
