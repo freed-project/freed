@@ -3341,9 +3341,7 @@ impl BackgroundRuntimeCoordinator {
 
     fn finish_job(&self, operation: &'static str) -> Option<u128> {
         let mut state = self.state.write().unwrap();
-        let Some(active) = state.active_job.take() else {
-            return None;
-        };
+        let active = state.active_job.take()?;
         if active.operation != operation {
             warn!(
                 "[background-runtime] finishing op={} while active_op={}",
