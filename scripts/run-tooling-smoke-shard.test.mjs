@@ -1247,6 +1247,7 @@ test("required aggregate enforces selected OPFS dependency results with an expli
   for (const [name, expression] of Object.entries({
     EVENT_NAME: "github.event_name",
     BASE_REF: "github.base_ref",
+    MERGE_GROUP_BASE_REF: "github.event.merge_group.base_ref",
     REF: "github.ref",
     FEATURE_RESULT: "needs.feature.result",
     OPFS_REQUIRED: "needs.feature.outputs.needs-webkit",
@@ -1363,6 +1364,27 @@ test("required aggregate enforces selected OPFS dependency results with an expli
       );
     }
   }
+  const mergeGroup = {
+    EVENT_NAME: "merge_group", BASE_REF: "", REF: "refs/heads/gh-readonly-queue/dev/pr-1-a",
+    MERGE_GROUP_BASE_REF: "refs/heads/dev",
+  };
+  for (const feature of results) {
+    for (const required of ["true", "false", ""]) {
+      for (const result of results) {
+        check({ ...mergeGroup, FEATURE_RESULT: feature, OPFS_REQUIRED: required, OPFS_RESULT: result },
+          feature === "success" && ((required === "true" && result === "success") ||
+            (required === "false" && result === "skipped")));
+      }
+    }
+  }
+  for (const base of ["", "refs/heads/main", "dev"]) {
+    check({ ...mergeGroup, MERGE_GROUP_BASE_REF: base }, false);
+  }
+  for (const result of results) {
+    check({ ...mergeGroup, PLAN_RESULT: result }, result === "success");
+    check({ ...mergeGroup, SHARD_RESULT: result }, result === "success");
+    check({ ...mergeGroup, APPLICABLE: "false", SHARD_RESULT: result }, result === "skipped");
+  }
   for (const event of ["workflow_dispatch", "schedule", "", "unknown"]) {
     check({ EVENT_NAME: event }, false);
   }
@@ -1376,4 +1398,122 @@ test("required aggregate enforces selected OPFS dependency results with an expli
     check({ NATIVE_REQUIRED: "true", NATIVE_RESULT: result }, true);
     check({ NATIVE_RESULT: result }, result === "skipped");
   }
+});
+
+// These cheap workflow contracts protect queue admission without live GitHub
+// settings. Their inputs are ci.yml and the event payloads represented below.
+function evaluateWorkflowCondition(expression, context) {
+  const source = expression.replace(/^\$\{\{\s*|\s*\}\}$/g, "");
+  const tokens = source.match(/always\(\)|'[^']*'|[a-zA-Z_][\w.-]*|==|&&|\|\||[()]/g) ?? [];
+  assert.equal(tokens.join(""), source.replace(/\s+/g, ""), "unsupported expression syntax");
+  let index = 0;
+  function atom() {
+    const token = tokens[index++];
+    if (token === "(") {
+      const value = or();
+      assert.equal(tokens[index++], ")");
+      return value;
+    }
+    if (token === "always()") return true;
+    if (token?.startsWith("'")) return token.slice(1, -1);
+    assert.match(token ?? "", /^[a-zA-Z_][\w.-]*$/);
+    return token.split(".").reduce((value, key) => value?.[key], context) ?? "";
+  }
+  function equal() {
+    let value = atom();
+    if (tokens[index] === "==") { index++; value = value === atom(); }
+    return value;
+  }
+  function and() {
+    let value = equal();
+    while (tokens[index] === "&&") { index++; const next = equal(); value = value && next; }
+    return value;
+  }
+  function or() {
+    let value = and();
+    while (tokens[index] === "||") { index++; const next = and(); value = value || next; }
+    return value;
+  }
+  const result = or();
+  assert.equal(index, tokens.length);
+  return result;
+}
+
+test("merge queue trigger, job routing and concurrency preserve existing event contracts", () => {
+  const workflow = yaml.load(readFileSync(".github/workflows/ci.yml", "utf8"));
+  assert.deepEqual(workflow.on, {
+    push: { branches: ["dev"] }, pull_request: { branches: ["dev", "main"] },
+    merge_group: { types: ["checks_requested"], branches: ["dev"] },
+  });
+  assert.equal(workflow.jobs.feature.name, "Feature validation");
+  assert.equal(workflow.jobs["tooling-smoke"].name, "Tooling smoke");
+  assert.doesNotMatch(JSON.stringify(workflow.jobs.feature.steps), /github\.(?:event\.pull_request|head_ref|base_ref)/);
+  for (const [event, base, mergeBase, feature, main, dev] of [
+    ["push", "", "", false, false, true],
+    ["pull_request", "dev", "", true, false, false],
+    ["pull_request", "main", "", false, true, false],
+    ["merge_group", "", "refs/heads/dev", true, false, false],
+    ["merge_group", "", "refs/heads/main", false, false, false],
+  ]) {
+    for (const required of ["true", "false", ""]) {
+      const context = { github: { event_name: event, base_ref: base, ref: "refs/heads/dev",
+        event: { merge_group: { base_ref: mergeBase } } },
+        needs: { feature: { outputs: { "needs-webkit": required } } } };
+      for (const [job, expected] of Object.entries({ feature, "main-pr-guard": main, dev,
+        "pwa-opfs-acceptance": dev || (feature && required === "true") })) {
+        assert.equal(evaluateWorkflowCondition(workflow.jobs[job].if, context), expected,
+          `${event}/${base}/${mergeBase}/${required}/${job}`);
+      }
+    }
+  }
+  assert.equal(workflow.concurrency.group, "validation-${{ github.event.pull_request.number || github.ref }}");
+  assert.equal(workflow.concurrency["cancel-in-progress"], true);
+  const group = (ref, number) => workflow.concurrency.group.replace(/\$\{\{(.*?)\}\}/g,
+    (_, expression) => evaluateWorkflowCondition(expression, { github: { ref, event: { pull_request: { number } } } }));
+  const first = "refs/heads/gh-readonly-queue/dev/pr-1-abc";
+  const second = "refs/heads/gh-readonly-queue/dev/pr-2-def";
+  assert.notEqual(group(first), group(second));
+  assert.equal(group(first), group(first));
+  assert.equal(group("refs/pull/1/merge", 1), "validation-1");
+  assert.equal(group("refs/heads/dev"), "validation-refs/heads/dev");
+});
+
+test("merge queue planner scopes valid bases and fails closed without changing push planning", (t) => {
+  const workflow = yaml.load(readFileSync(".github/workflows/ci.yml", "utf8"));
+  const step = workflow.jobs["tooling-smoke-plan"].steps.find((entry) => entry.id === "plan");
+  assert.equal(step.env.EVENT_NAME, "${{ github.event_name }}");
+  assert.equal(step.env.MERGE_GROUP_BASE_SHA, "${{ github.event.merge_group.base_sha }}");
+  const root = mkdtempSync(path.join(os.tmpdir(), "freed-merge-group-plan-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args) => {
+    const result = spawnSync("git", args, { cwd: root, encoding: "utf8", timeout: 5000 });
+    assert.equal(result.status, 0, result.stderr);
+    return result.stdout.trim();
+  };
+  git("init", "--quiet");
+  git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--allow-empty", "-m", "base");
+  const base = git("rev-parse", "HEAD");
+  const bin = path.join(root, "bin");
+  mkdirSync(bin);
+  writeFileSync(path.join(bin, "node"), '#!/bin/bash\nprintf "%s\\n" "$@" > "$RECORDED_ARGS"\n', { mode: 0o755 });
+  const recorded = path.join(root, "args");
+  const script = step.run.replaceAll("${{ github.base_ref }}", "dev");
+  for (const event of ["merge_group", "push"]) {
+    for (const sha of [base, "1".repeat(40), "", "0".repeat(40), "not-hex"]) {
+      rmSync(recorded, { force: true });
+      const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], {
+        cwd: root, encoding: "utf8", timeout: 5000,
+        env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}`,
+          RECORDED_ARGS: recorded, EVENT_NAME: event, MERGE_GROUP_BASE_SHA: sha, BEFORE_SHA: sha },
+      });
+      assert.equal(result.status, 0, result.stdout + result.stderr);
+      const expected = sha === base ? ["--base-ref", base, ...(event === "merge_group" ? ["--scope-manifests"] : [])] : ["--all"];
+      assert.deepEqual(readFileSync(recorded, "utf8").trim().split("\n"),
+        ["scripts/plan-tooling-smoke.mjs", ...expected, "--github-output"]);
+    }
+  }
+  const unknown = spawnSync("bash", ["-e", "-c", script], {
+    cwd: root, encoding: "utf8", timeout: 5000, env: { ...process.env, EVENT_NAME: "unknown" },
+  });
+  assert.equal(unknown.status, 1);
 });
