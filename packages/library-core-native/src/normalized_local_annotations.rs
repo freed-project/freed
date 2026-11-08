@@ -134,18 +134,25 @@ pub(crate) fn open_owned(db: &mut Connection) -> Result<(), NormalizedSqliteErro
 // Test fixtures need a ready catalog independently of the production time slice.
 #[cfg(test)]
 pub(crate) fn open_owned_until_ready(db: &mut Connection) {
+    if version(db).unwrap() == 0 {
+        crate::normalized_sqlite::install_normalized_schema_v1(db).unwrap();
+    }
+    finish_upgrade(db);
+    crate::normalized_sqlite::configure_normalized_sqlite_connection(db).unwrap();
+}
+
+// Expired-budget assertions cover the time slice; production wrapper behavior
+// under load is tracked by #2228. Fixtures only need bounded catalog completion.
+#[cfg(test)]
+pub(crate) fn finish_upgrade(db: &mut Connection) {
     let deadline = Instant::now() + Duration::from_secs(60);
-    loop {
-        match open_owned(db) {
-            Ok(()) => return,
-            Err(NormalizedSqliteError::InvalidRequest("LOCAL_ANNOTATION_UPGRADE_PENDING")) => {
-                assert!(
-                    Instant::now() < deadline,
-                    "annotation upgrade did not finish"
-                );
-            }
-            Err(error) => panic!("annotation upgrade failed: {error}"),
-        }
+    db.execute_batch("PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;")
+        .unwrap();
+    while !resume_until(db, deadline).unwrap() {
+        assert!(
+            Instant::now() < deadline,
+            "annotation upgrade did not finish"
+        );
     }
 }
 
@@ -531,18 +538,6 @@ mod tests {
     use super::*;
     use crate::normalized_sqlite::install_normalized_schema_v1;
 
-    // Catalog and transfer assertions need a ready fixture, not completion
-    // within one production time slice on a loaded runner.
-    fn finish_upgrade(db: &mut Connection) {
-        let deadline = Instant::now() + Duration::from_secs(60);
-        while !resume(db).unwrap() {
-            assert!(
-                Instant::now() < deadline,
-                "annotation upgrade did not finish"
-            );
-        }
-    }
-
     fn fixture(path: &std::path::Path, source: u32) -> Connection {
         let db = Connection::open(path).unwrap();
         install_normalized_schema_v1(&db).unwrap();
@@ -771,7 +766,7 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert!((1..=1024).contains(&scanned));
+        assert_eq!(scanned, 1024);
         db.execute_batch("UPDATE library_meta SET source_revision=1;")
             .unwrap();
         let before = db.total_changes();
