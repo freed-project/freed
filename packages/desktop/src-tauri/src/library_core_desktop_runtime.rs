@@ -236,26 +236,6 @@ pub(super) struct CloudWriterAdmissionStatus {
     verified_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) struct DesktopLibraryCausalTip {
-    actor_id: String,
-    sequence: i64,
-    operation_id: String,
-    chain_digest: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) struct DesktopLibraryAcceptedAuthority {
-    library_id: String,
-    epoch: i64,
-    epoch_id: String,
-    authority_key_id: String,
-    authority_public_key: String,
-    observed_frontier: Vec<DesktopLibraryCausalTip>,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SignNormalizedOperationRequest {
