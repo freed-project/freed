@@ -421,6 +421,15 @@ jobs:
           npx playwright install --with-deps "${browsers[@]}"
         working-directory: packages/desktop
 
+      - name: Temporary Friends label sample evidence
+        if: steps.feature-plan.outputs.needs_playwright == 'true'
+        working-directory: packages/desktop
+        env:
+          CI: "true"
+        run: |
+          npm run test:e2e -- perf-friends.spec.ts --repeat-each=5
+          FREED_FRIENDS_PERF_TELEMETRY=1 npm run test:e2e -- perf-friends.spec.ts --repeat-each=2
+
       - name: Run feature validation
         run: npm run validate:feature
         env:
