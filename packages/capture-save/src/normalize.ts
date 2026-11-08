@@ -60,7 +60,9 @@ export function buildSavedFeedItem(
         ...(options.includeHtmlInPreservedContent ? { html: content.html } : {}),
         text: options.preservedText ?? content.text,
         author: content.author || metadata.author,
-        publishedAt: metadata.publishedAt,
+        ...(Number.isFinite(metadata.publishedAt)
+          ? { publishedAt: metadata.publishedAt }
+          : {}),
         wordCount: content.wordCount,
         readingTime: content.readingTime,
         preservedAt: now,
@@ -72,7 +74,7 @@ export function buildSavedFeedItem(
     platform: "saved",
     contentType: "article",
     capturedAt: now,
-    publishedAt: metadata.publishedAt ?? now,
+    publishedAt: Number.isFinite(metadata.publishedAt) ? metadata.publishedAt! : now,
     author: {
       id: hostname,
       handle: hostname,
