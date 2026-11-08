@@ -31,6 +31,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::process::Command;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
