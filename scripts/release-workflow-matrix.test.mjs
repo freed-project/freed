@@ -1,4 +1,5 @@
 import test from "node:test";
+import { load } from "js-yaml";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -86,4 +87,27 @@ test("desktop releases pass the reviewed channel into build metadata", () => {
     /FREED_BUILD_CHANNEL:\s*\$\{\{ needs\.notes\.outputs\.release_channel \}\}/,
     "release builds should stamp the reviewed release channel into runtime identity",
   );
+});
+
+// A pin bump invalidates this changed-path release admission contract.
+test("all CI and release Rust steps install the exact repository pin", () => {
+  const toolchain = readFileSync(path.join(repoRoot, "rust-toolchain.toml"), "utf8");
+  const channel = toolchain.match(/^channel\s*=\s*"([^"\n]+)"\s*$/m)?.[1];
+  assert.match(channel ?? "", /^\d+\.\d+\.\d+$/, "Rust channel must be an exact version");
+  let count = 0;
+  for (const filename of ["ci.yml", "release.yml"]) {
+    const workflow = load(readFileSync(path.join(repoRoot, ".github", "workflows", filename), "utf8"));
+    for (const [jobName, job] of Object.entries(workflow.jobs)) {
+      for (const step of job.steps ?? []) {
+        if (!step.uses?.startsWith("dtolnay/rust-toolchain@")) continue;
+        count += 1;
+        const selected = step.with?.toolchain;
+        const context = `${filename}: ${jobName}: ${step.name}`;
+        assert.equal(typeof selected, "string", `${context} must explicitly select a toolchain`);
+        assert.doesNotMatch(selected, /^(?:stable|beta|nightly|1\.\d+)$/, context);
+        assert.equal(selected, channel, `${context} must match the repository pin`);
+      }
+    }
+  }
+  assert.equal(count, 5, "review every Rust setup step when adding or removing a job");
 });

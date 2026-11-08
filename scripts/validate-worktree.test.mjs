@@ -368,6 +368,8 @@ test("feature plan runs native clippy and tests for native shell changes", () =>
   assert.ok(labels.includes("desktop social provider e2e"));
   assert.ok(labels.includes("native rust clippy"));
   assert.ok(labels.includes("native rust tests"));
+  const clippy = plan.find((item) => item.label === "native rust clippy");
+  assert.deepEqual(clippy.args.slice(-3), ["--", "-D", "warnings"]);
   const custody = plan.find((item) => item.label === "native rust Linux credential acceptance");
   assert.equal(Boolean(custody), process.platform === "linux");
   if (custody) {
@@ -383,6 +385,21 @@ test("feature plan runs native clippy and tests for native shell changes", () =>
     isDesktopNativeSurface("packages/desktop/src/lib/capture.ts"),
     false,
   );
+});
+
+test("Rust pin changes validate both native crates and release admission", () => {
+  const labels = describePlan(buildValidationPlan("feature", ["rust-toolchain.toml"]));
+  for (const label of [
+    "desktop production build",
+    "native rust clippy",
+    "native rust tests",
+    "Library Core native rust clippy",
+    "Library Core native rust tests",
+    "release admission tests",
+  ]) {
+    assert.ok(labels.includes(label), label);
+  }
+  assert.ok(labels.indexOf("desktop production build") < labels.indexOf("native rust clippy"));
 });
 
 test("feature plan runs strict reusable Library Core checks", () => {

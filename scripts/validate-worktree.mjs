@@ -715,13 +715,13 @@ function addCaptureWorkspaceChecks(plan, workspacePath) {
 
 function nativeRustChecks() {
   return [
-    // Clippy is required now, but existing warnings are not denied until the
-    // native monolith gets a dedicated cleanup. A permanent red gate would be
-    // theater, not governance.
     cargoCommand("native rust clippy", [
       "clippy",
       "--all-targets",
       "--all-features",
+      "--",
+      "-D",
+      "warnings",
     ]),
     cargoCommand("native rust tests", ["test", "--all-features"]),
     ...(process.platform === "linux" ? [cargoCommand(
@@ -1105,9 +1105,12 @@ export function buildValidationPlan(mode, changedFiles) {
   const sharedSurfaceChanged = changedFiles.some(isSharedSurface);
   const desktopSurfaceChanged =
     sharedSurfaceChanged || changedFiles.some(isDesktopSurface);
-  const libraryCoreNativeSurfaceChanged = productFiles.some((filePath) =>
-    filePath.startsWith("packages/library-core-native/"),
-  );
+  const rustToolchainChanged = changedFiles.includes("rust-toolchain.toml");
+  const libraryCoreNativeSurfaceChanged =
+    rustToolchainChanged ||
+    productFiles.some((filePath) =>
+      filePath.startsWith("packages/library-core-native/"),
+    );
   const desktopNativeSurfaceChanged =
     libraryCoreNativeSurfaceChanged ||
     productFiles.some(isDesktopNativeSurface);
@@ -1127,7 +1130,8 @@ export function buildValidationPlan(mode, changedFiles) {
     isAgentInstructionValidationPath,
   );
   const skillValidationChanged = changedFiles.some(isSkillValidationPath);
-  const releaseAdmissionChanged = changedFiles.some(isReleaseAdmissionPath);
+  const releaseAdmissionChanged =
+    rustToolchainChanged || changedFiles.some(isReleaseAdmissionPath);
   const updaterManifestChanged = changedFiles.some((filePath) =>
     UPDATER_MANIFEST_PATHS.has(filePath),
   );
