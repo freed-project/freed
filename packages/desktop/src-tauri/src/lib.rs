@@ -31,6 +31,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 #[cfg(unix)]
 use std::mem::MaybeUninit;
 use std::path::{Path, PathBuf};
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 use std::process::Command;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -416,6 +417,7 @@ fn parse_screen_locked_from_ioreg_plist(text: &str) -> Option<bool> {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn data_store_identifier_folder(identifier: [u8; 16]) -> String {
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
@@ -457,16 +459,19 @@ fn social_auth_cookie_config(
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn read_u32_be(data: &[u8], offset: usize) -> Option<u32> {
     let bytes = data.get(offset..offset + 4)?;
     Some(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
     let bytes = data.get(offset..offset + 4)?;
     Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn cookie_record_string(record: &[u8], offset: usize) -> Option<String> {
     if offset == 0 || offset >= record.len() {
         return None;
@@ -482,6 +487,7 @@ fn cookie_record_string(record: &[u8], offset: usize) -> Option<String> {
         .map(|value| value.to_string())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn parse_webkit_binary_cookie_names(data: &[u8]) -> Result<Vec<String>, String> {
     if data.len() < 8 || data.get(0..4) != Some(b"cook") {
         return Err("Invalid WebKit cookie store header".to_string());
@@ -579,14 +585,15 @@ fn get_social_provider_cookie_state(
 
     #[cfg(not(target_os = "macos"))]
     {
-        return Ok(SocialProviderCookieState {
+        let _ = (&app, identifier, auth_cookie_names);
+        Ok(SocialProviderCookieState {
             provider: provider.to_string(),
             available: false,
             has_auth_cookie: false,
             cookie_count: 0,
             cookie_names: Vec::new(),
             error: Some("Provider cookie diagnostics are only available on macOS.".to_string()),
-        });
+        })
     }
 
     #[cfg(target_os = "macos")]
@@ -648,11 +655,11 @@ fn get_social_provider_cookie_state(
 fn get_desktop_session_state() -> DesktopSessionState {
     #[cfg(not(target_os = "macos"))]
     {
-        return DesktopSessionState {
+        DesktopSessionState {
             available: false,
             screen_locked: false,
             error: Some("Desktop session diagnostics are only available on macOS.".to_string()),
-        };
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -707,6 +714,7 @@ fn get_provider_sync_runtime_eligibility() -> ProviderSyncRuntimeEligibility {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn provider_sync_runtime_eligibility(
     session: &DesktopSessionState,
 ) -> ProviderSyncRuntimeEligibility {
@@ -758,8 +766,8 @@ fn replace_provider_schedule_wake(
     {
         let _ = app;
         let _ = generation;
-        let _ = wake;
-        return Ok(());
+        let _ = wake.deadline_at_ms;
+        Ok(())
     }
 
     #[cfg(target_os = "macos")]
@@ -2703,6 +2711,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
 
 static LAST_DEEP_DIAGNOSTIC_AT: StdMutex<Option<Instant>> = StdMutex::new(None);
 
+#[cfg(target_os = "macos")]
 fn command_output_truncated(command: &str, args: &[String], max_chars: usize) -> Option<String> {
     let output = Command::new(command).args(args).output().ok()?;
     let combined = if output.status.success() {
@@ -3341,9 +3350,7 @@ impl BackgroundRuntimeCoordinator {
 
     fn finish_job(&self, operation: &'static str) -> Option<u128> {
         let mut state = self.state.write().unwrap();
-        let Some(active) = state.active_job.take() else {
-            return None;
-        };
+        let active = state.active_job.take()?;
         if active.operation != operation {
             warn!(
                 "[background-runtime] finishing op={} while active_op={}",
@@ -3875,11 +3882,11 @@ fn renderer_watchdog_treats_as_visible(
     )
 }
 
-fn renderer_watchdog_last_visibility_for_policy<'a>(
+fn renderer_watchdog_last_visibility_for_policy(
     is_visible: bool,
     is_focused: bool,
-    last_visibility: &'a str,
-) -> &'a str {
+    last_visibility: &str,
+) -> &str {
     if is_visible && is_focused && last_visibility == "hidden" {
         "visible"
     } else {
@@ -4142,7 +4149,7 @@ fn format_duration_for_user(duration: Duration) -> String {
             if total_seconds == 1 { "" } else { "s" }
         )
     } else {
-        let minutes = ((total_seconds + 59) / 60).max(1);
+        let minutes = total_seconds.div_ceil(60).max(1);
         format!(
             "about {} minute{}",
             minutes,
@@ -6390,6 +6397,7 @@ fn social_feed_scroll_script(delta_px: i64) -> String {
     SCRIPT_TEMPLATE.replace("__FREED_SCROLL_DELTA__", &delta_px.to_string())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn path_is_under_any_root(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
@@ -6444,6 +6452,7 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
+#[cfg(target_os = "macos")]
 fn unix_micros_from_process_start(seconds: u64, microseconds: u64) -> Option<u64> {
     if seconds == 0 || microseconds >= 1_000_000 {
         return None;
@@ -6478,6 +6487,7 @@ fn macos_process_started_at_unix_micros(_pid: u32) -> Option<u64> {
     None
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn webkit_process_started_at_or_after_app(
     webkit_started_at_unix_micros: Option<u64>,
     app_started_at_unix_micros: Option<u64>,
@@ -6506,6 +6516,7 @@ fn webkit_process_matches_renderer_uptime(
     webkit_process_started_with_app(webkit_age_seconds, renderer_age_seconds)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn freed_webkit_process_role(
     has_open_file_under_roots: bool,
     webkit_started_at_unix_micros: Option<u64>,
@@ -6549,6 +6560,8 @@ fn macos_process_physical_footprint_bytes(_pid: u32) -> Option<u64> {
     None
 }
 
+// The parameters and accumulators are used only by the macOS process scan.
+#[cfg_attr(not(target_os = "macos"), expect(unused_mut, unused_variables))]
 fn freed_webkit_memory_stats(
     system: &System,
     roots: &[PathBuf],
@@ -6627,7 +6640,7 @@ fn freed_webkit_memory_stats(
         }
     }
 
-    processes.sort_by(|a, b| b.resident_bytes.cmp(&a.resident_bytes));
+    processes.sort_by_key(|stats| std::cmp::Reverse(stats.resident_bytes));
 
     WebkitMemoryStats {
         total_resident_bytes,
@@ -6852,7 +6865,7 @@ fn collect_webkit_network_cache_files(root: &Path, files: &mut Vec<(PathBuf, u64
 }
 
 fn trim_webkit_network_cache_root_with_result(webkit_root: &Path) -> WebkitCacheTrimResult {
-    let webkit_bytes = dir_size_bytes(&webkit_root).unwrap_or(0);
+    let webkit_bytes = dir_size_bytes(webkit_root).unwrap_or(0);
     if webkit_bytes <= WEBKIT_CACHE_TRIM_AT_BYTES {
         return WebkitCacheTrimResult {
             before_bytes: webkit_bytes,
@@ -7387,11 +7400,11 @@ fn recycle_social_scraper_windows_except(
     recycled
 }
 
-fn blocked_preflight_preserved_scraper_label<'a>(
-    preserve_label: Option<&'a str>,
+fn blocked_preflight_preserved_scraper_label(
+    preserve_label: Option<&str>,
     critical: bool,
     active_social_scraper: bool,
-) -> Option<&'a str> {
+) -> Option<&str> {
     if critical || active_social_scraper {
         None
     } else {
@@ -7954,7 +7967,7 @@ async fn handle_oauth_stream(stream: TcpStream, app: tauri::AppHandle) {
         .unwrap_or("")
         .to_string();
 
-    let query = path.splitn(2, '?').nth(1).unwrap_or("");
+    let query = path.split_once('?').map_or("", |(_, query)| query);
     let mut code = String::new();
     let mut state = String::new();
 
@@ -9241,10 +9254,11 @@ async fn fb_scrape_feed(
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability) simulates re-reading.
-        if {
+        let should_backscroll = {
             use rand::RngExt;
             rand::rng().random_bool(0.12)
-        } {
+        };
+        if should_backscroll {
             let back = {
                 use rand::RngExt;
                 rand::rng().random_range(80u64..250)
@@ -9255,10 +9269,11 @@ async fn fb_scrape_feed(
         }
 
         // Gaussian pause between scroll passes; ~25% chance of a longer "reading" pause.
-        let pause = if {
+        let should_read_longer = {
             use rand::RngExt;
             rand::rng().random_bool(0.25)
-        } {
+        };
+        let pause = if should_read_longer {
             gaussian_ms(6000.0, 1500.0)
         } else {
             gaussian_ms(2750.0, 600.0)
@@ -10121,10 +10136,11 @@ async fn ig_scrape_feed(
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Micro-backscroll ~12% of the time.
-        if {
+        let should_backscroll = {
             use rand::RngExt;
             rand::rng().random_bool(0.12)
-        } {
+        };
+        if should_backscroll {
             let back = {
                 use rand::RngExt;
                 rand::rng().random_range(80u64..250)
@@ -10135,10 +10151,11 @@ async fn ig_scrape_feed(
         }
 
         // Gaussian pause; ~25% chance of longer "reading" pause.
-        let pause = if {
+        let should_read_longer = {
             use rand::RngExt;
             rand::rng().random_bool(0.25)
-        } {
+        };
+        let pause = if should_read_longer {
             gaussian_ms(5500.0, 1500.0)
         } else {
             gaussian_ms(4500.0, 700.0)
@@ -10794,10 +10811,11 @@ async fn li_scrape_feed(
         tokio::time::sleep(Duration::from_millis(gaussian_ms(280.0, 60.0))).await;
 
         // Occasional micro-backscroll (~12% probability).
-        if {
+        let should_backscroll = {
             use rand::RngExt;
             rand::rng().random_bool(0.12)
-        } {
+        };
+        if should_backscroll {
             let back = {
                 use rand::RngExt;
                 rand::rng().random_range(80u64..200)
@@ -10808,10 +10826,11 @@ async fn li_scrape_feed(
         }
 
         // Gaussian pause; longer pauses more common than FB (LinkedIn users scroll slower).
-        let pause = if {
+        let should_read_longer = {
             use rand::RngExt;
             rand::rng().random_bool(0.30)
-        } {
+        };
+        let pause = if should_read_longer {
             gaussian_ms(7000.0, 2000.0)
         } else {
             gaussian_ms(4000.0, 800.0)
@@ -12290,7 +12309,7 @@ fn present_webview_window(
         quietly_show_webview_window(window, context);
         if let Some(delay) = presentation.quiet_focusable_restore_delay() {
             schedule_main_window_focusable_restore(
-                &window.app_handle(),
+                window.app_handle(),
                 delay,
                 "quiet-focusable-restore",
             );
@@ -12374,9 +12393,6 @@ fn force_activate_ns_app(context: &str) {
     );
 }
 
-#[cfg(not(target_os = "macos"))]
-fn force_activate_ns_app(_context: &str) {}
-
 #[cfg(target_os = "macos")]
 fn main_window_native_occlusion_state(window: &tauri::WebviewWindow) -> Option<usize> {
     let Ok(ns_window) = window.ns_window() else {
@@ -12446,9 +12462,6 @@ fn log_main_window_native_state(window: &tauri::WebviewWindow, context: &str) {
         );
     }
 }
-
-#[cfg(not(target_os = "macos"))]
-fn log_main_window_native_state(_window: &tauri::WebviewWindow, _context: &str) {}
 
 #[cfg(target_os = "macos")]
 fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
@@ -14628,6 +14641,8 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Freed")
         .run(|app, event| {
+            #[cfg(not(target_os = "macos"))]
+            let _ = app;
             if matches!(&event,tauri::RunEvent::Exit) {
                 library_core_desktop_runtime::stop_annotation_continuation();
             }
@@ -14817,10 +14832,8 @@ mod tests {
         assert_eq!((icon.width(), icon.height()), (36, 36));
 
         let mut visible_bounds = (icon.width(), icon.height(), 0, 0);
-        for (index, pixel) in icon.rgba().chunks_exact(4).enumerate() {
-            let [red, green, blue, alpha] = pixel else {
-                unreachable!("RGBA chunks always contain four channels");
-            };
+        for (index, pixel) in icon.rgba().as_chunks::<4>().0.iter().enumerate() {
+            let [red, green, blue, alpha] = pixel;
             assert_eq!(red, green, "template pixels must be monochrome");
             assert_eq!(green, blue, "template pixels must be monochrome");
             if *alpha == 0 {
@@ -16876,6 +16889,7 @@ mod tests {
         let record_file = record_root.join("large-resource");
         let file = std::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&record_file)
             .unwrap();

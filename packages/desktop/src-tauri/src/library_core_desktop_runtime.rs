@@ -236,26 +236,6 @@ pub(super) struct CloudWriterAdmissionStatus {
     verified_at_ms: Option<i64>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) struct DesktopLibraryCausalTip {
-    actor_id: String,
-    sequence: i64,
-    operation_id: String,
-    chain_digest: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) struct DesktopLibraryAcceptedAuthority {
-    library_id: String,
-    epoch: i64,
-    epoch_id: String,
-    authority_key_id: String,
-    authority_public_key: String,
-    observed_frontier: Vec<DesktopLibraryCausalTip>,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SignNormalizedOperationRequest {
@@ -839,7 +819,8 @@ pub(super) fn normalized_desktop_installation_status(
             if follower.library_id.is_some() {
                 return Ok(DesktopLibraryInstallationStatus {
                     state: if freed_library_core::normalized_library_is_read_only_v1(&connection)
-                        .map_err(|error| error.to_string())? {
+                        .map_err(|error| error.to_string())?
+                    {
                         "read_only_consumer"
                     } else if follower.state == "active" {
                         "editable_consumer"
@@ -1708,10 +1689,7 @@ pub(super) fn import_normalized_library_operation_page(
     }
     freed_library_core::import_normalized_operation_page_v2(&mut connection, &request)
         .map_err(|error| error.to_string())
-        .map(|receipt| {
-            mark_annotation_work_dirty(&app);
-            receipt
-        })
+        .inspect(|_| mark_annotation_work_dirty(&app))
 }
 
 #[tauri::command]
@@ -2768,10 +2746,7 @@ pub(super) fn enqueue_normalized_library_follower_intent(
         request.expected_source.as_ref(),
     )
     .map_err(|error| error.to_string())
-    .map(|receipt| {
-        mark_annotation_work_dirty(&app);
-        receipt
-    })
+    .inspect(|_| mark_annotation_work_dirty(&app))
 }
 
 #[tauri::command]
@@ -2881,10 +2856,7 @@ pub(super) fn import_normalized_library_follower_result_page(
         received_at,
     )
     .map_err(|error| error.to_string())
-    .map(|receipt| {
-        mark_annotation_work_dirty(&app);
-        receipt
-    })
+    .inspect(|_| mark_annotation_work_dirty(&app))
 }
 
 #[tauri::command]
@@ -2898,10 +2870,7 @@ pub(super) fn import_normalized_library_follower_result_transport_segment(
         &publication,
     )
     .map_err(|error| error.to_string())
-    .map(|receipt| {
-        mark_annotation_work_dirty(&app);
-        receipt
-    })
+    .inspect(|_| mark_annotation_work_dirty(&app))
 }
 
 #[derive(Debug, Deserialize)]
@@ -3001,10 +2970,7 @@ pub(super) fn commit_normalized_library_transaction(
         request.expected_source.as_ref(),
     )
     .map_err(|error| error.to_string())
-    .map(|receipt| {
-        mark_annotation_work_dirty(&app);
-        receipt
-    })?
+    .inspect(|_| mark_annotation_work_dirty(&app))?
     .try_into()
 }
 
