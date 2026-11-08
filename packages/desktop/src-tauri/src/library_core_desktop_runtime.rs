@@ -1688,10 +1688,7 @@ pub(super) fn import_normalized_library_operation_page(
     }
     freed_library_core::import_normalized_operation_page_v2(&mut connection, &request)
         .map_err(|error| error.to_string())
-        .map(|receipt| {
-            mark_annotation_work_dirty(&app);
-            receipt
-        })
+        .inspect(|_| mark_annotation_work_dirty(&app))
 }
 
 #[tauri::command]
@@ -2748,10 +2745,7 @@ pub(super) fn enqueue_normalized_library_follower_intent(
         request.expected_source.as_ref(),
     )
     .map_err(|error| error.to_string())
-    .map(|receipt| {
-        mark_annotation_work_dirty(&app);
-        receipt
-    })
+    .inspect(|_| mark_annotation_work_dirty(&app))
 }
 
 #[tauri::command]
@@ -2861,10 +2855,7 @@ pub(super) fn import_normalized_library_follower_result_page(
         received_at,
     )
     .map_err(|error| error.to_string())
-    .map(|receipt| {
-        mark_annotation_work_dirty(&app);
-        receipt
-    })
+    .inspect(|_| mark_annotation_work_dirty(&app))
 }
 
 #[tauri::command]
@@ -2878,10 +2869,7 @@ pub(super) fn import_normalized_library_follower_result_transport_segment(
         &publication,
     )
     .map_err(|error| error.to_string())
-    .map(|receipt| {
-        mark_annotation_work_dirty(&app);
-        receipt
-    })
+    .inspect(|_| mark_annotation_work_dirty(&app))
 }
 
 #[derive(Debug, Deserialize)]
@@ -2981,10 +2969,7 @@ pub(super) fn commit_normalized_library_transaction(
         request.expected_source.as_ref(),
     )
     .map_err(|error| error.to_string())
-    .map(|receipt| {
-        mark_annotation_work_dirty(&app);
-        receipt
-    })?
+    .inspect(|_| mark_annotation_work_dirty(&app))?
     .try_into()
 }
 
