@@ -126,6 +126,8 @@ jobs:
     # separately as debt.
     strategy:
       fail-fast: false
+      # Free plan: 20 concurrent jobs. Leave runners for required checks.
+      max-parallel: 6
       matrix: ${{ fromJSON(needs.tooling-smoke-plan.outputs.matrix) }}
     steps:
       - name: Checkout
