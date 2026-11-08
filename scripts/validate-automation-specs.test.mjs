@@ -156,6 +156,19 @@ test("provider policy and behavioral soak allowance are independent", () => {
 });
 
 test("PR-capable prompts require the external posting prefix", () => {
+  // Tier 1: both saved legacy prompts and new prompts retain posting authority.
+  for (const prefix of ["(AI Generated)", "(AI Generated)."]) {
+    const prefixedRoot = writePromptFixture(
+      `Do not trigger providers. Post ${prefix} Prepare a pull request without merging it.`,
+    );
+    assert.doesNotThrow(() =>
+      validateAutomationSpec(automationSpec({ authority: "pr-only" }), {
+        fileName: "actor.json",
+        repoRoot: prefixedRoot,
+      }),
+    );
+  }
+
   const root = writePromptFixture(
     "Do not trigger providers. Prepare a pull request without merging it.",
   );
