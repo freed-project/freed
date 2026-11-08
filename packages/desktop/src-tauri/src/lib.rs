@@ -6559,6 +6559,8 @@ fn macos_process_physical_footprint_bytes(_pid: u32) -> Option<u64> {
     None
 }
 
+// The parameters and accumulators are used only by the macOS process scan.
+#[cfg_attr(not(target_os = "macos"), expect(unused_mut, unused_variables))]
 fn freed_webkit_memory_stats(
     system: &System,
     roots: &[PathBuf],
@@ -6566,35 +6568,11 @@ fn freed_webkit_memory_stats(
     app_age_seconds: u64,
     precise_attribution: bool,
 ) -> WebkitMemoryStats {
-    #[cfg(not(target_os = "macos"))]
-    let _ = (
-        system,
-        roots,
-        app_started_at_unix_micros,
-        app_age_seconds,
-        precise_attribution,
-    );
-
-    #[cfg(target_os = "macos")]
     let mut total_resident_bytes = 0u64;
-    #[cfg(not(target_os = "macos"))]
-    let total_resident_bytes = 0u64;
-    #[cfg(target_os = "macos")]
     let mut total_footprint_bytes = 0u64;
-    #[cfg(not(target_os = "macos"))]
-    let total_footprint_bytes = 0u64;
-    #[cfg(target_os = "macos")]
     let mut has_footprint = false;
-    #[cfg(not(target_os = "macos"))]
-    let has_footprint = false;
-    #[cfg(target_os = "macos")]
     let mut process_count = 0u64;
-    #[cfg(not(target_os = "macos"))]
-    let process_count = 0u64;
-    #[cfg(target_os = "macos")]
     let mut largest: Option<WebkitProcessRuntimeStats> = None;
-    #[cfg(not(target_os = "macos"))]
-    let largest: Option<WebkitProcessRuntimeStats> = None;
     let mut processes: Vec<WebkitProcessRuntimeStats> = Vec::new();
 
     #[cfg(target_os = "macos")]
