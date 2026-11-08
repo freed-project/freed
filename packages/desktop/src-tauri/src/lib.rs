@@ -3873,11 +3873,11 @@ fn renderer_watchdog_treats_as_visible(
     )
 }
 
-fn renderer_watchdog_last_visibility_for_policy<'a>(
+fn renderer_watchdog_last_visibility_for_policy(
     is_visible: bool,
     is_focused: bool,
-    last_visibility: &'a str,
-) -> &'a str {
+    last_visibility: &str,
+) -> &str {
     if is_visible && is_focused && last_visibility == "hidden" {
         "visible"
     } else {
@@ -7385,11 +7385,11 @@ fn recycle_social_scraper_windows_except(
     recycled
 }
 
-fn blocked_preflight_preserved_scraper_label<'a>(
-    preserve_label: Option<&'a str>,
+fn blocked_preflight_preserved_scraper_label(
+    preserve_label: Option<&str>,
     critical: bool,
     active_social_scraper: bool,
-) -> Option<&'a str> {
+) -> Option<&str> {
     if critical || active_social_scraper {
         None
     } else {
