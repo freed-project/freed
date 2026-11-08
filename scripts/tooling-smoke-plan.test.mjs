@@ -1,17 +1,24 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+import yaml from "js-yaml";
 import { SUITE_NAMES } from "./lib/tooling-smoke-suites.mjs";
 import { parseArgs, resolvePlan } from "./plan-tooling-smoke.mjs";
 
 
 import {
   compareToolingManifests,
+  GLOBAL_INVALIDATION_PATHS,
   DEFAULT_SHARD_TIMEOUT_SECONDS,
   buildToolingSmokeMatrix,
   projectShardRuntime,
   selectApplicableSuites,
   selectNativeAcceptance,
   selectPreviewNativeAcceptance,
+  selectWindowsNativeCompile,
   suiteWeights,
   allocateShardBudget,
 } from "./lib/tooling-smoke-plan.mjs";
@@ -421,6 +428,7 @@ function assertManifestLanes(verdict, global, files = ["package-lock.json"]) {
   );
   assert.equal(selectNativeAcceptance(files, options).required, global);
   assert.equal(selectPreviewNativeAcceptance(files, options), global);
+  assert.equal(selectWindowsNativeCompile(files, options), global);
 }
 
 test("unreachable workspace dependency bumps skip all tooling lanes", () => {
@@ -578,6 +586,7 @@ for (const args of [
     assert.deepEqual(plan.suites, SUITE_NAMES);
     assert.equal(plan.native.required, true);
     assert.equal(plan.previewNative, true);
+    assert.equal(plan.windowsNative, true);
     assert.match(plan.reason, /failed closed/);
   });
 }
@@ -590,5 +599,154 @@ test("npm packages sharing builtin names are derivable lock entries", () => {
       };
     }),
     false,
+  );
+});
+
+// Tier 1: catch skipped Windows compilation without broadening macOS acceptance.
+test("Windows compilation selects native build inputs under both crate roots", () => {
+  const files = [
+    ...["packages/desktop/src-tauri", "packages/library-core-native"].flatMap(
+      (root) => [
+        `${root}/src/lib.rs`,
+        `${root}/Cargo.toml`,
+        `${root}/Cargo.lock`,
+        `${root}/build.rs`,
+        `${root}/nested/crate/Cargo.toml`,
+      ],
+    ),
+    "packages/desktop/src-tauri/tauri.conf.json",
+    "packages/desktop/src-tauri/tauri.preview.conf.json",
+    "packages/desktop/src-tauri/tauri.windows.conf.json5",
+    "packages/desktop/src-tauri/Tauri.toml",
+    "packages/desktop/src-tauri/Tauri.windows.toml",
+  ];
+  for (const file of files) {
+    assert.equal(selectWindowsNativeCompile([file]), true, file);
+    assert.equal(selectNativeAcceptance([file]).required, false, file);
+  }
+  assert.equal(
+    selectWindowsNativeCompile(["./packages\\desktop\\src-tauri\\src\\lib.rs"]),
+    true,
+  );
+  assert.equal(
+    selectWindowsNativeCompile(["./packages/library-core-native/Cargo.lock"]),
+    true,
+  );
+});
+
+test("Windows compilation excludes unrelated sources and lookalike paths", () => {
+  for (const file of [
+    "packages/desktop/src/App.tsx",
+    "packages/desktop/src-tauri/src/helper.ts",
+    "packages/library-core-native/README.md",
+    "packages/library-core-native/tauri.conf.json",
+    "packages/desktop/src-tauri/tauri.conf.json.backup",
+    "packages/desktop/src-tauri-other/src/main.rs",
+    "packages/library-core-native-other/Cargo.toml",
+    "packages/other/src/lib.rs",
+    "build.rs",
+    "Cargo.lock",
+    "scripts/release-tag-publisher-host.swift",
+    "scripts/worktree-preview.sh",
+  ]) {
+    assert.equal(selectWindowsNativeCompile([file]), false, file);
+  }
+});
+
+test("Windows compilation retains global and empty-input fallback", () => {
+  for (const file of GLOBAL_INVALIDATION_PATHS) {
+    assert.equal(selectWindowsNativeCompile([file]), true, file);
+  }
+  assert.equal(selectWindowsNativeCompile([]), true);
+  assert.equal(selectWindowsNativeCompile([""]), true);
+  const plan = resolvePlan({
+    all: true,
+    changedFiles: ["packages/desktop/src/App.tsx"],
+  });
+  assert.equal(plan.windowsNative, true);
+  assert.equal(plan.native.required, true);
+});
+
+test("scoped manifests do not suppress a simultaneous Windows build input", () => {
+  const manifestVerdict = manifestChange(({ lock }) => {
+    lock.packages["node_modules/next"].version = "2";
+  });
+  assert.equal(manifestVerdict.global, false);
+  assert.equal(
+    selectWindowsNativeCompile(
+      ["package-lock.json", "packages/library-core-native/src/lib.rs"],
+      { manifestVerdict },
+    ),
+    true,
+  );
+});
+
+// The child process proves the real CLI writes the output consumed by CI.
+// Each fixture owns a temporary output file and removes it even on failure.
+test("the CLI emits an independent Windows selection through GITHUB_OUTPUT", () => {
+  for (const [args, windowsNative, native] of [
+    [["--changed-files", "packages/desktop/src-tauri/src/lib.rs"], true, false],
+    [["--changed-files", "packages/desktop/src/App.tsx"], false, false],
+    [["--changed-files", ".github/workflows/ci.yml"], true, true],
+    [["--changed-files", "scripts/release-tag-publisher-native.test.mjs"], false, true],
+    [["--all"], true, true],
+    [[], true, true],
+    [["--scope-manifests"], true, true],
+  ]) {
+    const directory = mkdtempSync(path.join(os.tmpdir(), "freed-windows-plan-"));
+    try {
+      const outputPath = path.join(directory, "github-output");
+      const result = spawnSync(
+        process.execPath,
+        ["scripts/plan-tooling-smoke.mjs", "--github-output", ...args],
+        {
+          encoding: "utf8",
+          env: { ...process.env, GITHUB_OUTPUT: outputPath },
+          timeout: 30_000,
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const output = Object.fromEntries(
+        readFileSync(outputPath, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => {
+            const separator = line.indexOf("=");
+            return [line.slice(0, separator), line.slice(separator + 1)];
+          }),
+      );
+      assert.equal(
+        output["windows-native"],
+        String(windowsNative),
+        args.join(" "),
+      );
+      assert.equal(output.native, String(native), args.join(" "));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("CI wires Windows selection separately from macOS acceptance", () => {
+  const { jobs } = yaml.load(readFileSync(".github/workflows/ci.yml", "utf8"));
+  assert.equal(
+    jobs["tooling-smoke-plan"].outputs["windows-native"],
+    "${{ steps.plan.outputs.windows-native }}",
+  );
+  assert.equal(
+    jobs["windows-native"].if,
+    "needs.tooling-smoke-plan.outputs.windows-native == 'true'",
+  );
+  assert.equal(
+    jobs["tooling-smoke-plan"].outputs.native,
+    "${{ steps.plan.outputs.native }}",
+  );
+  assert.equal(
+    jobs["native-acceptance"].if,
+    "needs.tooling-smoke-plan.outputs.native == 'true'",
+  );
+  assert.equal(
+    jobs["preview-process-acceptance"].if,
+    "needs.tooling-smoke-plan.outputs.preview-native == 'true'",
   );
 });
