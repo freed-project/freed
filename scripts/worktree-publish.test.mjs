@@ -1391,7 +1391,9 @@ test("worktree-publish converts an existing ready PR back to draft and updates i
   ]);
   const editCall = ghCalls.find(isMetadataPatch);
   assert.equal(editCall.args[0], "api");
-  assert.match(editCall.args.join("\n"), /\(AI Generated\)\./);
+  const generatedBody = editCall.args.find((arg) => arg.startsWith("body=")).slice("body=".length);
+  assert.match(generatedBody, /^\(AI Generated\)\n\n/);
+  assert.equal(generatedBody.match(/\(AI Generated\)/g).length, 1);
 });
 
 test("worktree-publish updates an existing draft PR without toggling it", async (t) => {
@@ -2359,6 +2361,8 @@ test("worktree-publish publishes an injected provider file only as a reviewed dr
   assertSuccess(result);
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
+  assert.match(state.comments[0].body, /^\(AI Generated\)\n/);
+  assert.equal(state.comments[0].body.match(/\(AI Generated\)/g).length, 1);
   assert.match(state.comments[0].body, /media-vault\.ts/);
   // The comment must state honestly that it is a record, not a gate. Claiming
   // the subdiff is re-checked would be false under behavior-only approval.
@@ -2575,6 +2579,8 @@ test("worktree-publish records a behavior-neutral provider-path draft without a 
   assert.match(body, /packages\/desktop\/src-tauri\/src\/fb-extract\.js/);
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
+  assert.match(state.comments[0].body, /^\(AI Generated\)\n/);
+  assert.equal(state.comments[0].body.match(/\(AI Generated\)/g).length, 1);
   assert.match(
     state.comments[0].body,
     new RegExp(
@@ -2721,6 +2727,8 @@ test("worktree-publish verifies a new provider audit record before marking the P
   assert.ok(readyCallIndex > createCallIndex);
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
+  assert.match(state.comments[0].body, /^\(AI Generated\)\n/);
+  assert.equal(state.comments[0].body.match(/\(AI Generated\)/g).length, 1);
 });
 
 test("worktree-publish treats a provider file renamed outside the provider tree as visible", async (t) => {
@@ -3213,6 +3221,8 @@ test("worktree-publish accepts signed control-task authority for provider ready 
   );
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
+  assert.match(state.comments[0].body, /^\(AI Generated\)\n/);
+  assert.equal(state.comments[0].body.match(/\(AI Generated\)/g).length, 1);
   assert.match(state.comments[0].body, /freed-provider-control-approval:/);
   assert.match(state.comments[0].body, new RegExp(diffSha));
 });
@@ -3741,6 +3751,8 @@ test("worktree-publish promotes a provider branch to ready on the Gate 1 artifac
 
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
+  assert.match(state.comments[0].body, /^\(AI Generated\)\n/);
+  assert.equal(state.comments[0].body.match(/\(AI Generated\)/g).length, 1);
   state.prList = [
     {
       number: 999,
@@ -3830,6 +3842,8 @@ test("worktree-publish rejects a Gate 1 artifact scoped to the wrong provider", 
 
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
+  assert.match(state.comments[0].body, /^\(AI Generated\)\n/);
+  assert.equal(state.comments[0].body.match(/\(AI Generated\)/g).length, 1);
   state.prList = [
     {
       number: 999,
@@ -3936,6 +3950,8 @@ test("worktree-publish promotes a provider branch to ready and binds exactly one
   assertSuccess(result);
   const state = JSON.parse(await fs.readFile(fixture.ghStateFile, "utf8"));
   assert.equal(state.comments.length, 1);
+  assert.match(state.comments[0].body, /^\(AI Generated\)\n/);
+  assert.equal(state.comments[0].body.match(/\(AI Generated\)/g).length, 1);
 });
 
 test("worktree-publish requires values for provider risk file flags", async (t) => {
@@ -4185,6 +4201,10 @@ test("worktree-publish REST metadata preserves bytes and fails without retry or 
   ];
   const scenarios = [
     { name: "draft literal bytes", success: true },
+    { name: "legacy period prefix preserved", success: true, prefix: "(AI Generated).\n\n" },
+    { name: "CRLF prefix preserved", success: true, prefix: "(AI Generated)\r\n\r\n" },
+    { name: "legacy CRLF prefix preserved", success: true, prefix: "(AI Generated).\r\n\r\n" },
+    { name: "prefix-like text is not a prefix", success: true, prefix: "(AI Generated)foo\n\n", unprefixed: true },
     { name: "ready literal bytes", success: true, ready: true },
     { name: "ready remains ready", success: true, ready: true, initialDraft: false },
     { name: "prefix added without losing newlines", success: true, unprefixed: true },
@@ -4224,8 +4244,8 @@ test("worktree-publish REST metadata preserves bytes and fails without retry or 
       const bodyFile = path.join(fixtureRoot, "body.txt");
       const gitTrace = path.join(fixtureRoot, "git.trace");
       const title = 'fix: literal "quotes" \\ $HOME $(false) `false`\nsecond line';
-      const body = `${scenario.unprefixed ? "" : "(AI Generated).\n\n"}@literal {owner} true null 123\n"quotes" \\ $HOME $(false) \u2603\r\n\n`;
-      const expectedBody = scenario.unprefixed ? `(AI Generated).\n\n${body}` : body;
+      const body = `${scenario.prefix ?? (scenario.unprefixed ? "" : "(AI Generated)\n\n")}@literal {owner} true null 123\n"quotes" \\ $HOME $(false) \u2603\r\n\n`;
+      const expectedBody = scenario.unprefixed ? `(AI Generated)\n\n${body}` : body;
       await fs.writeFile(bodyFile, body);
       let providerArgs = [];
       let review;
@@ -4255,6 +4275,7 @@ test("worktree-publish REST metadata preserves bytes and fails without retry or 
         assertSuccess(result);
         assert.equal(state.title, title);
         assert.equal(state.body, expectedBody);
+        assert.equal(state.body.match(/^\(AI Generated\)\.?\r?$/gm).length, 1);
         assert.equal(state.prList[0].isDraft, !scenario.ready);
       } else {
         assert.notEqual(result.status, 0, result.stdout);

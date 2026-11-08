@@ -6,7 +6,7 @@ labels:
 body:
   - type: markdown
     attributes:
-      value: "(AI Generated)."
+      value: "(AI Generated)"
   - type: textarea
     id: root_cause
     attributes:

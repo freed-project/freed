@@ -162,7 +162,7 @@ fi
   BODY_FILE="$(mktemp)"
   trap 'rm -f "${BODY_FILE}"' EXIT
   cat > "${BODY_FILE}" <<EOF
-(AI Generated).
+(AI Generated)
 
 ## Summary
 - Promote one immutable dev product snapshot into \`main\` before a production release.
