@@ -310,5 +310,6 @@ pub use normalized_handoff_writer_certificate::{
 mod normalized_local_annotations;
 
 pub use normalized_local_annotations::{
-    reconcile_normalized_annotation_slice_v1, NormalizedAnnotationReconciliationPassV1,
+    reconcile_normalized_annotation_slice_v1, take_annotation_upgrade_report,
+    AnnotationUpgradeReport, AnnotationUpgradeStage, NormalizedAnnotationReconciliationPassV1,
 };
