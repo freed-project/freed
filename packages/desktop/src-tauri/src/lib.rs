@@ -579,14 +579,15 @@ fn get_social_provider_cookie_state(
 
     #[cfg(not(target_os = "macos"))]
     {
-        return Ok(SocialProviderCookieState {
+        let _ = (app, identifier, auth_cookie_names);
+        Ok(SocialProviderCookieState {
             provider: provider.to_string(),
             available: false,
             has_auth_cookie: false,
             cookie_count: 0,
             cookie_names: Vec::new(),
             error: Some("Provider cookie diagnostics are only available on macOS.".to_string()),
-        });
+        })
     }
 
     #[cfg(target_os = "macos")]
@@ -648,11 +649,11 @@ fn get_social_provider_cookie_state(
 fn get_desktop_session_state() -> DesktopSessionState {
     #[cfg(not(target_os = "macos"))]
     {
-        return DesktopSessionState {
+        DesktopSessionState {
             available: false,
             screen_locked: false,
             error: Some("Desktop session diagnostics are only available on macOS.".to_string()),
-        };
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -758,8 +759,8 @@ fn replace_provider_schedule_wake(
     {
         let _ = app;
         let _ = generation;
-        let _ = wake;
-        return Ok(());
+        let _ = wake.deadline_at_ms;
+        Ok(())
     }
 
     #[cfg(target_os = "macos")]
@@ -12378,9 +12379,6 @@ fn force_activate_ns_app(context: &str) {
     );
 }
 
-#[cfg(not(target_os = "macos"))]
-fn force_activate_ns_app(_context: &str) {}
-
 #[cfg(target_os = "macos")]
 fn main_window_native_occlusion_state(window: &tauri::WebviewWindow) -> Option<usize> {
     let Ok(ns_window) = window.ns_window() else {
@@ -12450,9 +12448,6 @@ fn log_main_window_native_state(window: &tauri::WebviewWindow, context: &str) {
         );
     }
 }
-
-#[cfg(not(target_os = "macos"))]
-fn log_main_window_native_state(_window: &tauri::WebviewWindow, _context: &str) {}
 
 #[cfg(target_os = "macos")]
 fn force_show_webview_window(window: &tauri::WebviewWindow, context: &str) {
@@ -14632,6 +14627,8 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Freed")
         .run(|app, event| {
+            #[cfg(not(target_os = "macos"))]
+            let _ = app;
             if matches!(&event,tauri::RunEvent::Exit) {
                 library_core_desktop_runtime::stop_annotation_continuation();
             }
