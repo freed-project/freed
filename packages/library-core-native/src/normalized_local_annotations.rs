@@ -3,6 +3,7 @@ use crate::{normalized_sqlite::NormalizedSqliteError, sqlite_contract_generated:
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use std::{
     collections::BTreeMap,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -10,6 +11,130 @@ pub(crate) const PAGE_ROWS: usize = 256;
 pub(crate) const PAGE_BYTES: usize = 1_048_576;
 const MAXIMUM_PAGES: usize = 4;
 const MAXIMUM_TIME: Duration = Duration::from_millis(250);
+
+/// Startup work whose failure or deadline interruption is reported.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnnotationUpgradeStage {
+    ConnectionSetup,
+    Verification,
+    SchemaInstall,
+    Backfill,
+}
+
+impl std::fmt::Display for AnnotationUpgradeStage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::ConnectionSetup => "connection setup",
+            Self::Verification => "verification",
+            Self::SchemaInstall => "schema install",
+            Self::Backfill => "backfill",
+        })
+    }
+}
+
+/// One bounded startup summary, containing no library identity or content.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct AnnotationUpgradeReport {
+    pub attempts: u32,
+    pub total_verification_time: Duration,
+    pub maximum_verification_time: Duration,
+    pub committed_slices: u32,
+    pub last_deadline_interruption: Option<AnnotationUpgradeStage>,
+}
+
+impl AnnotationUpgradeReport {
+    fn verification(&mut self, elapsed: Duration) {
+        self.total_verification_time = self.total_verification_time.saturating_add(elapsed);
+        self.maximum_verification_time = self.maximum_verification_time.max(elapsed);
+    }
+
+    fn attempt(&mut self) {
+        self.attempts = self.attempts.saturating_add(1);
+    }
+
+    fn committed(&mut self) {
+        self.committed_slices = self.committed_slices.saturating_add(1);
+    }
+}
+
+static STARTUP_REPORT: Mutex<Option<AnnotationUpgradeReport>> = Mutex::new(None);
+#[cfg(test)]
+static TEST_STARTUP_REPORT_LOCK: Mutex<()> = Mutex::new(());
+
+/// Consume the latest startup summary once, after the host logger is available.
+pub fn take_annotation_upgrade_report() -> Option<AnnotationUpgradeReport> {
+    STARTUP_REPORT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .take()
+}
+
+fn store_report(report: AnnotationUpgradeReport) {
+    *STARTUP_REPORT
+        .lock()
+        .unwrap_or_else(|error| error.into_inner()) = Some(report);
+}
+
+#[cfg(test)]
+thread_local! {
+    static CLOCK_OFFSET: std::cell::Cell<Duration> = const { std::cell::Cell::new(Duration::ZERO) };
+    static VERIFICATION_ADVANCE: std::cell::Cell<Duration> = const { std::cell::Cell::new(Duration::ZERO) };
+    static PAGE_ADVANCE: std::cell::Cell<Duration> = const { std::cell::Cell::new(Duration::ZERO) };
+    // Freeze only in deterministic deadline tests; ordinary fixtures use real time.
+    static CLOCK_BASE: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+
+fn now() -> Instant {
+    #[cfg(test)]
+    {
+        CLOCK_BASE.with(|base| base.get().unwrap_or_else(Instant::now))
+            + CLOCK_OFFSET.with(|offset| offset.get())
+    }
+    #[cfg(not(test))]
+    {
+        Instant::now()
+    }
+}
+
+#[derive(Default)]
+struct WorkBudget {
+    deadline: Arc<Mutex<Option<Instant>>>,
+    #[cfg(test)]
+    fixed_deadline: Option<Instant>,
+}
+
+impl WorkBudget {
+    fn disarm(&self) {
+        *self.deadline.lock().unwrap() = None;
+    }
+
+    fn arm(&self) {
+        let deadline = now() + MAXIMUM_TIME;
+        #[cfg(test)]
+        let deadline = self.fixed_deadline.unwrap_or(deadline);
+        *self.deadline.lock().unwrap() = Some(deadline);
+    }
+
+    fn expired(&self) -> bool {
+        self.deadline
+            .lock()
+            .unwrap()
+            .is_some_and(|deadline| now() >= deadline)
+    }
+
+    fn verify(
+        &self,
+        db: &Connection,
+        value: u32,
+        report: &mut AnnotationUpgradeReport,
+    ) -> Result<(), NormalizedSqliteError> {
+        self.disarm();
+        let started = now();
+        let result = verify_catalog(db, value);
+        report.verification(now().saturating_duration_since(started));
+        result
+    }
+}
 
 fn invalid(message: &'static str) -> NormalizedSqliteError {
     NormalizedSqliteError::InvalidRequest(message)
@@ -59,6 +184,14 @@ fn catalog(db: &Connection) -> Result<BTreeMap<String, (String, String)>, Normal
 
 /// Compare the actual catalog, not only the caller-writable hash row. No repairs.
 pub(crate) fn verify_catalog(db: &Connection, value: u32) -> Result<(), NormalizedSqliteError> {
+    #[cfg(test)]
+    CLOCK_OFFSET.with(|offset| {
+        offset.set(
+            offset
+                .get()
+                .saturating_add(VERIFICATION_ADVANCE.with(|advance| advance.get())),
+        )
+    });
     let expected_hash = digest(value)?;
     let matches: bool = db.query_row("SELECT contract_version=?1 AND schema_version=?2 AND protocol_version=?3 AND schema_sha256=?4 FROM library_storage_meta WHERE singleton_id=1;",
         params![SQLITE_CONTRACT_VERSION, value, SQLITE_PROTOCOL_VERSION, expected_hash], |row| row.get(0))?;
@@ -83,7 +216,11 @@ pub(crate) fn verify_catalog(db: &Connection, value: u32) -> Result<(), Normaliz
     }
     if matches!(value, 4..=6) {
         // Catalog 6 retains the historical annotation migration receipt unchanged.
-        let annotation_version = if value == VIEWER_STORAGE_SCHEMA_VERSION { 5 } else { value };
+        let annotation_version = if value == VIEWER_STORAGE_SCHEMA_VERSION {
+            5
+        } else {
+            value
+        };
         let annotation_hash = digest(annotation_version)?;
         let receipt: bool = db.query_row("SELECT catalog_version=?1 AND catalog_sha256=?2 AND origin_sha256=CASE origin_version WHEN 1 THEN ?3 WHEN 2 THEN ?4 END FROM library_local_annotation_migration WHERE singleton_id=1;",
             params![annotation_version, annotation_hash, NORMALIZED_SCHEMA_SHA256, NORMALIZED_NATIVE_SCHEMA_SHA256], |row| row.get(0))?;
@@ -121,14 +258,50 @@ pub(crate) fn require_ready(db: &Connection) -> Result<(), NormalizedSqliteError
 
 /// Startup-only path under the host's existing exclusive Library lease.
 /// A bounded unfinished invocation leaves the receipt intact and exposes no DB.
-pub(crate) fn open_owned(db: &mut Connection) -> Result<(), NormalizedSqliteError> {
-    if version(db)? == 0 {
-        crate::normalized_sqlite::install_normalized_schema_v1(db)?;
+pub(crate) fn open_owned_until_complete(
+    db: &mut Connection,
+    mut unfinished: impl FnMut(&Connection),
+) -> Result<AnnotationUpgradeReport, NormalizedSqliteError> {
+    #[cfg(test)]
+    let _report_guard = TEST_STARTUP_REPORT_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let mut report = AnnotationUpgradeReport::default();
+    loop {
+        report.attempt();
+        let mut stage = AnnotationUpgradeStage::Verification;
+        let result = (|| {
+            if version(db)? == 0 {
+                stage = AnnotationUpgradeStage::SchemaInstall;
+                crate::normalized_sqlite::install_normalized_schema_v1(db)?;
+            }
+            stage = AnnotationUpgradeStage::Verification;
+            if !resume_attempt(db, &mut stage, &mut report)? {
+                return Err(invalid("LOCAL_ANNOTATION_UPGRADE_PENDING"));
+            }
+            stage = AnnotationUpgradeStage::ConnectionSetup;
+            crate::normalized_sqlite::configure_normalized_sqlite_connection(db)
+        })();
+        match result {
+            Ok(()) => {
+                store_report(report);
+                return Ok(report);
+            }
+            Err(NormalizedSqliteError::InvalidRequest("LOCAL_ANNOTATION_UPGRADE_PENDING")) => {
+                unfinished(db);
+                #[cfg(not(test))]
+                std::thread::sleep(Duration::from_millis(25));
+            }
+            Err(cause) => {
+                store_report(report);
+                return Err(NormalizedSqliteError::AnnotationUpgrade {
+                    stage,
+                    cause: Box::new(cause),
+                    report,
+                });
+            }
+        }
     }
-    if !resume(db)? {
-        return Err(invalid("LOCAL_ANNOTATION_UPGRADE_PENDING"));
-    }
-    crate::normalized_sqlite::configure_normalized_sqlite_connection(db)
 }
 
 // Test fixtures need a ready catalog independently of the production time slice.
@@ -141,8 +314,8 @@ pub(crate) fn open_owned_until_ready(db: &mut Connection) {
     crate::normalized_sqlite::configure_normalized_sqlite_connection(db).unwrap();
 }
 
-// Expired-budget assertions cover the time slice; production wrapper behavior
-// under load is tracked by #2228. Fixtures only need bounded catalog completion.
+// Fixtures need catalog completion; startup regression tests separately cover
+// slow verification, staged failures and the production work budget.
 #[cfg(test)]
 pub(crate) fn finish_upgrade(db: &mut Connection) {
     let deadline = Instant::now() + Duration::from_secs(60);
@@ -158,18 +331,41 @@ pub(crate) fn finish_upgrade(db: &mut Connection) {
 
 /// Only this owned resumer may open a BUILDING catalog. Every committed page is bounded.
 /// The host retains its ordinary exclusive Library ownership for the entire invocation.
+#[cfg(test)]
 pub(crate) fn resume(db: &mut Connection) -> Result<bool, NormalizedSqliteError> {
+    resume_attempt(
+        db,
+        &mut AnnotationUpgradeStage::Verification,
+        &mut AnnotationUpgradeReport::default(),
+    )
+}
+
+fn resume_attempt(
+    db: &mut Connection,
+    stage: &mut AnnotationUpgradeStage,
+    report: &mut AnnotationUpgradeReport,
+) -> Result<bool, NormalizedSqliteError> {
+    *stage = AnnotationUpgradeStage::ConnectionSetup;
     if !db.is_autocommit() {
         return Err(invalid(
             "annotation upgrade requires an owned idle connection",
         ));
     }
     db.execute_batch("PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;")?;
-    let deadline = Instant::now() + MAXIMUM_TIME;
+    let budget = WorkBudget::default();
     let busy: u64 = db.pragma_query_value(None, "busy_timeout", |row| row.get(0))?;
     db.busy_timeout(Duration::from_millis(25))?;
-    db.progress_handler(1000, Some(move || Instant::now() >= deadline));
-    let result = resume_until(db, deadline);
+    let deadline = Arc::clone(&budget.deadline);
+    db.progress_handler(
+        1000,
+        Some(move || {
+            deadline
+                .lock()
+                .unwrap()
+                .is_some_and(|deadline| now() >= deadline)
+        }),
+    );
+    let result = resume_with_budget(db, &budget, stage, report);
     db.progress_handler(0, None::<fn() -> bool>);
     db.busy_timeout(Duration::from_millis(busy))?;
     match result {
@@ -181,21 +377,50 @@ pub(crate) fn resume(db: &mut Connection) -> Result<bool, NormalizedSqliteError>
                     | rusqlite::ErrorCode::DatabaseLocked
             ) =>
         {
+            if code.code == rusqlite::ErrorCode::OperationInterrupted {
+                report.last_deadline_interruption = Some(*stage);
+            }
+            Ok(false)
+        }
+        Ok(false) if budget.expired() => {
+            report.last_deadline_interruption = Some(*stage);
             Ok(false)
         }
         other => other,
     }
 }
 
+#[cfg(test)]
 fn resume_until(db: &mut Connection, deadline: Instant) -> Result<bool, NormalizedSqliteError> {
+    let budget = WorkBudget {
+        fixed_deadline: Some(deadline),
+        ..WorkBudget::default()
+    };
+    resume_with_budget(
+        db,
+        &budget,
+        &mut AnnotationUpgradeStage::Verification,
+        &mut AnnotationUpgradeReport::default(),
+    )
+}
+
+fn resume_with_budget(
+    db: &mut Connection,
+    budget: &WorkBudget,
+    stage: &mut AnnotationUpgradeStage,
+    report: &mut AnnotationUpgradeReport,
+) -> Result<bool, NormalizedSqliteError> {
+    *stage = AnnotationUpgradeStage::Verification;
     let initial = version(db)?;
-    verify_catalog(db, initial)?;
-    if Instant::now() >= deadline {
-        return Ok(false);
-    }
+    budget.verify(db, initial, report)?;
     if matches!(initial, 1 | 2) {
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        verify_catalog(&tx, initial)?;
+        budget.verify(&tx, initial, report)?;
+        *stage = AnnotationUpgradeStage::SchemaInstall;
+        budget.arm();
+        if budget.expired() {
+            return Ok(false);
+        }
         let target = if initial == 1 { 4 } else { 5 };
         let pinned = pin(&tx)?;
         tx.execute_batch(ANNOTATION_SCHEMA_EXTENSION_SQL)?;
@@ -208,9 +433,12 @@ fn resume_until(db: &mut Connection, deadline: Instant) -> Result<bool, Normaliz
         }
         tx.pragma_update(None, "user_version", target)?;
         tx.commit()?;
+    } else {
+        budget.arm();
     }
+    *stage = AnnotationUpgradeStage::Backfill;
     for _ in 0..MAXIMUM_PAGES {
-        if Instant::now() >= deadline {
+        if budget.expired() {
             return Ok(false);
         }
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -255,7 +483,7 @@ fn resume_until(db: &mut Connection, deadline: Instant) -> Result<bool, Normaliz
         }
         let mut count = 0;
         for (id, index, entity, kind) in &rows {
-            if Instant::now() >= deadline {
+            if budget.expired() {
                 break;
             }
             if entity.len() > 2048 || kind.len() > 128 {
@@ -288,6 +516,15 @@ fn resume_until(db: &mut Connection, deadline: Instant) -> Result<bool, Normaliz
             return Ok(false);
         }
         tx.commit()?;
+        report.committed();
+        #[cfg(test)]
+        CLOCK_OFFSET.with(|offset| {
+            offset.set(
+                offset
+                    .get()
+                    .saturating_add(PAGE_ADVANCE.with(|advance| advance.get())),
+            )
+        });
     }
     Ok(false)
 }
@@ -568,6 +805,196 @@ mod tests {
             .next()
             .unwrap()
             .is_none());
+    }
+
+    struct TestClock;
+
+    impl TestClock {
+        fn new(verification: Duration, page: Duration) -> Self {
+            CLOCK_BASE.with(|base| base.set(Some(Instant::now())));
+            CLOCK_OFFSET.with(|offset| offset.set(Duration::ZERO));
+            VERIFICATION_ADVANCE.with(|advance| advance.set(verification));
+            PAGE_ADVANCE.with(|advance| advance.set(page));
+            Self
+        }
+    }
+
+    impl Drop for TestClock {
+        fn drop(&mut self) {
+            CLOCK_BASE.with(|base| base.set(None));
+            CLOCK_OFFSET.with(|offset| offset.set(Duration::ZERO));
+            VERIFICATION_ADVANCE.with(|advance| advance.set(Duration::ZERO));
+            PAGE_ADVANCE.with(|advance| advance.set(Duration::ZERO));
+        }
+    }
+
+    // Tier 1: catches verification consuming every attempt before any page commits.
+    // Invalidated by changes to startup admission, deadline arming or page receipts.
+    #[test]
+    fn annotation_slow_verification_reaches_ready() {
+        for source in [1, 2] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut db = fixture(&dir.path().join("library.sqlite"), source);
+            populate(&db);
+            let _clock = TestClock::new(MAXIMUM_TIME + Duration::from_millis(1), Duration::ZERO);
+            let mut observed = 0;
+            let report = open_owned_until_complete(&mut db, |db| {
+                observed += 1;
+                assert!(observed <= 2, "slow verification must not livelock");
+                let (phase, scanned): (String, u32) = db
+                    .query_row(
+                        "SELECT phase,scanned_members FROM library_local_annotation_migration;",
+                        [],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .expect("first slice must commit pages");
+                assert_eq!(phase, "building");
+                assert_eq!(scanned, 1024);
+            })
+            .unwrap();
+            require_ready(&db).unwrap();
+            assert_eq!(observed, 1);
+            assert_eq!(report.attempts, 2);
+            assert_eq!(report.committed_slices, 5);
+            assert!(report.maximum_verification_time >= MAXIMUM_TIME);
+            assert!(report.total_verification_time >= MAXIMUM_TIME * 3);
+            assert_eq!(report.last_deadline_interruption, None);
+        }
+    }
+
+    // Tier 1: the verification exemption must not disable the page deadline.
+    #[test]
+    fn annotation_page_deadline_commits_and_resumes_on_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("library.sqlite");
+        let mut db = fixture(&path, 1);
+        populate(&db);
+        let _clock = TestClock::new(MAXIMUM_TIME, MAXIMUM_TIME);
+        let mut report = AnnotationUpgradeReport::default();
+        let mut stage = AnnotationUpgradeStage::Verification;
+        assert!(!resume_attempt(&mut db, &mut stage, &mut report).unwrap());
+        assert_eq!(report.committed_slices, 1);
+        assert_eq!(
+            report.last_deadline_interruption,
+            Some(AnnotationUpgradeStage::Backfill)
+        );
+        let receipt =
+            |db: &Connection| {
+                db.query_row(
+            "SELECT pinned_identity,scanned_members FROM library_local_annotation_migration;", [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))).unwrap()
+            };
+        let before = receipt(&db);
+        assert_eq!(before.1, PAGE_ROWS as u32);
+        drop(db);
+        let mut db = Connection::open(&path).unwrap();
+        assert_eq!(receipt(&db), before);
+        let mut observed = 0;
+        let report = open_owned_until_complete(&mut db, |_| {
+            observed += 1;
+            assert!(observed <= 5);
+        })
+        .unwrap();
+        require_ready(&db).unwrap();
+        assert_eq!(receipt(&db), (before.0, 1025));
+        assert_eq!(
+            report.last_deadline_interruption,
+            Some(AnnotationUpgradeStage::Backfill)
+        );
+    }
+
+    // Tier 1: corrupted catalogs and changed pinned sources terminate without retry.
+    #[test]
+    fn annotation_startup_failures_are_terminal_and_staged() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut db = fixture(&dir.path().join("library.sqlite"), 1);
+        populate(&db);
+        let _clock = TestClock::new(Duration::ZERO, Duration::ZERO);
+        assert!(!resume_until(&mut db, now() + Duration::from_secs(60)).unwrap());
+        let receipt =
+            |db: &Connection| {
+                db.query_row(
+            "SELECT pinned_identity,scanned_members FROM library_local_annotation_migration;", [],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))).unwrap()
+            };
+        let before = receipt(&db);
+        db.execute_batch("CREATE TABLE unexpected_catalog_entry(value TEXT);")
+            .unwrap();
+        let error =
+            open_owned_until_complete(&mut db, |_| panic!("terminal error retried")).unwrap_err();
+        assert!(error.to_string().contains(
+            "annotation upgrade verification failed: annotation storage catalog mismatch"
+        ));
+        assert!(error.to_string().contains("AnnotationUpgradeReport"));
+        match error {
+            NormalizedSqliteError::AnnotationUpgrade {
+                stage,
+                report,
+                cause,
+            } => {
+                assert_eq!(stage, AnnotationUpgradeStage::Verification);
+                assert_eq!(report.attempts, 1);
+                assert!(matches!(*cause, NormalizedSqliteError::InvalidRequest(_)));
+            }
+            other => panic!("missing staged failure: {other}"),
+        }
+        assert_eq!(receipt(&db), before);
+        db.execute_batch(
+            "DROP TABLE unexpected_catalog_entry; UPDATE library_meta SET source_revision=1;",
+        )
+        .unwrap();
+        let error =
+            open_owned_until_complete(&mut db, |_| panic!("terminal error retried")).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("annotation upgrade backfill failed: annotation backfill source changed"));
+        assert!(matches!(
+            error,
+            NormalizedSqliteError::AnnotationUpgrade {
+                stage: AnnotationUpgradeStage::Backfill,
+                report: AnnotationUpgradeReport { attempts: 1, .. },
+                ..
+            }
+        ));
+        assert_eq!(receipt(&db), before);
+        db.execute_batch("BEGIN;").unwrap();
+        let error =
+            open_owned_until_complete(&mut db, |_| panic!("terminal error retried")).unwrap_err();
+        assert!(error.to_string().contains("annotation upgrade connection setup failed: annotation upgrade requires an owned idle connection"));
+        assert!(matches!(
+            error,
+            NormalizedSqliteError::AnnotationUpgrade {
+                stage: AnnotationUpgradeStage::ConnectionSetup,
+                ..
+            }
+        ));
+        db.execute_batch("ROLLBACK;").unwrap();
+        assert_eq!(receipt(&db), before);
+    }
+
+    #[test]
+    fn annotation_report_saturates_and_is_taken_once() {
+        let _guard = TEST_STARTUP_REPORT_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mut report = AnnotationUpgradeReport {
+            attempts: u32::MAX,
+            committed_slices: u32::MAX,
+            total_verification_time: Duration::MAX,
+            ..AnnotationUpgradeReport::default()
+        };
+        report.attempt();
+        report.committed();
+        report.verification(Duration::MAX);
+        report.verification(Duration::from_secs(1));
+        assert_eq!(report.attempts, u32::MAX);
+        assert_eq!(report.committed_slices, u32::MAX);
+        assert_eq!(report.total_verification_time, Duration::MAX);
+        assert_eq!(report.maximum_verification_time, Duration::MAX);
+        store_report(AnnotationUpgradeReport::default());
+        store_report(report);
+        assert_eq!(take_annotation_upgrade_report(), Some(report));
+        assert_eq!(take_annotation_upgrade_report(), None);
     }
 
     #[test]

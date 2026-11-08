@@ -94,16 +94,10 @@ pub fn initialize_owned_normalized_sqlite_database_with_observer_v1(
         }
     }
     let mut connection = open_checked_normalized_sqlite_path(database_path, create)?;
-    loop {
-        match crate::normalized_local_annotations::open_owned(&mut connection) {
-            Ok(()) => return Ok(Some(connection)),
-            Err(NormalizedSqliteError::InvalidRequest("LOCAL_ANNOTATION_UPGRADE_PENDING")) => {
-                unfinished();
-                std::thread::sleep(std::time::Duration::from_millis(25))
-            }
-            Err(error) => return Err(error),
-        }
-    }
+    crate::normalized_local_annotations::open_owned_until_complete(&mut connection, |_| {
+        unfinished()
+    })?;
+    Ok(Some(connection))
 }
 
 // Shared checked path boundary. Neither opener introduces another normalization,
@@ -145,6 +139,11 @@ fn open_checked_normalized_sqlite_path(
 
 #[derive(Debug)]
 pub enum NormalizedSqliteError {
+    AnnotationUpgrade {
+        stage: crate::AnnotationUpgradeStage,
+        cause: Box<NormalizedSqliteError>,
+        report: crate::AnnotationUpgradeReport,
+    },
     Content(ContentRecordError),
     InvalidRequest(&'static str),
     Protocol(crate::library_core_error::LibraryCoreError),
@@ -155,6 +154,14 @@ pub enum NormalizedSqliteError {
 impl std::fmt::Display for NormalizedSqliteError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::AnnotationUpgrade {
+                stage,
+                cause,
+                report,
+            } => write!(
+                formatter,
+                "annotation upgrade {stage} failed: {cause}; {report:?}"
+            ),
             Self::Content(error) => write!(formatter, "{error}"),
             Self::InvalidRequest(message) => formatter.write_str(message),
             Self::Protocol(error) => write!(formatter, "normalized operation failure: {error}"),
@@ -164,7 +171,14 @@ impl std::fmt::Display for NormalizedSqliteError {
     }
 }
 
-impl std::error::Error for NormalizedSqliteError {}
+impl std::error::Error for NormalizedSqliteError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::AnnotationUpgrade { cause, .. } => Some(cause.as_ref()),
+            _ => None,
+        }
+    }
+}
 
 impl From<rusqlite::Error> for NormalizedSqliteError {
     fn from(value: rusqlite::Error) -> Self {

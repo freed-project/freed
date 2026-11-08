@@ -179,19 +179,14 @@ impl LibraryCoreDesktopBinding {
         // The process leases above remain held, and the binding is not published
         // until READY. Each invocation retains its existing page/time/byte caps.
         // Process cancellation drops ownership; committed pages resume on reopen.
-        loop {
-            match crate::normalized_local_annotations::open_owned(&mut normalized_connection) {
-                Ok(()) => break,
-                Err(crate::NormalizedSqliteError::InvalidRequest(
-                    "LOCAL_ANNOTATION_UPGRADE_PENDING",
-                )) => {
-                    #[cfg(test)]
-                    tests::pause_annotation_startup_for_process_fixture(&normalized_connection);
-                    std::thread::sleep(std::time::Duration::from_millis(25));
-                }
-                Err(error) => return Err(LibraryCoreStorageError::from(error.to_string())),
-            }
-        }
+        crate::normalized_local_annotations::open_owned_until_complete(
+            &mut normalized_connection,
+            |_connection| {
+                #[cfg(test)]
+                tests::pause_annotation_startup_for_process_fixture(_connection);
+            },
+        )
+        .map_err(|error| LibraryCoreStorageError::from(error.to_string()))?;
         binding
             .content_vault
             .reconcile_v1(&mut normalized_connection)?;
