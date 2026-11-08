@@ -143,6 +143,9 @@ fn annotation_owner(
 }
 /// Explicit owner startup hook. Read and generic open helpers never start work.
 pub(super) fn start_annotation_continuation(app: &tauri::AppHandle) {
+    if let Some(report) = freed_library_core::take_annotation_upgrade_report() {
+        log::info!("[library-native-timing] annotation startup {report:?}");
+    }
     match desktop_library_is_selected(app) {
         Ok(true) => annotation_owner(app).restart(),
         Ok(false) => {}

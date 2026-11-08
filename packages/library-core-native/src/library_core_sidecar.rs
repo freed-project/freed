@@ -1129,7 +1129,8 @@ fn assert_primary_credentials_match_storage(
 
 fn normalized_command_error(error: NormalizedSqliteError) -> &'static str {
     match error {
-        NormalizedSqliteError::Content(_)
+        NormalizedSqliteError::AnnotationUpgrade { .. }
+        | NormalizedSqliteError::Content(_)
         | NormalizedSqliteError::InvalidRequest(_)
         | NormalizedSqliteError::Transport(_) => "request_invalid",
         NormalizedSqliteError::Protocol(_) | NormalizedSqliteError::Sqlite(_) => "command_failed",
