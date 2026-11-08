@@ -47,7 +47,7 @@ A test may be release-critical through an exact inherited receipt without rerunn
 
 ## How tier 1 is computed
 
-`scripts/plan-tooling-smoke.mjs` derives the applicable suites from the changed path set and emits a GitHub Actions matrix. Its temporary cap is **16 jobs** while the security-boundary runtime defect in issue #1147 remains. Return the cap to **8 jobs** when the measured suites fit the blocking timeout.
+`scripts/plan-tooling-smoke.mjs` derives the applicable suites from the changed path set and emits a GitHub Actions matrix. Its temporary cap is **16 jobs** while the security-boundary runtime defect in issue #1147 remains. The workflow runs at most 6 shards of one run at a time, so a full lane leaves runners free for required checks. Return the cap to **8 jobs** when the measured suites fit the blocking timeout.
 
 Attribution uses two signals, because neither alone is correct:
 

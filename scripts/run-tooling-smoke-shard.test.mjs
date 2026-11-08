@@ -1170,6 +1170,20 @@ test("validation workflow preserves the complete tooling smoke gate", () => {
 });
 
 
+test("tooling smoke shard concurrency leaves runner capacity for required checks", () => {
+  const workflow = yaml.load(readFileSync(".github/workflows/ci.yml", "utf8"));
+  const job = workflow.jobs["tooling-smoke-shards"];
+  const maxParallel = job.strategy["max-parallel"];
+  assert.equal(maxParallel, 6);
+  assert.ok(Number.isInteger(maxParallel) && maxParallel > 0 && maxParallel < 20);
+  assert.equal(job.strategy["fail-fast"], false);
+  assert.equal(
+    job.strategy.matrix,
+    "${{ fromJSON(needs.tooling-smoke-plan.outputs.matrix) }}",
+  );
+  assert.equal(job.name, "Tooling smoke shard (${{ matrix.name }})");
+});
+
 test("preview macOS acceptance is focused and fails the existing gate when required proof is absent", () => {
   const workflow = yaml.load(readFileSync(".github/workflows/ci.yml", "utf8"));
   const job = workflow.jobs["preview-process-acceptance"];
