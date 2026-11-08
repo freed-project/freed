@@ -819,7 +819,8 @@ pub(super) fn normalized_desktop_installation_status(
             if follower.library_id.is_some() {
                 return Ok(DesktopLibraryInstallationStatus {
                     state: if freed_library_core::normalized_library_is_read_only_v1(&connection)
-                        .map_err(|error| error.to_string())? {
+                        .map_err(|error| error.to_string())?
+                    {
                         "read_only_consumer"
                     } else if follower.state == "active" {
                         "editable_consumer"
