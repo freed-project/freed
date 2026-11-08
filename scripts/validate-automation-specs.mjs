@@ -243,7 +243,7 @@ export function validateAutomationSpec(
   }
   if (
     PR_CAPABLE_AUTHORITIES.has(spec.authority) &&
-    !prompt.includes("(AI Generated).")
+    !prompt.includes("(AI Generated)")
   ) {
     throw new Error(
       `${fileName}: PR-capable prompts must preserve the external posting prefix.`,

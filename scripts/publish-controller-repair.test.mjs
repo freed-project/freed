@@ -83,7 +83,7 @@ test("proposal writes only the pinned two-file tree, bot commit, new branch and 
   assert.deepEqual(writes[2].body, { ref: `refs/heads/${branch}`, sha: head });
   assert.equal(writes[3].body.base, "release-controller");
   assert.equal(writes[3].body.draft, true);
-  assert.match(writes[3].body.body, /^\(AI Generated\)\.\n\n/);
+  assert.match(writes[3].body.body, /^\(AI Generated\)\n\n/);
   assert.match(writes[3].body.body, /does not claim CI on this new commit/);
 });
 

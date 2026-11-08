@@ -139,7 +139,7 @@ build_body() {
     tests+=("Not run, no focused validation was recorded.")
   fi
 
-  printf '%s\n\n' '(AI Generated).'
+  printf '%s\n\n' '(AI Generated)'
   printf '## Summary\n'
   for item in "${summaries[@]}"; do
     printf -- '- %s\n' "${item}"
@@ -346,7 +346,7 @@ provider_review_comment_body() {
   local authority_marker
   authority_marker="$(provider_review_authority_marker)"
 
-  printf '%s\n' '(AI Generated).'
+  printf '%s\n' '(AI Generated)'
   printf '\n%s\n' "<!-- freed-provider-review:${diff_sha} -->"
   printf '%s\n' "${authority_marker}"
   printf '\n%s\n\n' "## Provider review"
@@ -1344,8 +1344,10 @@ if [[ -n "${BODY_FILE}" ]]; then
   # A sentinel keeps command substitution from stripping literal trailing newlines.
   BODY_CONTENT="$(cat "${BODY_FILE}" && printf '.')"
   BODY_CONTENT="${BODY_CONTENT%.}"
-  if [[ "${BODY_CONTENT}" != "(AI Generated)."* ]]; then
-    BODY_CONTENT="(AI Generated)."$'\n\n'"${BODY_CONTENT}"
+  BODY_FIRST_LINE="${BODY_CONTENT%%$'\n'*}"
+  BODY_FIRST_LINE="${BODY_FIRST_LINE%$'\r'}"
+  if [[ "${BODY_FIRST_LINE}" != "(AI Generated)" && "${BODY_FIRST_LINE}" != "(AI Generated)." ]]; then
+    BODY_CONTENT="(AI Generated)"$'\n\n'"${BODY_CONTENT}"
   fi
 else
   BODY_ARGS=()
