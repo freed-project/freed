@@ -441,7 +441,8 @@ mod tests {
             Some(&payload),
         );
         let mut db = Connection::open(&db_path).unwrap();
-        crate::normalized_local_annotations::open_owned(&mut db).unwrap();
+        // Readiness may require several production time slices on a loaded runner.
+        crate::normalized_local_annotations::open_owned_until_ready(&mut db);
         let receipt = accept_normalized_operation_transaction_with_source_v1(
             &mut db,
             &frames,

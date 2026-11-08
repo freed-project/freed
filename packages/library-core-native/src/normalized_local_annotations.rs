@@ -131,6 +131,24 @@ pub(crate) fn open_owned(db: &mut Connection) -> Result<(), NormalizedSqliteErro
     crate::normalized_sqlite::configure_normalized_sqlite_connection(db)
 }
 
+// Test fixtures need a ready catalog independently of the production time slice.
+#[cfg(test)]
+pub(crate) fn open_owned_until_ready(db: &mut Connection) {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    loop {
+        match open_owned(db) {
+            Ok(()) => return,
+            Err(NormalizedSqliteError::InvalidRequest("LOCAL_ANNOTATION_UPGRADE_PENDING")) => {
+                assert!(
+                    Instant::now() < deadline,
+                    "annotation upgrade did not finish"
+                );
+            }
+            Err(error) => panic!("annotation upgrade failed: {error}"),
+        }
+    }
+}
+
 /// Only this owned resumer may open a BUILDING catalog. Every committed page is bounded.
 /// The host retains its ordinary exclusive Library ownership for the entire invocation.
 pub(crate) fn resume(db: &mut Connection) -> Result<bool, NormalizedSqliteError> {
