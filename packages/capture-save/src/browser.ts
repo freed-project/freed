@@ -7,6 +7,7 @@
  */
 
 import { Readability } from "@mozilla/readability";
+import { parseMetaTimestamp } from "./timestamp.js";
 import type { UrlMetadata, ExtractedContent } from "./types.js";
 
 /**
@@ -48,9 +49,7 @@ export function extractMetadataBrowser(html: string, url: string): UrlMetadata {
     get('meta[property="article:published_time"]') ||
     get('meta[name="date"]');
 
-  const publishedAt = publishedTimeStr
-    ? new Date(publishedTimeStr).getTime()
-    : undefined;
+  const publishedAt = parseMetaTimestamp(publishedTimeStr);
 
   const type = get('meta[property="og:type"]');
 

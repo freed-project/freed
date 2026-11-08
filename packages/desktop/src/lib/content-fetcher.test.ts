@@ -91,7 +91,7 @@ async function loadContentFetcherModule(options: {
   }));
   const mockCacheSet = vi.fn(options.cacheSetImpl ?? (async () => undefined));
   const mockPinLibraryCoreItemContent = vi.fn(async () => undefined);
-  const mockUpdateLibraryFeedItem = vi.fn(async () => undefined);
+  const mockUpdateLibraryFeedItem = vi.fn(async (_id: string, _update: Partial<FeedItem>) => undefined);
   const mockRecordReaderArticleFetchAttempt = vi.fn();
   let latestItems: readonly FeedItem[] = [];
   const mockScanLibraryCoreContentFetchCandidates = vi.fn(
@@ -209,6 +209,7 @@ async function loadContentFetcherModule(options: {
     subscriberRef,
     mockInvoke,
     mockCacheSet,
+    mockExtractMetadata,
     mockPinLibraryCoreItemContent,
     mockUpdateLibraryFeedItem,
     mockRecordReaderArticleFetchAttempt,
@@ -386,6 +387,30 @@ afterEach(() => {
 });
 
 describe("content fetcher", () => {
+  it.each([NaN, Infinity, 0, 1_700_000_000_000])(
+    "only preserves a finite metadata publication date (%s)",
+    async (publishedAt) => {
+      vi.useFakeTimers();
+      const { mod, subscriberRef, mockExtractMetadata, mockUpdateLibraryFeedItem } =
+        await loadContentFetcherModule();
+      mockExtractMetadata.mockReturnValue({ author: "Metadata Author", publishedAt });
+      mod.start();
+      try {
+        subscriberRef.emitItems([makeStubItem()]);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(mockUpdateLibraryFeedItem).toHaveBeenCalledOnce();
+        const preserved = mockUpdateLibraryFeedItem.mock.calls[0][1].preservedContent!;
+        if (Number.isFinite(publishedAt)) {
+          expect(preserved.publishedAt).toBe(publishedAt);
+        } else {
+          expect(preserved).not.toHaveProperty("publishedAt");
+        }
+      } finally {
+        mod.stop();
+      }
+    },
+  );
+
   it("lets handoff drain an accepted article write and preserves queued work for resumption", async () => {
     vi.useFakeTimers();
     let releaseWrite!: () => void;
