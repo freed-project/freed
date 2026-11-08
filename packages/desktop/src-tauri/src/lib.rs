@@ -6625,7 +6625,7 @@ fn freed_webkit_memory_stats(
         }
     }
 
-    processes.sort_by(|a, b| b.resident_bytes.cmp(&a.resident_bytes));
+    processes.sort_by_key(|stats| std::cmp::Reverse(stats.resident_bytes));
 
     WebkitMemoryStats {
         total_resident_bytes,
