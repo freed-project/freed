@@ -6850,7 +6850,7 @@ fn collect_webkit_network_cache_files(root: &Path, files: &mut Vec<(PathBuf, u64
 }
 
 fn trim_webkit_network_cache_root_with_result(webkit_root: &Path) -> WebkitCacheTrimResult {
-    let webkit_bytes = dir_size_bytes(&webkit_root).unwrap_or(0);
+    let webkit_bytes = dir_size_bytes(webkit_root).unwrap_or(0);
     if webkit_bytes <= WEBKIT_CACHE_TRIM_AT_BYTES {
         return WebkitCacheTrimResult {
             before_bytes: webkit_bytes,
@@ -12288,7 +12288,7 @@ fn present_webview_window(
         quietly_show_webview_window(window, context);
         if let Some(delay) = presentation.quiet_focusable_restore_delay() {
             schedule_main_window_focusable_restore(
-                &window.app_handle(),
+                window.app_handle(),
                 delay,
                 "quiet-focusable-restore",
             );
