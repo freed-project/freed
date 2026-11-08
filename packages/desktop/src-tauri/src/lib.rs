@@ -416,6 +416,7 @@ fn parse_screen_locked_from_ioreg_plist(text: &str) -> Option<bool> {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn data_store_identifier_folder(identifier: [u8; 16]) -> String {
     format!(
         "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
@@ -457,16 +458,19 @@ fn social_auth_cookie_config(
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn read_u32_be(data: &[u8], offset: usize) -> Option<u32> {
     let bytes = data.get(offset..offset + 4)?;
     Some(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
     let bytes = data.get(offset..offset + 4)?;
     Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn cookie_record_string(record: &[u8], offset: usize) -> Option<String> {
     if offset == 0 || offset >= record.len() {
         return None;
@@ -482,6 +486,7 @@ fn cookie_record_string(record: &[u8], offset: usize) -> Option<String> {
         .map(|value| value.to_string())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn parse_webkit_binary_cookie_names(data: &[u8]) -> Result<Vec<String>, String> {
     if data.len() < 8 || data.get(0..4) != Some(b"cook") {
         return Err("Invalid WebKit cookie store header".to_string());
@@ -708,6 +713,7 @@ fn get_provider_sync_runtime_eligibility() -> ProviderSyncRuntimeEligibility {
     }
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn provider_sync_runtime_eligibility(
     session: &DesktopSessionState,
 ) -> ProviderSyncRuntimeEligibility {
@@ -2704,6 +2710,7 @@ fn start_dev_sync_trigger_watcher(app: tauri::AppHandle, data_dir: PathBuf) {
 
 static LAST_DEEP_DIAGNOSTIC_AT: StdMutex<Option<Instant>> = StdMutex::new(None);
 
+#[cfg(target_os = "macos")]
 fn command_output_truncated(command: &str, args: &[String], max_chars: usize) -> Option<String> {
     let output = Command::new(command).args(args).output().ok()?;
     let combined = if output.status.success() {
@@ -6389,6 +6396,7 @@ fn social_feed_scroll_script(delta_px: i64) -> String {
     SCRIPT_TEMPLATE.replace("__FREED_SCROLL_DELTA__", &delta_px.to_string())
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn path_is_under_any_root(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|root| path.starts_with(root))
 }
@@ -6443,6 +6451,7 @@ fn macos_process_has_open_file_under_roots(pid: u32, roots: &[PathBuf]) -> bool 
         .any(|path| path_is_under_any_root(Path::new(path), roots))
 }
 
+#[cfg(target_os = "macos")]
 fn unix_micros_from_process_start(seconds: u64, microseconds: u64) -> Option<u64> {
     if seconds == 0 || microseconds >= 1_000_000 {
         return None;
@@ -6477,6 +6486,7 @@ fn macos_process_started_at_unix_micros(_pid: u32) -> Option<u64> {
     None
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn webkit_process_started_at_or_after_app(
     webkit_started_at_unix_micros: Option<u64>,
     app_started_at_unix_micros: Option<u64>,
@@ -6505,6 +6515,7 @@ fn webkit_process_matches_renderer_uptime(
     webkit_process_started_with_app(webkit_age_seconds, renderer_age_seconds)
 }
 
+#[cfg(any(target_os = "macos", test))]
 fn freed_webkit_process_role(
     has_open_file_under_roots: bool,
     webkit_started_at_unix_micros: Option<u64>,
@@ -6555,11 +6566,35 @@ fn freed_webkit_memory_stats(
     app_age_seconds: u64,
     precise_attribution: bool,
 ) -> WebkitMemoryStats {
+    #[cfg(not(target_os = "macos"))]
+    let _ = (
+        system,
+        roots,
+        app_started_at_unix_micros,
+        app_age_seconds,
+        precise_attribution,
+    );
+
+    #[cfg(target_os = "macos")]
     let mut total_resident_bytes = 0u64;
+    #[cfg(not(target_os = "macos"))]
+    let total_resident_bytes = 0u64;
+    #[cfg(target_os = "macos")]
     let mut total_footprint_bytes = 0u64;
+    #[cfg(not(target_os = "macos"))]
+    let total_footprint_bytes = 0u64;
+    #[cfg(target_os = "macos")]
     let mut has_footprint = false;
+    #[cfg(not(target_os = "macos"))]
+    let has_footprint = false;
+    #[cfg(target_os = "macos")]
     let mut process_count = 0u64;
+    #[cfg(not(target_os = "macos"))]
+    let process_count = 0u64;
+    #[cfg(target_os = "macos")]
     let mut largest: Option<WebkitProcessRuntimeStats> = None;
+    #[cfg(not(target_os = "macos"))]
+    let largest: Option<WebkitProcessRuntimeStats> = None;
     let mut processes: Vec<WebkitProcessRuntimeStats> = Vec::new();
 
     #[cfg(target_os = "macos")]
