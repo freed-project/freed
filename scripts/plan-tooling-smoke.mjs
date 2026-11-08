@@ -11,9 +11,11 @@ import { appendFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readGitPathAtRef } from "./lib/git-path-at-ref.mjs";
 import {
   DEFAULT_MAX_JOBS,
   buildToolingSmokeMatrix,
+  compareToolingManifests,
   selectNativeAcceptance,
   selectPreviewNativeAcceptance,
 } from "./lib/tooling-smoke-plan.mjs";
@@ -22,28 +24,33 @@ import { REPO_ROOT, SUITE_NAMES } from "./lib/tooling-smoke-suites.mjs";
 function usage() {
   return `Usage:
   node scripts/plan-tooling-smoke.mjs [--base-ref <ref>] [--changed-files <file>...]
-                                      [--all] [--max-jobs <n>] [--github-output]
+                                      [--scope-manifests] [--all] [--max-jobs <n>] [--github-output]
 
-  --base-ref       Diff against this ref to derive the changed path set.
-  --changed-files  Use this explicit path set instead of git.
-  --all            Force every suite, used for pushes to dev.
-  --max-jobs       Total job budget for the lane (default ${DEFAULT_MAX_JOBS}).
-  --github-output  Append matrix and applicable outputs to $GITHUB_OUTPUT.`;
+  --scope-manifests  Compare manifests at the merge base and HEAD (requires --base-ref).
+  --base-ref         Diff against this ref to derive the changed path set.
+  --changed-files    Use this explicit path set instead of git.
+  --all              Force every suite, used for pushes to dev.
+  --max-jobs         Total job budget for the lane (default ${DEFAULT_MAX_JOBS}).
+  --github-output    Append matrix and applicable outputs to $GITHUB_OUTPUT.`;
 }
 
 export function parseArgs(argv) {
   let baseRef = "";
   let changedFiles = [];
   let all = false;
+  let scopeManifests = false;
+  let explicitChangedFiles = false;
   let maxJobs = DEFAULT_MAX_JOBS;
   let githubOutput = false;
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
-    if (argument === "--all") all = true;
+    if (argument === "--scope-manifests") scopeManifests = true;
+    else if (argument === "--all") all = true;
     else if (argument === "--github-output") githubOutput = true;
     else if (argument === "--base-ref") baseRef = argv[++index] ?? "";
     else if (argument === "--max-jobs") maxJobs = Number(argv[++index]);
     else if (argument === "--changed-files") {
+      explicitChangedFiles = true;
       changedFiles = argv.slice(index + 1);
       index = argv.length;
     } else if (argument === "--help" || argument === "-h") {
@@ -56,7 +63,15 @@ export function parseArgs(argv) {
   if (!Number.isSafeInteger(maxJobs) || maxJobs <= 0) {
     throw new Error("--max-jobs must be a positive integer.");
   }
-  return { all, baseRef, changedFiles, githubOutput, maxJobs };
+  return {
+    all,
+    baseRef,
+    changedFiles,
+    explicitChangedFiles,
+    scopeManifests,
+    githubOutput,
+    maxJobs,
+  };
 }
 
 function gitChangedFiles(baseRef) {
@@ -70,23 +85,86 @@ function gitChangedFiles(baseRef) {
       `Could not diff against ${baseRef}: ${(result.stderr || "").trim()}`,
     );
   }
-  return result.stdout.split("\n").map((line) => line.trim()).filter(Boolean);
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
-export function resolvePlan({ all, baseRef, changedFiles, maxJobs }) {
-  // An empty changed set means "everything is in play" to the planner.
-  const files = all
-    ? []
-    : changedFiles.length > 0
-      ? changedFiles
-      : baseRef
-        ? gitChangedFiles(baseRef)
-        : [];
+export function resolvePlan({
+  all,
+  baseRef,
+  changedFiles = [],
+  explicitChangedFiles = false,
+  scopeManifests = false,
+  maxJobs,
+}) {
+  let manifestVerdict = null;
+  let files;
+  if (scopeManifests) {
+    try {
+      if (!baseRef || all || explicitChangedFiles || changedFiles.length > 0) {
+        throw new Error(
+          "--scope-manifests requires --base-ref without --all or --changed-files",
+        );
+      }
+      const mergeBase = spawnSync("git", ["merge-base", baseRef, "HEAD"], {
+        cwd: REPO_ROOT,
+        encoding: "utf8",
+      });
+      if (mergeBase.status !== 0 || !mergeBase.stdout.trim()) {
+        throw new Error("merge base could not be resolved");
+      }
+      const read = (ref, filePath) => {
+        const result = readGitPathAtRef({ cwd: REPO_ROOT, ref, filePath });
+        if (result.state !== "present") {
+          throw new Error(`${filePath} missing at ${ref}`);
+        }
+        return result.contents;
+      };
+      manifestVerdict = compareToolingManifests({
+        oldPackageJson: read(mergeBase.stdout.trim(), "package.json"),
+        newPackageJson: read("HEAD", "package.json"),
+        oldPackageLock: read(mergeBase.stdout.trim(), "package-lock.json"),
+        newPackageLock: read("HEAD", "package-lock.json"),
+      });
+      files = gitChangedFiles(baseRef);
+    } catch (error) {
+      manifestVerdict = {
+        global: true,
+        reason: `manifest scoping failed closed: ${error.message}`,
+      };
+      files = [];
+    }
+  } else {
+    // An empty changed set means "everything is in play" to the planner.
+    files = all
+      ? []
+      : changedFiles.length > 0
+        ? changedFiles
+        : baseRef
+          ? gitChangedFiles(baseRef)
+          : [];
+  }
+  // Invalid scoping inputs always select every lane, even without a manifest path.
+  if (manifestVerdict?.global) {
+    files = [...files, "package-lock.json"];
+  }
+  const options = { manifestVerdict };
+  const plan = buildToolingSmokeMatrix({
+    changedFiles: files,
+    maxJobs,
+    ...options,
+  });
   return {
-    ...buildToolingSmokeMatrix({ changedFiles: files, maxJobs }),
+    ...plan,
+    reason:
+      manifestVerdict && manifestVerdict.reason !== plan.reason
+        ? `${manifestVerdict.reason}; ${plan.reason}`
+        : plan.reason,
     files,
-    native: selectNativeAcceptance(files),
-    previewNative: selectPreviewNativeAcceptance(files),
+    native: selectNativeAcceptance(files, options),
+    previewNative: selectPreviewNativeAcceptance(files, options),
   };
 }
 

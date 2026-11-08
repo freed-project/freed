@@ -66,6 +66,7 @@ jobs:
             git fetch --no-tags origin "${{ github.base_ref }}"
             node scripts/plan-tooling-smoke.mjs \
               --base-ref "origin/${{ github.base_ref }}" \
+              --scope-manifests \
               --github-output
           fi
 
