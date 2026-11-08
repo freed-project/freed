@@ -14821,10 +14821,8 @@ mod tests {
         assert_eq!((icon.width(), icon.height()), (36, 36));
 
         let mut visible_bounds = (icon.width(), icon.height(), 0, 0);
-        for (index, pixel) in icon.rgba().chunks_exact(4).enumerate() {
-            let [red, green, blue, alpha] = pixel else {
-                unreachable!("RGBA chunks always contain four channels");
-            };
+        for (index, pixel) in icon.rgba().as_chunks::<4>().0.iter().enumerate() {
+            let [red, green, blue, alpha] = pixel;
             assert_eq!(red, green, "template pixels must be monochrome");
             assert_eq!(green, blue, "template pixels must be monochrome");
             if *alpha == 0 {
