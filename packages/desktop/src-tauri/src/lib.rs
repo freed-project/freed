@@ -16878,6 +16878,7 @@ mod tests {
         let record_file = record_root.join("large-resource");
         let file = std::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&record_file)
             .unwrap();
