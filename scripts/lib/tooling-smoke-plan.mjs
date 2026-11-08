@@ -1,5 +1,7 @@
 import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { isBuiltin } from "node:module";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   GENERAL_SUITE,
@@ -225,6 +227,7 @@ function isDependencyEdge(literal, repoRoot) {
 export function moduleClosure(entryFiles, { repoRoot = REPO_ROOT } = {}) {
   const modules = new Set();
   const literals = new Set();
+  const packages = new Set();
   const queue = [...entryFiles.map(toPosix)];
   while (queue.length > 0) {
     const current = queue.pop();
@@ -233,6 +236,8 @@ export function moduleClosure(entryFiles, { repoRoot = REPO_ROOT } = {}) {
     if (source === null) continue;
     modules.add(current);
     for (const specifier of importSpecifiers(source)) {
+      const name = isBuiltin(specifier) ? null : packageName(specifier);
+      if (name) packages.add(name);
       const resolved = resolveRelative(current, specifier);
       if (resolved !== null && !modules.has(resolved)) queue.push(resolved);
     }
@@ -243,7 +248,176 @@ export function moduleClosure(entryFiles, { repoRoot = REPO_ROOT } = {}) {
       }
     }
   }
-  return { modules, literals };
+  return { modules, literals, packages };
+}
+
+// Spawned tools have no import edge. Keep these seeds aligned with the npx
+// calls in vercel-deploy-*.sh / deploy-website.mjs, the Vitest executable in
+// vitest-config.test.mjs, and the Playwright CLI in run-pwa-*.mjs.
+const SPAWNED_TOOLING_PACKAGES = [
+  "vercel",
+  "vitest",
+  "playwright",
+  "@playwright/test",
+  "typescript",
+  "vite",
+];
+const DEPENDENCY_FIELDS = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+  "peerDependencies",
+];
+function packageName(specifier) {
+  if (specifier.startsWith(".") || specifier.startsWith("/")) {
+    return null;
+  }
+  const parts = specifier.split("/");
+  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+}
+function object(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function lockEntryName(key, entry, packages) {
+  if (key.includes("node_modules/")) {
+    return packageName(
+      key.slice(key.lastIndexOf("node_modules/") + "node_modules/".length),
+    );
+  }
+  if (typeof entry?.name === "string" && entry.name) {
+    return entry.name;
+  }
+  const link = Object.entries(packages).find(
+    ([, value]) => value?.link === true && value.resolved === key,
+  );
+  return link ? lockEntryName(link[0], link[1], {}) : null;
+}
+
+/**
+ * Compare immutable manifests before allowing a PR to skip tooling. Every doubt
+ * goes global: extra jobs are safer than silently dropping a required test.
+ * Matching by name deliberately over-approximates nested npm resolution.
+ * Non-root devDependencies are not installed as transitive dependencies, so
+ * only their runtime, optional, and peer dependencies become graph edges.
+ */
+export function compareToolingManifests({
+  oldPackageJson,
+  newPackageJson,
+  oldPackageLock,
+  newPackageLock,
+  repoRoot = REPO_ROOT,
+}) {
+  const global = (reason) => ({ global: true, reason });
+  try {
+    const manifests = [oldPackageJson, newPackageJson].map((text) =>
+      JSON.parse(text),
+    );
+    const locks = [oldPackageLock, newPackageLock].map((text) =>
+      JSON.parse(text),
+    );
+    if (!manifests.every(object) || !locks.every(object)) {
+      return global("invalid manifest object");
+    }
+    if (!isDeepStrictEqual(...manifests)) {
+      return global("root package.json changed semantically");
+    }
+    if (
+      !locks.every((lock) => [2, 3].includes(lock.lockfileVersion)) ||
+      locks[0].lockfileVersion !== locks[1].lockfileVersion
+    ) {
+      return global("lockfile format/version changed or unsupported");
+    }
+    if (
+      !locks.every((lock) => object(lock.packages) && object(lock.packages[""]))
+    ) {
+      return global("lockfile packages or root entry missing");
+    }
+    const metadata = locks.map(({ packages: _packages, ...rest }) => rest);
+    if (!isDeepStrictEqual(...metadata)) {
+      return global("lockfile top-level metadata changed");
+    }
+    if (!isDeepStrictEqual(locks[0].packages[""], locks[1].packages[""])) {
+      return global("lockfile root entry changed");
+    }
+    const reachable = new Set(SPAWNED_TOOLING_PACKAGES);
+    for (const manifest of manifests) {
+      for (const field of DEPENDENCY_FIELDS) {
+        for (const name of Object.keys(manifest[field] ?? {})) {
+          reachable.add(name);
+        }
+      }
+    }
+    const entries = [
+      ...NATIVE_ACCEPTANCE_TEST_FILES,
+      ...SUITE_NAMES.flatMap((suite) => suiteTestFiles(suite, repoRoot)),
+    ];
+    for (const name of moduleClosure(entries, { repoRoot }).packages) {
+      reachable.add(name);
+    }
+    const edges = new Map();
+    const names = new Map();
+    for (const lock of locks) {
+      for (const [key, entry] of Object.entries(lock.packages)) {
+        if (key === "") {
+          continue;
+        }
+        if (!object(entry)) {
+          return global("invalid lockfile package entry");
+        }
+        const name = lockEntryName(key, entry, lock.packages);
+        if (!name) {
+          return global(`ambiguous lockfile package name: ${key}`);
+        }
+        names.set(key, name);
+        const dependencies = edges.get(name) ?? new Set();
+        for (const field of DEPENDENCY_FIELDS.filter(
+          (field) => field !== "devDependencies",
+        )) {
+          for (const dependency of Object.keys(entry[field] ?? {})) {
+            dependencies.add(dependency);
+          }
+        }
+        edges.set(name, dependencies);
+      }
+    }
+    const queue = [...reachable];
+    while (queue.length) {
+      for (const dependency of edges.get(queue.pop()) ?? []) {
+        if (!reachable.has(dependency)) {
+          reachable.add(dependency);
+          queue.push(dependency);
+        }
+      }
+    }
+    for (const key of names.keys()) {
+      if (isDeepStrictEqual(locks[0].packages[key], locks[1].packages[key])) {
+        continue;
+      }
+      for (const lock of locks) {
+        if (
+          lock.packages[key] &&
+          reachable.has(lockEntryName(key, lock.packages[key], lock.packages))
+        ) {
+          return global(
+            `tooling-reachable dependency changed: ${names.get(key)}`,
+          );
+        }
+      }
+    }
+    return {
+      global: false,
+      reason: "manifest changes do not reach tooling dependencies",
+    };
+  } catch (error) {
+    return global(`manifest comparison failed: ${error.message}`);
+  }
+}
+
+function scopedManifest(file, verdict) {
+  return (
+    verdict?.global === false &&
+    ["package.json", "package-lock.json"].includes(file)
+  );
 }
 
 function literalMatches(literal, changedFile) {
@@ -320,7 +494,7 @@ function hasFocusedFeatureValidation(changedFile) {
  */
 export function selectApplicableSuites(
   changedFiles,
-  { repoRoot = REPO_ROOT, dependencies = null } = {},
+  { repoRoot = REPO_ROOT, dependencies = null, manifestVerdict = null } = {},
 ) {
   const files = [...new Set(changedFiles.map(toPosix))].filter(Boolean).sort();
   if (files.length === 0) {
@@ -331,11 +505,16 @@ export function selectApplicableSuites(
     });
   }
 
-  const smokeFiles = files.filter((file) => !hasFocusedFeatureValidation(file));
+  const smokeFiles = files.filter(
+    (file) =>
+      !hasFocusedFeatureValidation(file) &&
+      !scopedManifest(file, manifestVerdict),
+  );
   if (smokeFiles.length === 0) {
     return Object.freeze({
       suites: Object.freeze([]),
       reason:
+        manifestVerdict?.reason ??
         "every changed path has an explicit focused feature-validation contract",
       unattributed: Object.freeze([]),
     });
@@ -404,10 +583,11 @@ export function selectApplicableSuites(
  */
 export function selectNativeAcceptance(
   changedFiles,
-  { repoRoot = REPO_ROOT } = {},
+  { repoRoot = REPO_ROOT, manifestVerdict = null } = {},
 ) {
-  const files = [...new Set(changedFiles.map(toPosix))].filter(Boolean);
+  let files = [...new Set(changedFiles.map(toPosix))].filter(Boolean);
   if (files.length === 0) return Object.freeze({ required: true, files: [] });
+  files = files.filter((file) => !scopedManifest(file, manifestVerdict));
   if (files.some((file) => GLOBAL_INVALIDATION_PATHS.has(file))) {
     return Object.freeze({ required: true, files: [] });
   }
@@ -424,7 +604,10 @@ export function selectNativeAcceptance(
 
 // Preview cleanup has real Darwin signaling contracts, independent of the
 // observe-only actor lane and its Windows compile selection.
-export function selectPreviewNativeAcceptance(changedFiles) {
+export function selectPreviewNativeAcceptance(
+  changedFiles,
+  { manifestVerdict = null } = {},
+) {
   const files = [...new Set(changedFiles.map(toPosix))].filter(Boolean);
   const inputs = new Set([
     "scripts/lib/preview-processes.py",
@@ -436,8 +619,13 @@ export function selectPreviewNativeAcceptance(changedFiles) {
     "scripts/plan-tooling-smoke.mjs",
     "scripts/lib/tooling-smoke-plan.mjs",
   ]);
-  return files.length === 0 || files.some((file) =>
-    GLOBAL_INVALIDATION_PATHS.has(file) || inputs.has(file),
+  return (
+    files.length === 0 ||
+    files.some(
+      (file) =>
+        !scopedManifest(file, manifestVerdict) &&
+        (GLOBAL_INVALIDATION_PATHS.has(file) || inputs.has(file)),
+    )
   );
 }
 
@@ -593,9 +781,13 @@ export function buildToolingSmokeMatrix({
   maxJobs = DEFAULT_MAX_JOBS,
   repoRoot = REPO_ROOT,
   durations = null,
+  manifestVerdict = null,
   shardTimeoutSeconds = DEFAULT_SHARD_TIMEOUT_SECONDS,
 } = {}) {
-  const selection = selectApplicableSuites(changedFiles, { repoRoot });
+  const selection = selectApplicableSuites(changedFiles, {
+    repoRoot,
+    manifestVerdict,
+  });
   const weights = suiteWeights({ repoRoot, durations });
   const allocation = allocateShardBudget(selection.suites, maxJobs, weights);
   const projection = projectShardRuntime(
