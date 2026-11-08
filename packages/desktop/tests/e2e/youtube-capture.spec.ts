@@ -1,4 +1,127 @@
+import { createServer } from "node:http";
 import { test, expect } from "./fixtures/app";
+
+test.use({ serviceWorkers: "block" });
+
+interface OfflineNetworkGuard {
+  blockedUrls: string[];
+  expectedBlockedUrls: Set<string>;
+}
+
+const EXPECTED_BLOCKED_STATIC_URLS = new Set([
+  "https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap",
+]);
+
+const offlineNetworkGuards = new WeakMap<
+  import("@playwright/test").BrowserContext,
+  OfflineNetworkGuard
+>();
+
+function isLocalTestRequest(url: URL): boolean {
+  if (url.protocol !== "http:" && url.protocol !== "https:") return true;
+  return ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+}
+
+test.beforeEach(async ({ context }) => {
+  const guard: OfflineNetworkGuard = {
+    blockedUrls: [],
+    expectedBlockedUrls: new Set(EXPECTED_BLOCKED_STATIC_URLS),
+  };
+  offlineNetworkGuards.set(context, guard);
+  await context.route("**/*", async (route) => {
+    const url = route.request().url();
+    if (!isLocalTestRequest(new URL(url))) {
+      guard.blockedUrls.push(url);
+      await route.abort("blockedbyclient");
+      return;
+    }
+    // Chromium can follow a local redirect without routing its target again.
+    // Fetch one hop and reject redirects before they reach the browser.
+    const response = await route.fetch({ maxRedirects: 0, maxRetries: 2 });
+    const location = response.headers()["location"];
+    if (response.status() >= 300 && response.status() < 400 && location) {
+      const redirectUrl = new URL(location, url);
+      if (!isLocalTestRequest(redirectUrl)) {
+        guard.blockedUrls.push(redirectUrl.href);
+      }
+      await route.abort("blockedbyclient");
+      return;
+    }
+    await route.fulfill({ response });
+  });
+});
+
+test.afterEach(async ({ context }) => {
+  const guard = offlineNetworkGuards.get(context);
+  const unexpectedBlockedUrls = (guard?.blockedUrls ?? []).filter(
+    (url) => !guard?.expectedBlockedUrls.has(url),
+  );
+  expect(unexpectedBlockedUrls).toEqual([]);
+});
+
+test("offline guard blocks nonlocal HTTP(S) before it leaves the browser", async ({
+  page,
+  context,
+}) => {
+  const probeUrl = "https://youtube.invalid/offline-guard-probe";
+  const guard = offlineNetworkGuards.get(context);
+  guard?.expectedBlockedUrls.add(probeUrl);
+  const failedRequest = page.waitForEvent("requestfailed", {
+    predicate: (request) => request.url() === probeUrl,
+  });
+
+  await expect(page.evaluate((url) => fetch(url), probeUrl)).rejects.toThrow();
+  expect((await failedRequest).failure()?.errorText).toMatch(
+    /^net::ERR_BLOCKED_BY_CLIENT(?:\.|$)/,
+  );
+  expect(guard?.blockedUrls).toContain(probeUrl);
+});
+
+test("offline guard blocks an external redirect from a local endpoint", async ({
+  page,
+  context,
+}) => {
+  const redirectTarget = "https://youtube.invalid/offline-redirect-probe";
+  const guard = offlineNetworkGuards.get(context);
+  guard?.expectedBlockedUrls.add(redirectTarget);
+  let localRequests = 0;
+  let redirectedRequestSeen = false;
+  page.on("request", (request) => {
+    if (request.url() === redirectTarget) redirectedRequestSeen = true;
+  });
+  const server = createServer((_request, response) => {
+    localRequests += 1;
+    response.writeHead(302, { Location: redirectTarget });
+    response.end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("The local redirect fixture did not bind a TCP port.");
+  }
+
+  try {
+    const localUrl = `http://127.0.0.1:${address.port}/offline-redirect`;
+    const failedRequest = page.waitForEvent("requestfailed", {
+      predicate: (request) => request.url() === localUrl,
+    });
+    await expect(page.goto(localUrl)).rejects.toThrow();
+    expect((await failedRequest).failure()?.errorText).toMatch(
+      /^net::ERR_BLOCKED_BY_CLIENT(?:\.|$)/,
+    );
+    expect(guard?.blockedUrls).toContain(redirectTarget);
+    expect(localRequests).toBe(1);
+    expect(redirectedRequestSeen).toBe(false);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
 
 function settingsDialog(page: import("@playwright/test").Page) {
   return page.locator(".fixed.inset-0.z-50").last();
