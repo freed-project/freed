@@ -82,7 +82,7 @@ export default defineConfig(({ mode }) => ({
     "import.meta.env.FREED_AUTO_SEED_SAMPLE_DATA": JSON.stringify(
       loadEnv(mode, rootFile("."), "FREED_AUTO_SEED_SAMPLE_DATA").FREED_AUTO_SEED_SAMPLE_DATA ?? "",
     ),
-    __LIBRARY_TRANSFER_ACCEPTANCE__: mode === "library-transfer-acceptance" || mode === "test",
+    __LIBRARY_TRANSFER_ENABLED__: true,
     __APP_VERSION__: JSON.stringify(buildMetadata.appVersion),
     __BUILD_KIND__: JSON.stringify(buildMetadata.buildKind),
     __BUILD_CHANNEL__: JSON.stringify(buildMetadata.channel),

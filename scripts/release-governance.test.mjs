@@ -476,6 +476,25 @@ test("dev transfer acceptance stays isolated and outside the updater", () => {
   assert.deepEqual(config.plugins.updater.endpoints, []);
 });
 
+test("ordinary builds ship the reviewed Primary handoff capability", () => {
+  // Changing this declaration changes what every installed build can do with
+  // Library authority. It must stay a reviewed edit, never a build-flag accident.
+  const repoRoot = path.join(scriptsDir, "..");
+  const read = (file) => readFileSync(path.join(repoRoot, file), "utf8");
+  const nativeManifest = read("packages/library-core-native/Cargo.toml");
+  assert.match(nativeManifest, /^default = \["library-transfer"\]$/m);
+  const desktopManifest = read("packages/desktop/src-tauri/Cargo.toml");
+  assert.match(desktopManifest, /^freed-library-core = \{ path = "\.\.\/\.\.\/library-core-native" \}$/m);
+  assert.match(desktopManifest, /^library-transfer-acceptance = \["isolated-preview-data-root"\]$/m);
+  for (const config of ["packages/desktop/vite.config.ts", "packages/pwa/vite.config.ts"]) {
+    assert.match(read(config), /__LIBRARY_TRANSFER_ENABLED__: true,/);
+  }
+  const activation = JSON.parse(read("docs/library-core-activation-manifest.json")).transitions
+    .find((entry) => entry.activationId === "ordinary-build-primary-handoff-v1");
+  assert.equal(activation?.gate, "F");
+  assert.equal(activation?.kind, "authority_key_rotation");
+});
+
 test("production releases publish an exact-tag PWA showcase with reviewed media", () => {
   const websiteJobHeader = releaseWorkflow.slice(
     releaseWorkflow.indexOf("\n  publish-website:"),

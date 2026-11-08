@@ -7,9 +7,10 @@ license = "UNLICENSED"
 publish = false
 
 [features]
-default = []
-# Explicit isolated workflow acceptance only; ordinary product builds leave this off.
-library-transfer-acceptance = []
+default = ["library-transfer"]
+# Primary handoff and consumer recovery. Product builds keep this default. Only
+# the hold regression test builds with `--no-default-features`.
+library-transfer = []
 
 [dependencies]
 base64 = "0.22"

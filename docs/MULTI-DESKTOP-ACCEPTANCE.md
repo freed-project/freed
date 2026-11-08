@@ -11,16 +11,18 @@ role and shared UI demo mode do not supply that enforcement.
 
 ## Select the acceptance build
 
-Ordinary dev and production builds deliberately disable Primary transfer and
-consumer recovery until installed convergence acceptance is complete. Their
-join and same-epoch edit paths can be tested, but they cannot complete the
-transfer steps below. An unavailable transfer control is expected in those builds.
+Ordinary Desktop and PWA builds include Primary transfer and consumer recovery
+(activation `ordinary-build-primary-handoff-v1`). Production promotion of that
+capability waits for the installed rehearsal below. Builds older than the first
+release carrying that entry still hold transfer and show an unavailable control.
 
-Dev releases can include the separately named
-`Freed-Transfer-Acceptance_<version>_aarch64.app.tar.gz`. Its release job verifies
-Apple signing, notarization and the acceptance bundle identifier before
-publication. Select this artifact explicitly; `Freed_Preview` and ordinary
-Freed Desktop downloads retain the transfer hold. The acceptance app has no
+Rehearse on a disposable Library with the separately named
+`Freed-Transfer-Acceptance_<version>_aarch64.app.tar.gz` from the same dev
+release. It runs the same transfer code as the ordinary app, with its own bundle
+identifier, data root and Keychain service, so it can run beside an existing
+installation. `Freed_Preview` shares the legacy preview vault and is not a
+disposable sandbox. Its release job verifies Apple signing, notarization and the
+acceptance bundle identifier before publication. The acceptance app has no
 updater endpoint and is excluded from the ordinary updater asset selection.
 A successful workflow proves packaging, not installed transfer acceptance.
 
@@ -74,9 +76,8 @@ do not use them for fresh acceptance alongside existing previews. Preserve their
 data and keys rather than migrating or clearing them. Create and join
 a synthetic test Library first. Do not copy an existing installation's private
 keys, database or provider sessions into these test identities. Transferring the
-owner's actual Library remains a later, separately evidenced operation. After
-isolated acceptance, a reviewed release must explicitly address the ordinary
-build's hold before claiming the signed release supports transfer.
+owner's actual Library remains a later, separately evidenced operation that uses
+the ordinary app.
 
 ## Record the candidate
 

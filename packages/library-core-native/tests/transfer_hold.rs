@@ -1,4 +1,4 @@
-#![cfg(not(feature = "library-transfer-acceptance"))]
+#![cfg(not(feature = "library-transfer"))]
 use freed_library_core::*;
 use rusqlite::Connection;
 struct NoKeys;

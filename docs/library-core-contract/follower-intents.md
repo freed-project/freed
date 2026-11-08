@@ -398,8 +398,8 @@ Primary adopts its verified successor. Native catalog 6 records that choice in
 the same transaction as source demotion and checkpoint selection. The policy
 binds the Library and original source handoff, stays outside logical checkpoints,
 and preserves the existing catalog 5 annotation receipt. Opening a database
-does not enable viewer mode. Ordinary transfer and recovery activation holds
-remain separate from this acceptance route.
+does not enable viewer mode. Ordinary builds include transfer and recovery,
+so a demoted source may select either access mode.
 
 A viewer can enroll, receive canonical changes, browse and write local caches.
 Before enrollment, bounded navigation counts bind the native Library and epoch
@@ -494,7 +494,7 @@ failure. Both routes verify the original signed transaction, refuse confirmed
 acceptance, pin the reviewed state, and preserve every ordered member. Existing
 links return before key loading or fresh admission, including after restart.
 The link receipt identifies a durable replacement; it is not portable proof of
-Primary acceptance. Ordinary builds retain the transfer capability hold.
+Primary acceptance.
 
 ### Edited recovery transactions
 
