@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { SUITE_NAMES } from "./lib/tooling-smoke-suites.mjs";
+import { parseArgs, resolvePlan } from "./plan-tooling-smoke.mjs";
+
 
 import {
+  compareToolingManifests,
   DEFAULT_SHARD_TIMEOUT_SECONDS,
   buildToolingSmokeMatrix,
   projectShardRuntime,
@@ -376,4 +380,215 @@ test("preview native proof is required without actor or Windows work for cleanup
   assert.equal(selectPreviewNativeAcceptance([]), true);
   assert.equal(selectPreviewNativeAcceptance([".github/workflows/ci.yml"]), true);
   assert.equal(selectPreviewNativeAcceptance(["scripts/plan-tooling-smoke.mjs"]), true);
+});
+
+// Tier 1: dependency reachability protects against silently skipping tooling
+// after a manifest-only PR. Fixtures stay in memory and do not invoke Git.
+function manifestFixture() {
+  return {
+    manifest: { devDependencies: { vite: "1", typescript: "1" } },
+    lock: {
+      lockfileVersion: 3,
+      packages: {
+        "": { devDependencies: { vite: "1", typescript: "1" } },
+        "node_modules/vite": { version: "1", dependencies: { rollup: "1" } },
+        "node_modules/rollup": { version: "1" },
+        "node_modules/typescript": { version: "1" },
+        "node_modules/next": { version: "1" },
+        "node_modules/vercel": { version: "1" },
+        website: { name: "website", dependencies: { next: "1" } },
+      },
+    },
+  };
+}
+function manifestChange(change) {
+  const before = manifestFixture();
+  const after = structuredClone(before);
+  change(after);
+  return compareToolingManifests({
+    oldPackageJson: JSON.stringify(before.manifest),
+    newPackageJson: JSON.stringify(after.manifest),
+    oldPackageLock: JSON.stringify(before.lock),
+    newPackageLock: JSON.stringify(after.lock),
+  });
+}
+function assertManifestLanes(verdict, global, files = ["package-lock.json"]) {
+  assert.equal(verdict.global, global, verdict.reason);
+  const options = { manifestVerdict: verdict };
+  assert.deepEqual(
+    selectApplicableSuites(files, options).suites,
+    global ? SUITE_NAMES : [],
+  );
+  assert.equal(selectNativeAcceptance(files, options).required, global);
+  assert.equal(selectPreviewNativeAcceptance(files, options), global);
+}
+
+test("unreachable workspace dependency bumps skip all tooling lanes", () => {
+  const verdict = manifestChange(({ lock }) => {
+    lock.packages["node_modules/next"].version = "2";
+  });
+  assertManifestLanes(verdict, false);
+  assertManifestLanes(verdict, false, [
+    "package-lock.json",
+    "website/package.json",
+  ]);
+  // Remaining source changes must still select their normal lane.
+  assert.equal(
+    selectPreviewNativeAcceptance(
+      ["package-lock.json", "scripts/worktree-preview.sh"],
+      { manifestVerdict: verdict },
+    ),
+    true,
+  );
+});
+
+for (const [name, change] of [
+  [
+    "root manifest dependency",
+    ({ manifest, lock }) => {
+      manifest.devDependencies.typescript = "2";
+      lock.packages["node_modules/typescript"].version = "2";
+    },
+  ],
+  [
+    "root dependency lock entry",
+    ({ lock }) => {
+      lock.packages["node_modules/typescript"].version = "2";
+    },
+  ],
+  [
+    "transitive tooling dependency",
+    ({ lock }) => {
+      lock.packages["node_modules/rollup"].version = "2";
+    },
+  ],
+  [
+    "spawn-only Vercel binary",
+    ({ lock }) => {
+      lock.packages["node_modules/vercel"].version = "2";
+    },
+  ],
+  [
+    "lockfile version change",
+    ({ lock }) => {
+      lock.lockfileVersion = 2;
+    },
+  ],
+  [
+    "unsupported lockfile version",
+    ({ lock }) => {
+      lock.lockfileVersion = 1;
+    },
+  ],
+  [
+    "root lock entry",
+    ({ lock }) => {
+      lock.packages[""].license = "MIT";
+    },
+  ],
+  [
+    "top-level lock metadata",
+    ({ lock }) => {
+      lock.name = "changed";
+    },
+  ],
+  [
+    "missing packages",
+    ({ lock }) => {
+      delete lock.packages;
+    },
+  ],
+  [
+    "ambiguous package name",
+    ({ lock }) => {
+      lock.packages["unknown/path"] = { version: "1" };
+    },
+  ],
+  [
+    "removed reachable dependency",
+    ({ lock }) => {
+      delete lock.packages["node_modules/rollup"];
+    },
+  ],
+  [
+    "nested reachable dependency",
+    ({ lock }) => {
+      lock.packages["node_modules/other/node_modules/rollup"] = {
+        version: "2",
+      };
+    },
+  ],
+]) {
+  test(`${name} selects the full lane`, () =>
+    assertManifestLanes(manifestChange(change), true));
+}
+
+test("unparseable lockfile fails closed", () => {
+  const fixture = manifestFixture();
+  assertManifestLanes(
+    compareToolingManifests({
+      oldPackageJson: JSON.stringify(fixture.manifest),
+      newPackageJson: JSON.stringify(fixture.manifest),
+      oldPackageLock: JSON.stringify(fixture.lock),
+      newPackageLock: "{",
+    }),
+    true,
+  );
+});
+
+test("semantic comparison ignores root manifest formatting and key order", () => {
+  const fixture = manifestFixture();
+  assertManifestLanes(
+    compareToolingManifests({
+      oldPackageJson: JSON.stringify(fixture.manifest),
+      newPackageJson:
+        '{ "devDependencies": { "typescript": "1", "vite": "1" } }',
+      oldPackageLock: JSON.stringify(fixture.lock),
+      newPackageLock: JSON.stringify(fixture.lock, null, 2),
+    }),
+    false,
+  );
+});
+
+test("push planning without a verdict retains full manifest invalidation", () => {
+  assert.deepEqual(
+    selectApplicableSuites(["package-lock.json"]).suites,
+    SUITE_NAMES,
+  );
+  assert.equal(selectNativeAcceptance(["package-lock.json"]).required, true);
+  assert.equal(selectPreviewNativeAcceptance(["package-lock.json"]), true);
+});
+
+for (const args of [
+  ["--scope-manifests"],
+  ["--scope-manifests", "--base-ref", "refs/heads/missing-manifest-scope-test"],
+  ["--scope-manifests", "--all", "--base-ref", "HEAD"],
+  [
+    "--scope-manifests",
+    "--base-ref",
+    "HEAD",
+    "--changed-files",
+    "website/package.json",
+  ],
+]) {
+  test(`invalid scoping fails closed: ${args.join(" ")}`, () => {
+    const options = parseArgs(args);
+    assert.equal(options.scopeManifests, true);
+    const plan = resolvePlan(options);
+    assert.deepEqual(plan.suites, SUITE_NAMES);
+    assert.equal(plan.native.required, true);
+    assert.equal(plan.previewNative, true);
+    assert.match(plan.reason, /failed closed/);
+  });
+}
+
+test("npm packages sharing builtin names are derivable lock entries", () => {
+  assertManifestLanes(
+    manifestChange(({ lock }) => {
+      lock.packages["node_modules/jszip/node_modules/string_decoder"] = {
+        version: "1",
+      };
+    }),
+    false,
+  );
 });
