@@ -376,6 +376,51 @@ test("shard execution preserves JUnit unit timings", (t) => {
 });
 
 const supervisorPath = new URL("./test-helpers/nightly-fixture-supervisor.py", import.meta.url).pathname;
+test("orphan diagnostics bind executable names to retained process generations", () => {
+  const result = spawnSync("python3", ["-B", "-c", `
+import importlib.util
+from pathlib import Path
+spec = importlib.util.spec_from_file_location('supervisor', ${JSON.stringify(supervisorPath)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+snapshot = dict(pid=42, parentPid=7, startTicks='123', birth='boot:123', zombie=False)
+class ObservedPath:
+    def __init__(self, value): self.value = value
+    def read_text(self): return 'node\\n'
+    @property
+    def name(self): return Path(self.value).name
+module.Path = ObservedPath
+module.os.readlink = lambda value: '/synthetic/private/node'
+module.process_snapshot = lambda pid: snapshot.copy()
+captured = module.orphan_snapshot(42)
+assert captured['birth'] == 'boot:123'
+assert captured['parentPid'] == 7
+assert captured['commandName'] == 'node'
+assert captured['executableName'] == 'node'
+assert captured['originalParent'] == 'not retained'
+assert not any(key in captured for key in ['argv', 'environment', 'executablePath'])
+module.process_snapshot = lambda pid: dict(snapshot, zombie=True)
+def exited(value): raise FileNotFoundError('exited executable')
+module.os.readlink = exited
+zombie = module.orphan_snapshot(42)
+assert zombie['birth'] == 'boot:123' and zombie['zombie'] is True
+assert zombie['commandName'] == 'node' and zombie['executableName'] is None
+module.os.readlink = lambda value: '/synthetic/private/node'
+observed = iter([snapshot, dict(snapshot, birth='boot:999')])
+module.process_snapshot = lambda pid: next(observed)
+assert module.orphan_snapshot(42) == dict(pid=42, unavailable='generation changed during capture')
+module.process_snapshot = lambda pid: None
+assert module.orphan_snapshot(42) == dict(pid=42, unavailable='already disappeared')
+module.process_snapshot = lambda pid: snapshot.copy()
+def denied(value): raise PermissionError('fixture evidence denied')
+module.os.readlink = denied
+assert module.orphan_snapshot(42) == dict(pid=42, unavailable='PermissionError')
+print('retained generation, names-only output, changed/absent generation and denied evidence passed')
+`], { encoding: "utf8", timeout: 5000 });
+  assert.equal(result.error, undefined, result.stderr);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+});
+
 function processGeneration(pid) {
   const result = spawnSync("python3", ["-B", supervisorPath, "--inspect", String(pid)], {
     encoding: "utf8", timeout: 5000,
@@ -524,7 +569,7 @@ while True:
     writeFileSync(fixture, `
 import test from 'node:test';
 import { execFileSync } from 'node:child_process';
-  import { mkdtempSync, writeFileSync } from 'node:fs';
+  import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
   import os from 'node:os';
   import path from 'node:path';
   import { collectRepoSnapshot, collectPeerWorktrees } from ${JSON.stringify(new URL("./nightly-self-improve.mjs", import.meta.url).href)};
@@ -532,7 +577,7 @@ import { execFileSync } from 'node:child_process';
   test('deliberately stalled imported ${operation}', () => withNightlyFixture('deliberately stalled imported ${operation}', () => {
     const root = mkdtempSync(path.join(os.tmpdir(), 'fixture-'));
     writeFileSync(path.join(root, 'owned-fixture'), 'cleanup required');
-  ${["git", "double-fork"].includes(operation) ? "collectRepoSnapshot(root)" : operation === "gh" ? "collectPeerWorktrees(root, [], false)" : "try { execFileSync('git', [], { timeout: 1000, killSignal: 'SIGKILL' }); } catch {}"};
+  ${["git", "double-fork"].includes(operation) ? "collectRepoSnapshot(root)" : operation === "gh" ? "const peer = path.join(root, 'peer'); mkdirSync(peer); collectPeerWorktrees(root, [peer], false)" : "try { execFileSync('git', [], { timeout: 1000, killSignal: 'SIGKILL' }); } catch {}"};
   }));
   `);
     const plan = { suite: "nightly-self-improve", shardIndex: 1, shardCount: 1,
@@ -560,6 +605,16 @@ import { execFileSync } from 'node:child_process';
     assert.match(output, /fixtureRemoved=True/);
     assert.ok(performance.now() - start < 10_000, output);
     const identities = JSON.parse(readFileSync(evidence, "utf8"));
+    if (process.platform === "linux" && ["local-timeout", "double-fork"].includes(operation)) {
+      const line = output.split("\n").find((entry) => entry.startsWith("[nightly supervisor] orphanEvidence="));
+      assert.ok(line, "an adopted child must retain diagnostic evidence before reaping");
+      const snapshots = JSON.parse(line.slice("[nightly supervisor] orphanEvidence=".length));
+      const descendant = snapshots.find((entry) => entry.pid === identities.descendant);
+      assert.equal(descendant?.birth, identities.descendantGeneration.birth);
+      assert.equal(descendant.originalParent, "not retained");
+      assert.ok(descendant.commandName.length > 0);
+      assert.ok(descendant.executableName.length > 0);
+    }
     assert.equal(identities.descendantGeneration.parentPid, identities.intermediate ?? identities.child);
     assert.ok(identities.childGeneration.birth);
     assert.ok(identities.descendantGeneration.birth);

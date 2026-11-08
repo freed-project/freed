@@ -3786,8 +3786,6 @@ export function collectPeerWorktrees(
       }
     }),
   );
-  const mergedHeads =
-    mergedPullRequestHeads ?? collectMergedPullRequestHeads(repo);
   const worktreePaths = [...explicitWorktrees];
   if (scan) {
     const worktreeList = git(repo, ["worktree", "list", "--porcelain"]);
@@ -3796,9 +3794,15 @@ export function collectPeerWorktrees(
     }
   }
 
-  return unique(worktreePaths)
+  const peers = unique(worktreePaths)
     .map((worktreePath) => summarizePeerWorktree(worktreePath, repo))
-    .filter(Boolean)
+    .filter(Boolean);
+  if (peers.length === 0) {
+    return [];
+  }
+  const mergedHeads =
+    mergedPullRequestHeads ?? collectMergedPullRequestHeads(repo);
+  return peers
     .map((peer) => ({
       ...peer,
       explicit: explicitPaths.has(peer.path),
