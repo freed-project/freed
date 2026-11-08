@@ -43,7 +43,7 @@ struct AdmissionCounters {
 impl AdmissionCounters {
     fn increment(&self, counter: &AtomicU64) {
         if counter
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
+            .try_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
                 (value < MAX_EVIDENCE_COUNTER).then(|| value + 1)
             })
             .is_err()
