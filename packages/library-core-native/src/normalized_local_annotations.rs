@@ -15,6 +15,7 @@ const MAXIMUM_TIME: Duration = Duration::from_millis(250);
 /// Startup work whose failure or deadline interruption is reported.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnnotationUpgradeStage {
+    ConnectionSetup,
     Verification,
     SchemaInstall,
     Backfill,
@@ -23,6 +24,7 @@ pub enum AnnotationUpgradeStage {
 impl std::fmt::Display for AnnotationUpgradeStage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
+            Self::ConnectionSetup => "connection setup",
             Self::Verification => "verification",
             Self::SchemaInstall => "schema install",
             Self::Backfill => "backfill",
@@ -277,7 +279,7 @@ pub(crate) fn open_owned_until_complete(
             if !resume_attempt(db, &mut stage, &mut report)? {
                 return Err(invalid("LOCAL_ANNOTATION_UPGRADE_PENDING"));
             }
-            stage = AnnotationUpgradeStage::Verification;
+            stage = AnnotationUpgradeStage::ConnectionSetup;
             crate::normalized_sqlite::configure_normalized_sqlite_connection(db)
         })();
         match result {
@@ -343,6 +345,7 @@ fn resume_attempt(
     stage: &mut AnnotationUpgradeStage,
     report: &mut AnnotationUpgradeReport,
 ) -> Result<bool, NormalizedSqliteError> {
+    *stage = AnnotationUpgradeStage::ConnectionSetup;
     if !db.is_autocommit() {
         return Err(invalid(
             "annotation upgrade requires an owned idle connection",
@@ -953,6 +956,19 @@ mod tests {
                 ..
             }
         ));
+        assert_eq!(receipt(&db), before);
+        db.execute_batch("BEGIN;").unwrap();
+        let error =
+            open_owned_until_complete(&mut db, |_| panic!("terminal error retried")).unwrap_err();
+        assert!(error.to_string().contains("annotation upgrade connection setup failed: annotation upgrade requires an owned idle connection"));
+        assert!(matches!(
+            error,
+            NormalizedSqliteError::AnnotationUpgrade {
+                stage: AnnotationUpgradeStage::ConnectionSetup,
+                ..
+            }
+        ));
+        db.execute_batch("ROLLBACK;").unwrap();
         assert_eq!(receipt(&db), before);
     }
 
