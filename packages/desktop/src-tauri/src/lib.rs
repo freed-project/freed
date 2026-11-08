@@ -584,7 +584,7 @@ fn get_social_provider_cookie_state(
 
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (app, identifier, auth_cookie_names);
+        let _ = (&app, identifier, auth_cookie_names);
         Ok(SocialProviderCookieState {
             provider: provider.to_string(),
             available: false,
