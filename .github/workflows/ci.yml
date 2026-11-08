@@ -420,6 +420,7 @@ jobs:
         if: steps.feature-plan.outputs.needs_native == 'true'
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
+          toolchain: 1.99.1
           components: clippy
 
       - name: Cache Rust build artifacts
@@ -570,6 +571,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
+          toolchain: 1.99.1
           components: clippy
           targets: x86_64-pc-windows-msvc
 
@@ -645,6 +647,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
         with:
+          toolchain: 1.99.1
           components: clippy
 
       - name: Cache Rust build artifacts

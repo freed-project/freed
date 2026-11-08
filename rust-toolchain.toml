@@ -1,0 +1,5 @@
+# Updating Rust requires an explicit PR that changes this pin and fixes new lints in the same change.
+[toolchain]
+channel = "1.99.1"
+components = ["clippy"]
+profile = "minimal"
