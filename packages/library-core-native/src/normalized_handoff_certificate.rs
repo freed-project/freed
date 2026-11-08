@@ -6265,7 +6265,8 @@ mod tests {
             assert_eq!(crate::read_native_handoff_status_v1(&mut viewer).unwrap().unwrap().phase,
                 crate::HandoffPhaseV1::Authorized);
             assert_eq!(viewer.pragma_query_value::<u32, _>(None, "user_version", |r| r.get(0)).unwrap(), 2);
-            crate::normalized_local_annotations::open_owned(&mut viewer).unwrap();
+            // Readiness may require several production time slices on a loaded runner.
+            crate::normalized_local_annotations::open_owned_until_ready(&mut viewer);
             let readonly = crate::adopt_source_handoff_with_access_after_remote_verification_v2(
                 &mut viewer, &source_plan, "\"source-winner\"", 106, true,
             ).unwrap();
@@ -8024,7 +8025,8 @@ mod tests {
             rusqlite::backup::Backup::new(&repeated, &mut viewer_recovery).unwrap()
                 .run_to_completion(64, std::time::Duration::ZERO, None).unwrap();
             viewer_recovery.execute_batch("PRAGMA synchronous=FULL;").unwrap();
-            crate::normalized_local_annotations::open_owned(&mut viewer_recovery).unwrap();
+            // Readiness may require several production time slices on a loaded runner.
+            crate::normalized_local_annotations::open_owned_until_ready(&mut viewer_recovery);
             {
                 let tx = viewer_recovery.transaction().unwrap();
                 tx.execute_batch(crate::sqlite_contract_generated::VIEWER_SCHEMA_EXTENSION_SQL).unwrap();
