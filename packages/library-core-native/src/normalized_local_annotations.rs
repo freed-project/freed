@@ -631,7 +631,8 @@ mod tests {
         let path = dir.path().join("library.sqlite");
         let mut db = fixture(&path, 1);
         populate(&db);
-        assert!(!resume(&mut db).unwrap());
+        // Reach the page bound before checking the BUILDING state.
+        assert!(!resume_until(&mut db, Instant::now() + Duration::from_secs(60)).unwrap());
         let state = |db: &Connection| {
             db.query_row("SELECT pinned_identity,scanned_members,(SELECT count(*) FROM library_local_annotation_unresolved),catalog_version FROM library_local_annotation_migration;",[],|row|Ok((row.get::<_,String>(0)?,row.get::<_,i64>(1)?,row.get::<_,i64>(2)?,row.get::<_,i64>(3)?))).unwrap()
         };
@@ -654,7 +655,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mut db = fixture(&dir.path().join("library.sqlite"), 1);
         populate(&db);
-        while !resume(&mut db).unwrap() {}
+        finish_upgrade(&mut db);
         // Corruption fixture bypasses the normal producer/table size checks only
         // to prove the maintenance boundary refuses oversized stored evidence.
         db.execute_batch("PRAGMA ignore_check_constraints=ON;
@@ -679,7 +680,7 @@ mod tests {
         let path = dir.path().join("library.sqlite");
         let mut db = fixture(&path, 1);
         populate(&db);
-        while !resume(&mut db).unwrap() {}
+        finish_upgrade(&mut db);
         // Relational cursor fixture only. Signature verification is covered by
         // the separate signed follower/result/materialization tests.
         fn settle(db: &Connection, counter: i64) {
@@ -740,8 +741,9 @@ mod tests {
             before,
             "expired budget cannot bootstrap"
         );
+        // Exercise page and pin bounds independently of the production time slice.
         assert!(
-            !resume(&mut db).unwrap(),
+            !resume_until(&mut db, Instant::now() + Duration::from_secs(60)).unwrap(),
             "1025 rows cannot finish in four 256-row pages"
         );
         let scanned: i64 = db
@@ -755,23 +757,18 @@ mod tests {
         db.execute_batch("UPDATE library_meta SET source_revision=1;")
             .unwrap();
         let before = db.total_changes();
-        assert!(resume(&mut db)
-            .unwrap_err()
-            .to_string()
-            .contains("source changed"));
+        assert!(
+            resume_until(&mut db, Instant::now() + Duration::from_secs(60))
+                .unwrap_err()
+                .to_string()
+                .contains("source changed")
+        );
         assert_eq!(db.total_changes(), before);
         db.execute_batch("UPDATE library_meta SET source_revision=0;")
             .unwrap();
         drop(db);
         let mut db = Connection::open(&path).unwrap();
-        let mut ready = false;
-        for _ in 0..16 {
-            if resume(&mut db).unwrap() {
-                ready = true;
-                break;
-            }
-        }
-        assert!(ready);
+        finish_upgrade(&mut db);
         let counts: (i64,i64) = db.query_row("SELECT (SELECT scanned_members FROM library_local_annotation_migration),(SELECT count(*) FROM library_local_annotation_unresolved);",[],|r|Ok((r.get(0)?,r.get(1)?))).unwrap();
         assert_eq!(counts, (1025, 768));
         assert!(!pending(&db, "item:257").unwrap());
@@ -995,7 +992,8 @@ mod tests {
                 _ => rusqlite::hooks::Authorization::Allow,
             }
         }));
-        assert!(resume(&mut db).is_err());
+        // Reach the injected failure independently of the production time slice.
+        assert!(resume_until(&mut db, Instant::now() + Duration::from_secs(60)).is_err());
         db.authorizer(
             None::<fn(rusqlite::hooks::AuthContext<'_>) -> rusqlite::hooks::Authorization>,
         );
@@ -1006,7 +1004,7 @@ mod tests {
             .contains("BUILDING"));
         drop(db);
         let mut db = Connection::open(&file).unwrap();
-        assert!(resume(&mut db).unwrap());
+        finish_upgrade(&mut db);
         require_ready(&db).unwrap();
     }
 
@@ -1017,10 +1015,12 @@ mod tests {
         let mut db = fixture(&file, 1);
         db.execute_batch("CREATE TABLE unexpected(x);").unwrap();
         let before = db.total_changes();
-        assert!(resume(&mut db)
-            .unwrap_err()
-            .to_string()
-            .contains("catalog mismatch"));
+        assert!(
+            resume_until(&mut db, Instant::now() + Duration::from_secs(60))
+                .unwrap_err()
+                .to_string()
+                .contains("catalog mismatch")
+        );
         assert_eq!(db.total_changes(), before);
         db.execute_batch("DROP TABLE unexpected;").unwrap();
         for (create, drop_object) in [
@@ -1028,15 +1028,17 @@ mod tests {
             ("CREATE TRIGGER sqliteX_unreviewed_trigger AFTER UPDATE ON library_change_state BEGIN SELECT 1; END;", "DROP TRIGGER sqliteX_unreviewed_trigger;"),
         ] {
             db.execute_batch(create).unwrap();
-            assert!(resume(&mut db).unwrap_err().to_string().contains("catalog mismatch"));
+            assert!(resume_until(&mut db, Instant::now() + Duration::from_secs(60)).unwrap_err().to_string().contains("catalog mismatch"));
             assert_eq!(db.total_changes(), before);
             db.execute_batch(drop_object).unwrap();
         }
         db.execute_batch("PRAGMA user_version=3;").unwrap();
-        assert!(resume(&mut db)
-            .unwrap_err()
-            .to_string()
-            .contains("unsupported"));
+        assert!(
+            resume_until(&mut db, Instant::now() + Duration::from_secs(60))
+                .unwrap_err()
+                .to_string()
+                .contains("unsupported")
+        );
         assert_eq!(db.total_changes(), before);
     }
 }
