@@ -710,7 +710,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           title="CI failure: dev validation on dev"
-          body="(AI Generated).
+          body="(AI Generated)
 
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           Commit: ${GITHUB_SHA}
