@@ -602,6 +602,35 @@ export function selectNativeAcceptance(
   return Object.freeze({ required: reached.length > 0, files: reached });
 }
 
+// Windows compilation follows Rust build inputs rather than the JavaScript
+// dependency closure used by the macOS acceptance tests.
+export function selectWindowsNativeCompile(
+  changedFiles,
+  { manifestVerdict = null } = {},
+) {
+  const files = [...new Set(changedFiles.map(toPosix))].filter(Boolean);
+  return (
+    files.length === 0 ||
+    files.some((file) => {
+      if (scopedManifest(file, manifestVerdict)) return false;
+      if (GLOBAL_INVALIDATION_PATHS.has(file)) return true;
+      const nativeRoot = [
+        "packages/desktop/src-tauri/",
+        "packages/library-core-native/",
+      ].some((root) => file.startsWith(root));
+      if (!nativeRoot) return false;
+      const name = path.posix.basename(file);
+      return (
+        name.endsWith(".rs") ||
+        name === "Cargo.toml" ||
+        name === "Cargo.lock" ||
+        (file.startsWith("packages/desktop/src-tauri/") &&
+          /^(?:tauri(?:\.[^.]+)*\.conf\.json5?|Tauri(?:\.[^.]+)*\.toml)$/.test(name))
+      );
+    })
+  );
+}
+
 // Preview cleanup has real Darwin signaling contracts, independent of the
 // observe-only actor lane and its Windows compile selection.
 export function selectPreviewNativeAcceptance(

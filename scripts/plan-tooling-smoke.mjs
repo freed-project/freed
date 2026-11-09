@@ -18,6 +18,7 @@ import {
   compareToolingManifests,
   selectNativeAcceptance,
   selectPreviewNativeAcceptance,
+  selectWindowsNativeCompile,
 } from "./lib/tooling-smoke-plan.mjs";
 import { REPO_ROOT, SUITE_NAMES } from "./lib/tooling-smoke-suites.mjs";
 
@@ -164,6 +165,7 @@ export function resolvePlan({
         : plan.reason,
     files,
     native: selectNativeAcceptance(files, options),
+    windowsNative: selectWindowsNativeCompile(files, options),
     previewNative: selectPreviewNativeAcceptance(files, options),
   };
 }
@@ -216,6 +218,10 @@ function main(argv) {
   );
 
   process.stderr.write(
+    `  Windows native compile: ${plan.windowsNative ? "required" : "not applicable"}\n`,
+  );
+
+  process.stderr.write(
     `  preview process acceptance (macOS): ${plan.previewNative ? "required" : "not applicable"}\n`,
   );
 
@@ -223,7 +229,7 @@ function main(argv) {
   if (options.githubOutput && process.env.GITHUB_OUTPUT) {
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      `matrix=${matrix}\napplicable=${plan.applicable}\njob-count=${plan.jobCount}\nnative=${plan.native.required}\npreview-native=${plan.previewNative}\nreason=${plan.reason}\n`,
+      `matrix=${matrix}\napplicable=${plan.applicable}\njob-count=${plan.jobCount}\nnative=${plan.native.required}\nwindows-native=${plan.windowsNative}\npreview-native=${plan.previewNative}\nreason=${plan.reason}\n`,
     );
   }
   process.stdout.write(`${matrix}\n`);

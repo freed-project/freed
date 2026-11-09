@@ -36,6 +36,7 @@ jobs:
       applicable: ${{ steps.plan.outputs.applicable }}
       job-count: ${{ steps.plan.outputs.job-count }}
       native: ${{ steps.plan.outputs.native }}
+      windows-native: ${{ steps.plan.outputs.windows-native }}
       preview-native: ${{ steps.plan.outputs.preview-native }}
       reason: ${{ steps.plan.outputs.reason }}
     steps:
@@ -554,7 +555,7 @@ jobs:
   windows-native:
     name: Windows native compile
     needs: tooling-smoke-plan
-    if: needs.tooling-smoke-plan.outputs.native == 'true'
+    if: needs.tooling-smoke-plan.outputs.windows-native == 'true'
     runs-on: windows-latest
     timeout-minutes: 45
     permissions:
