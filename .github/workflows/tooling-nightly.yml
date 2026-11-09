@@ -321,10 +321,16 @@ jobs:
         working-directory: packages/desktop
 
       - name: Run the full desktop e2e suite
-        run: npm run test:e2e
+        run: npm run test:e2e -- --reporter=html,list,./tests/e2e/reporters/perf-reporter.ts,json
         working-directory: packages/desktop
         env:
           FREED_FRIENDS_PERF_TELEMETRY: "1"
+          PLAYWRIGHT_HTML_OUTPUT_DIR: playwright-report
+          PLAYWRIGHT_JSON_OUTPUT_FILE: playwright-report/results.json
+
+      - name: Summarize inconclusive desktop e2e attempts
+        if: always()
+        run: node scripts/report-desktop-e2e-inconclusive.mjs packages/desktop/playwright-report/results.json
 
       - name: Upload reports and telemetry
         if: always()
