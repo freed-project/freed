@@ -66,6 +66,21 @@ const toolingNightlyWorkflow = readFileSync(
   "utf8",
 );
 
+test("workflow issue bodies use the exact attribution line followed by a blank line", () => {
+  for (const [name, workflow, expectedCount] of [
+    ["CI", ciWorkflow, 1],
+    ["release", releaseWorkflow, 1],
+    ["nightly tooling", toolingNightlyWorkflow, 2],
+  ]) {
+    assert.equal(
+      workflow.match(/body="\(AI Generated\)\n\n/g)?.length ?? 0,
+      expectedCount,
+      `${name} issue bodies retain the exact attribution and blank line`,
+    );
+    assert.doesNotMatch(workflow, /body="\(AI Generated\)\./);
+  }
+});
+
 test("nightly PWA corpus failures retain progress and browser evidence", () => {
   assert.match(
     toolingNightlyWorkflow,

@@ -909,7 +909,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           title="Release pipeline failure: ${GITHUB_REF_NAME}"
-          body="(AI Generated).
+          body="(AI Generated)
 
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           Ref: ${GITHUB_REF_NAME} (${GITHUB_SHA})
