@@ -780,10 +780,10 @@ jobs:
             --pattern freed-showcase-manifest.json --dir release-showcase
           node scripts/lib/release-showcase-assets.mjs verify-public --directory release-showcase
 
-  # Redeploy the public marketing site after any GitHub release is public so
-  # the checked-in changelog snapshot is rebuilt against the newly published
-  # release list. Production releases still require the reviewed website branch
-  # to contain the matching release notes file before deployment.
+  # Redeploy the public marketing site only after production GitHub releases
+  # are public. Dev release changelog entries reach freed.wtf through a reviewed
+  # www change. The reviewed www branch must contain the matching release notes
+  # file before production deployment.
   # Requires VERCEL_TOKEN to be set in repo secrets. If the secret is absent
   # the step exits cleanly without failing the workflow.
   publish-website:
