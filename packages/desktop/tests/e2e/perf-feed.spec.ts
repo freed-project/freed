@@ -16,6 +16,152 @@
 
 import { type Page } from "@playwright/test";
 import { test, expect } from "./fixtures/app";
+import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { createFrameCapture, isolateFrameDiagnostic, serializeFrameEvidence, FRAME_CAPTURE_LIMITS, summarizeFrameCapture, withFrameEvidence } from "./helpers/feed-frame-capture";
+
+type FrameCapture = ReturnType<typeof createFrameCapture>;
+type FrameWindow = ReturnType<FrameCapture["snapshot"]>;
+type CaptureHost = { __FEED_FRAME_CAPTURE__?: {
+  start(id: string, control: boolean): FrameCapture;
+  attempt<T>(action: () => T): T | undefined;
+  errors: string[];
+  discardedErrors: number;
+  active?: FrameCapture;
+} };
+
+async function prepareFrameEvidence(page: Page, captureId: string) {
+  const bounds = FRAME_CAPTURE_LIMITS;
+  const windows: Record<string, FrameWindow | { id: string; state: "missing"; reason: string }> =
+    Object.fromEntries(["pre", "scroll", "post"].map((phase) => [phase, {
+      id: `${captureId}/${phase}`, state: "missing" as const, reason: "collection-not-started",
+    }]));
+  const errors: string[] = [];
+  const error = (cause: unknown) => {
+    errors.push(String(cause));
+    console.warn("[PERF] frame evidence diagnostic failure:", String(cause));
+  };
+  let source: Record<string, unknown> = { commit: "unknown", provenance: "git unavailable" };
+  try {
+    source = {
+      commit: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      dirty: execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim().length > 0,
+      provenance: "local git HEAD and worktree status; dirty source is not an immutable commit",
+      ciCommit: process.env.GITHUB_SHA ?? "unknown",
+    };
+  } catch (cause) { error(cause); }
+  const evidence = {
+    schemaVersion: 1, captureId, bounds, source,
+    ci: { run: process.env.GITHUB_RUN_ID ?? "unknown", job: process.env.GITHUB_JOB ?? "unknown", attempt: process.env.GITHUB_RUN_ATTEMPT ?? "unknown" },
+    browser: page.context().browser()?.version() ?? "unknown",
+    environment: { state: "unknown", reason: "not-acquired" } as Record<string, unknown>,
+    workload: { itemCount: ITEM_COUNT_LARGE, scrollOperations: 20, scrollPixels: 500, waitMs: 16, finalWaitMs: 100, initialScrollTop: null as number | null, finalScrollTop: null as number | null },
+    wallStartedMs: Date.now(), wallEndedMs: null as number | null,
+    windows, errors, discardedHookErrors: 0, summaries: {} as Record<string, unknown>,
+    legacyAssertionMetrics: null as unknown,
+    costs: { preparationMs: 0, controlsMs: 0, finalizationMs: 0, serializationMs: 0 },
+    limitation: "Instrumentation can perturb timing. Page loss can prevent recovery of in-page samples; process termination can prevent attachment delivery. Fresh samples cannot establish the cause of historical failures.",
+  };
+  const preparedAt = performance.now();
+  try {
+    evidence.environment = await page.evaluate(() => {
+      let graphics: Record<string, unknown> = { renderer: "unknown", vendor: "unknown" };
+      try {
+        const gl = document.createElement("canvas").getContext("webgl");
+        const ext = gl?.getExtension("WEBGL_debug_renderer_info");
+        graphics = {
+          renderer: ext ? gl!.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "unknown",
+          vendor: ext ? gl!.getParameter(ext.UNMASKED_VENDOR_WEBGL) : "unknown",
+          reason: ext ? null : "WebGL renderer extension unavailable",
+        };
+        gl?.getExtension("WEBGL_lose_context")?.loseContext();
+      } catch (cause) { graphics.error = String(cause); }
+      return {
+        platform: navigator.platform, userAgent: navigator.userAgent,
+        hardwareConcurrency: navigator.hardwareConcurrency, devicePixelRatio: window.devicePixelRatio,
+        visibilityState: document.visibilityState,
+        renderMode: document.querySelector('meta[name="freed-e2e-render-mode"]')?.getAttribute("content") ?? "unknown",
+        timeOrigin: performance.timeOrigin, graphics,
+      };
+    });
+    // Install the same self-contained collector exercised by deterministic tests.
+    await page.evaluate(`window.__FEED_FRAME_CAPTURE__ = { errors: [], discardedErrors: 0,
+      attempt(action) { return (${isolateFrameDiagnostic.toString()})(action, (error) => {
+        if (this.errors.length < 16) this.errors.push(String(error).slice(0, 1024));
+        else this.discardedErrors++;
+      }); },
+      start(id, control) {
+      const capture = (${createFrameCapture.toString()})(id,
+        control ? ${JSON.stringify(bounds.control)} : ${JSON.stringify(bounds.scroll)}, {
+          now: () => performance.now(), wallNow: () => Date.now(),
+          visibility: () => document.visibilityState,
+          raf: typeof requestAnimationFrame === 'function' ? (cb) => requestAnimationFrame(cb) : undefined,
+          cancelRaf: (id) => cancelAnimationFrame(id),
+          timer: (cb, ms) => setTimeout(cb, ms), clearTimer: (id) => clearTimeout(id),
+          onVisibility: (cb) => { document.addEventListener('visibilitychange', cb);
+            return () => document.removeEventListener('visibilitychange', cb); }
+        }, !control);
+      this.active = capture;
+      return capture;
+    } };`);
+  } catch (cause) { error(cause); }
+  evidence.costs.preparationMs = performance.now() - preparedAt;
+  async function control(phase: "pre" | "post") {
+    const start = performance.now();
+    try {
+      windows[phase] = await page.evaluate(async (id) => {
+        const host = (window as unknown as CaptureHost).__FEED_FRAME_CAPTURE__;
+        if (!host) throw new Error("capture installation unavailable");
+        const capture = host.start(id, true);
+        await capture.done;
+        return capture.snapshot();
+      }, `${captureId}/${phase}`);
+    } catch (cause) {
+      windows[phase] = { id: `${captureId}/${phase}`, state: "missing", reason: String(cause) };
+      error(cause);
+    }
+    evidence.costs.controlsMs += performance.now() - start;
+  }
+  async function finish() {
+    const start = performance.now();
+    try {
+      const captured = await page.evaluate(() => {
+        const host = (window as unknown as CaptureHost).__FEED_FRAME_CAPTURE__;
+        host?.attempt(() => host.active?.stop("aborted"));
+        ((window as Record<string, unknown>).__PERF_RAF_STOP__ as (() => void) | undefined)?.();
+        return { snapshot: host?.attempt(() => host.active?.snapshot()), errors: host?.errors ?? [], discardedErrors: host?.discardedErrors ?? 0 };
+      });
+      if (captured.snapshot?.id === `${captureId}/scroll`) windows.scroll = captured.snapshot;
+      captured.errors.forEach(error);
+      evidence.discardedHookErrors = captured.discardedErrors;
+      if (captured.errors.length && windows.scroll.state !== "missing") {
+        windows.scroll.state = "incomplete";
+        windows.scroll.coverageGaps.push("diagnostic-hook-failed");
+      }
+    } catch (cause) {
+      if (windows.scroll.state === "missing") {
+        windows.scroll = { id: `${captureId}/scroll`, state: "missing", reason: `Page capture unavailable: ${String(cause)}` };
+      }
+      error(cause);
+    }
+    await control("post");
+    evidence.wallEndedMs = Date.now();
+    for (const [phase, capture] of Object.entries(windows)) {
+      if (capture.state !== "missing") evidence.summaries[phase] = summarizeFrameCapture(capture);
+    }
+    evidence.costs.finalizationMs = performance.now() - start;
+  }
+  async function attach() {
+    const start = performance.now();
+    serializeFrameEvidence(evidence);
+    evidence.costs.serializationMs = performance.now() - start;
+    const body = serializeFrameEvidence(evidence);
+    const attachedAt = performance.now();
+    await test.info().attach("feed-frame-capture", { contentType: "application/json", body });
+    console.log(`[PERF] frame evidence attachment: ${Buffer.byteLength(body).toLocaleString()} bytes, ${(performance.now() - attachedAt).toFixed(3)} ms; controls ${evidence.costs.controlsMs.toFixed(3)} ms`);
+  }
+  return { evidence, windows, control, finish, attach, error };
+}
 
 const ITEM_COUNT_MEDIUM = 1_000;
 const ITEM_COUNT_LARGE = 3_000;
@@ -78,6 +224,7 @@ async function measureFps(
   page: Page,
   label: string,
   fn: () => Promise<void>,
+  diagnostic?: { id: string; captured(value: FrameWindow): void; error(cause: unknown): void },
 ): Promise<{
   p50Ms: number | null;
   p95Ms: number | null;
@@ -87,25 +234,46 @@ async function measureFps(
   sampleCount: number;
 }> {
   // Arm the rAF loop
-  await page.evaluate(() => {
+  await page.evaluate((captureId) => {
     const w = window as Record<string, unknown>;
+    const host = captureId ? (window as unknown as CaptureHost).__FEED_FRAME_CAPTURE__ : undefined;
+    const capture = host?.attempt(() => host.start(captureId!, false));
     const deltas: number[] = [];
     let last: number | null = null;
     let running = true;
+    let rafId: number;
 
     function loop(ts: number) {
       if (!running) return;
+      if (capture) host?.attempt(() => capture.sample(ts));
       if (last !== null) deltas.push(ts - last);
       last = ts;
-      requestAnimationFrame(loop);
+      rafId = requestAnimationFrame(loop);
     }
 
-    requestAnimationFrame(loop);
+    rafId = requestAnimationFrame(loop);
     w.__PERF_RAF_DELTAS__ = deltas;
-    w.__PERF_RAF_STOP__ = () => { running = false; };
-  });
+    w.__PERF_RAF_STOP__ = () => { running = false; if (captureId) cancelAnimationFrame(rafId); host?.attempt(() => capture?.stop()); };
+  }, diagnostic?.id);
 
-  await fn();
+  try {
+    await fn();
+  } catch (cause) {
+    // Preserve the workload error even if the page has disappeared.
+    if (diagnostic) {
+      try {
+        const partial = await page.evaluate(() => {
+          const host = (window as unknown as CaptureHost).__FEED_FRAME_CAPTURE__;
+          const capture = host?.active;
+          host?.attempt(() => capture?.stop("aborted"));
+          ((window as Record<string, unknown>).__PERF_RAF_STOP__ as () => void)?.();
+          return capture?.snapshot();
+        });
+        if (partial) diagnostic.captured(partial);
+      } catch (cleanupError) { diagnostic.error(cleanupError); }
+    }
+    throw cause;
+  }
 
   // Disarm and collect
   const result = await page.evaluate(() => {
@@ -139,6 +307,13 @@ async function measureFps(
       sampleCount: deltas.length,
     };
   });
+
+  if (diagnostic) {
+    try {
+      const capture = await page.evaluate(() => (window as unknown as CaptureHost).__FEED_FRAME_CAPTURE__?.active?.snapshot());
+      if (capture) diagnostic.captured(capture);
+    } catch (cause) { diagnostic.error(cause); }
+  }
 
   if (result.p95Ms === null) {
     console.log(
@@ -794,51 +969,71 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
 
     const { container: scrollContainer, initialScrollTop } = await readyFeedScrollContainer(page);
 
-    const fps = await measureFps(
-      page,
-      "scroll 3k items",
-      async () => {
-        for (let i = 0; i < 20; i++) {
-          await scrollContainer.evaluate((el) => el.scrollBy({ top: 500, behavior: "instant" }));
-          await page.waitForTimeout(16);
-        }
-        await page.waitForTimeout(100);
-      },
-    );
+    const captureId = randomUUID();
+    const diagnostics = await prepareFrameEvidence(page, captureId);
+    diagnostics.evidence.workload.initialScrollTop = initialScrollTop;
+    await diagnostics.control("pre");
+    let finalScrollTop: number | null = null;
+    await withFrameEvidence({
+      diagnosticError: diagnostics.error,
+      work: async () => {
+        const fps = await measureFps(
+          page,
+          "scroll 3k items",
+          async () => {
+            for (let i = 0; i < 20; i++) {
+              await scrollContainer.evaluate((el) => el.scrollBy({ top: 500, behavior: "instant" }));
+              await page.waitForTimeout(16);
+            }
+            await page.waitForTimeout(100);
+          },
+          { id: `${captureId}/scroll`, captured: (value) => { diagnostics.windows.scroll = value; }, error: diagnostics.error },
+        );
+        diagnostics.evidence.legacyAssertionMetrics = fps;
 
-    const finalScrollTop = await scrollContainer.evaluate((element) =>
-      (element as HTMLElement).scrollTop,
-    );
-    expect(finalScrollTop).toBeGreaterThan(initialScrollTop);
-    await test.info().attach("feed-scroll-measurement", {
-      contentType: "application/json",
-      body: JSON.stringify({
-        browser: page.context().browser()?.version(),
-        environment: await page.evaluate(() => ({
-          platform: navigator.platform,
-          userAgent: navigator.userAgent,
-          hardwareConcurrency: navigator.hardwareConcurrency,
-          devicePixelRatio: window.devicePixelRatio,
-          visibilityState: document.visibilityState,
-          renderMode: document.querySelector('meta[name="freed-e2e-render-mode"]')?.getAttribute("content"),
-        })),
-        itemCount: ITEM_COUNT_LARGE,
-        initialScrollTop,
-        finalScrollTop,
-        fps,
-      }, null, 2),
+        finalScrollTop = await scrollContainer.evaluate((element) =>
+          (element as HTMLElement).scrollTop,
+        );
+        diagnostics.evidence.workload.finalScrollTop = finalScrollTop;
+        return fps;
+      },
+      finish: diagnostics.finish,
+      attach: async () => {
+        await diagnostics.attach();
+      },
+      assert: async (fps) => {
+        expect(finalScrollTop).toBeGreaterThan(initialScrollTop);
+        await test.info().attach("feed-scroll-measurement", {
+          contentType: "application/json",
+          body: JSON.stringify({
+            browser: page.context().browser()?.version(),
+            environment: await page.evaluate(() => ({
+              platform: navigator.platform,
+              userAgent: navigator.userAgent,
+              hardwareConcurrency: navigator.hardwareConcurrency,
+              devicePixelRatio: window.devicePixelRatio,
+              visibilityState: document.visibilityState,
+              renderMode: document.querySelector('meta[name="freed-e2e-render-mode"]')?.getAttribute("content"),
+            })),
+            itemCount: ITEM_COUNT_LARGE,
+            initialScrollTop,
+            finalScrollTop,
+            fps,
+          }, null, 2),
+        });
+        if (fps.p95Ms === null || fps.droppedFrames === null) {
+          test.info().annotations.push({
+            type: "inconclusive telemetry",
+            description: `feed scroll rAF probe collected ${fps.sampleCount.toLocaleString()} samples`,
+          });
+          return;
+        }
+        // Keep this below obvious jank while leaving room for shared CI runners.
+        console.log(`[PERF] fps harness scroll 3k items p95: ${fps.p95Ms} ms`);
+        expect(fps.p95Ms).toBeLessThan(SCROLL_FRAME_P95_MS_BUDGET);
+        expect(fps.droppedFrames).toBeLessThanOrEqual(SCROLL_DROPPED_FRAME_BUDGET);
+      },
     });
-    if (fps.p95Ms === null || fps.droppedFrames === null) {
-      test.info().annotations.push({
-        type: "inconclusive telemetry",
-        description: `feed scroll rAF probe collected ${fps.sampleCount.toLocaleString()} samples`,
-      });
-      return;
-    }
-    // Keep this below obvious jank while leaving room for shared CI runners.
-    console.log(`[PERF] fps harness scroll 3k items p95: ${fps.p95Ms} ms`);
-    expect(fps.p95Ms).toBeLessThan(SCROLL_FRAME_P95_MS_BUDGET);
-    expect(fps.droppedFrames).toBeLessThanOrEqual(SCROLL_DROPPED_FRAME_BUDGET);
   });
 });
 
