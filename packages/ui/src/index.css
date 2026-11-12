@@ -208,7 +208,7 @@ html[data-theme="midas"] {
 
   --theme-text-primary: #f3e9da;
   --theme-text-secondary: #d0b89c;
-  --theme-text-muted: #a8967f;
+  --theme-text-muted: #b8a68f;
   --theme-text-soft: #7f6b56;
 
   --theme-accent-primary: #7c5c38;
@@ -323,7 +323,7 @@ html[data-theme="ember"] {
 
   --theme-text-primary: #f7ede9;
   --theme-text-secondary: #d5b4a6;
-  --theme-text-muted: #ab8474;
+  --theme-text-muted: #b08979;
   --theme-text-soft: #76564d;
 
   --theme-accent-primary: #7a2f1f;
@@ -439,7 +439,7 @@ html[data-theme="scriptorium"] {
 
   --theme-text-primary: #2a1f17;
   --theme-text-secondary: #5d4634;
-  --theme-text-muted: #85684b;
+  --theme-text-muted: #795e44;
   --theme-text-soft: #ac9276;
 
   --theme-accent-primary: #86684a;

@@ -140,10 +140,6 @@ const DECLARED_DIFFERENCES: Record<string, { freed: string; reason: string }> = 
     reason:
       "Vorton's raised role is the opaque header color, darker than its cards. Freed's elevated surface lifts menus and popovers above cards.",
   },
-  "starship-dark:accentForeground:--theme-button-primary-text": {
-    freed: "#000000",
-    reason: "D3: black text on the Dark Star accent. Remove once the Vorton reference adopts it.",
-  },
   "starship-dark:accentDecorative:--theme-accent-secondary-tint": {
     freed: "#64d2ff",
     reason: "Dark Star's secondary accent is Freed's cyan; its tints follow it.",
