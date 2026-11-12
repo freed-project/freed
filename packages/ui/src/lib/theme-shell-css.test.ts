@@ -144,12 +144,6 @@ const DECLARED_DIFFERENCES: Record<string, { freed: string; reason: string }> = 
     freed: "#64d2ff",
     reason: "Dark Star's secondary accent is Freed's cyan; its tints follow it.",
   },
-  "scriptorium:--theme-shell-background": {
-    freed:
-      "radial-gradient(circle at 16% 13%, rgb(176 138 97 / 0.06) 0, transparent 40%), radial-gradient(circle at 82% 10%, rgb(134 104 74 / 0.05) 0, transparent 34%), radial-gradient(circle at 70% 88%, rgb(216 196 161 / 0.04) 0, transparent 32%), linear-gradient(180deg, #f4ead7 0%, #efe3ce 44%, #eadcc4 100%)",
-    reason:
-      "Freed's runtime Scriptorium recipe (shared/themes.ts) differs from Vorton's. Not yet reconciled; reported to the owner.",
-  },
 };
 
 /**

@@ -154,10 +154,11 @@ const EMBER_SHELL_BACKGROUND = `radial-gradient(circle at 16% 14%, rgb(193 90 46
     radial-gradient(circle at 74% 84%, rgb(91 23 17 / 0.08) 0, transparent 32%),
     linear-gradient(180deg, #160d0c 0%, #1d1210 44%, #130a09 100%)`;
 
-const SCRIPTORIUM_SHELL_BACKGROUND = `radial-gradient(circle at 16% 13%, rgb(176 138 97 / 0.06) 0, transparent 40%),
-    radial-gradient(circle at 82% 10%, rgb(134 104 74 / 0.05) 0, transparent 34%),
-    radial-gradient(circle at 70% 88%, rgb(216 196 161 / 0.04) 0, transparent 32%),
-    linear-gradient(180deg, #f4ead7 0%, #efe3ce 44%, #eadcc4 100%)`;
+// Vorton's Scriptorium page background (theme reference at e8e7980).
+const SCRIPTORIUM_SHELL_BACKGROUND = `radial-gradient(circle at 14% 14%, rgb(216 196 161 / 0.09) 0, transparent 34%),
+    radial-gradient(circle at 84% 10%, rgb(176 138 97 / 0.07) 0, transparent 28%),
+    radial-gradient(circle at 74% 84%, rgb(134 104 74 / 0.055) 0, transparent 26%),
+    linear-gradient(180deg, #f5ecda 0%, #efe3ce 46%, #f7efdf 100%)`;
 
 const STARSHIP_SHELL_BACKGROUND = `radial-gradient(
       ellipse 120% 90% at 50% 0%,
