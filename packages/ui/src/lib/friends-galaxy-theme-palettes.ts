@@ -60,7 +60,7 @@ export const FRIENDS_GALAXY_THEME_PALETTES = {
     background: "#140b0a",
     surface: "#1d1210",
     text: "#f7ede9",
-    mutedText: "#ab8474",
+    mutedText: "#b08979",
     friend: "#c15a2e",
     connection: "#6aa5a0",
     account: "#d69a5d",
