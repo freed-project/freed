@@ -393,7 +393,7 @@ export const FeedItem = memo(function FeedItem({
         data-feed-card-density={density}
         data-feed-card-layout={summary ? "summary" : photoLayout ? "photo" : "split"}
         data-selected={selected ? "true" : "false"}
-        className={`feed-card group relative overflow-hidden min-w-0 cursor-pointer active:scale-[0.99] transition-transform !p-0 ${summary ? "!rounded-2xl" : ""} ${quickActionsEnabled ? photoLayout ? "hover:!bg-[var(--theme-bg-muted)]" : "hover:!bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]" : ""} ${compact ? "aspect-square" : ""} ${selected ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]" : ""} ${readVisualClass}`}
+        className={`feed-card group relative overflow-hidden min-w-0 cursor-pointer active:scale-[0.99] transition-transform !p-0 ${summary ? "!rounded-2xl" : ""} ${quickActionsEnabled ? photoLayout ? "hover:!bg-[var(--theme-bg-muted)]" : "hover:!bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.12)]" : ""} ${compact ? "aspect-square" : ""} ${selected ? "border-l-2 border-l-[var(--theme-accent-secondary)] bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.12)]" : ""} ${readVisualClass}`}
         style={{
           ...FEED_CARD_LAYOUT_CONTAINMENT_STYLE,
           height: cardHeight,

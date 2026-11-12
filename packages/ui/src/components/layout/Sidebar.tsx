@@ -161,7 +161,7 @@ function SidebarNavRow({
 }: SidebarNavRowProps) {
   const hasTrailingSlot = count || menu;
   const rowToneClass = active
-    ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+    ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
     : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]";
   const primaryToneClass = active
     ? "text-[color:var(--theme-text-primary)]"
@@ -558,7 +558,7 @@ function SourceContextMenu({
             data-testid={`source-menu-sync-${sourceKey}`}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors text-left ${
               syncInitiated
-                ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-accent-secondary)]"
+                ? "bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[color:var(--theme-accent-secondary)]"
                 : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
             }`}
           >
@@ -1252,7 +1252,7 @@ export function Sidebar({
           data-testid={args.testId}
           className={`group/compact relative flex aspect-square w-full items-center justify-center overflow-visible rounded-[var(--card-radius)] border transition-all ${
             args.active
-              ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+              ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
               : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
         }`}
         aria-label={args.label}
@@ -1556,7 +1556,7 @@ export function Sidebar({
                   count={rowCountsVisible && (pendingMatchCount > 0 || friendCount > 0) ? (
                     <>
                       {pendingMatchCount > 0 ? (
-                        <span className="rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 font-medium text-[var(--theme-text-primary)]">
+                        <span className="rounded-full bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.22)] px-1.5 py-0.5 font-medium text-[var(--theme-text-primary)]">
                           {fmt(pendingMatchCount)}
                         </span>
                       ) : null}
@@ -2109,7 +2109,7 @@ function TagTreeNode({
           onClick={onClick}
           className={`flex-1 flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg text-xs transition-all text-left ${
             active
-              ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
+              ? "bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
               : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
           }`}
         >

@@ -278,7 +278,7 @@ function ManagePane() {
           {feed.imageUrl ? (
             <img src={feed.imageUrl} alt="" className="w-8 h-8 rounded-md flex-shrink-0 object-cover" />
           ) : (
-            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[rgb(var(--theme-accent-secondary-rgb)/0.1)]">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-md bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.1)]">
               <svg className="h-4 w-4 text-[rgb(var(--theme-accent-secondary-rgb)/0.75)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 5c7.18 0 13 5.82 13 13M6 11a7 7 0 017 7M6 17a1 1 0 110-2 1 1 0 010 2z" />
               </svg>
@@ -593,7 +593,7 @@ function ImportPane() {
           onClick={() => fileInputRef.current?.click()}
           className={`flex flex-col items-center justify-center gap-3 p-8 rounded-xl border-2 border-dashed cursor-pointer transition-all ${
             isDragOver
-              ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.08)]"
+              ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.08)]"
               : "border-[var(--theme-border-quiet)] bg-[var(--theme-bg-card)] hover:border-[var(--theme-border-subtle)]"
           }`}
         >

@@ -194,7 +194,7 @@ function statusTone(status: string): string {
     case "available":
       return "bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] text-[rgb(var(--theme-feedback-success-rgb))]";
     case "downloading":
-      return "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_16%,transparent)] text-[var(--theme-accent-secondary)]";
+      return "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_16%,transparent)] text-[var(--theme-accent-secondary)]";
     case "error":
     case "unsupported":
       return "bg-[rgb(var(--theme-feedback-danger-rgb)/0.12)] text-[rgb(var(--theme-feedback-danger-rgb))]";
@@ -238,7 +238,7 @@ function ProviderSelector({
               onClick={() => onChange(option.id)}
               className={`min-h-[118px] rounded-lg border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--theme-accent-secondary)_38%,transparent)] ${
                 selected
-                  ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_54%,var(--theme-border-subtle))] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_12%,var(--theme-bg-surface))]"
+                  ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_54%,var(--theme-border-subtle))] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_12%,var(--theme-bg-surface))]"
                   : "border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_78%,transparent)] hover:border-[var(--theme-border-strong)] hover:bg-[var(--theme-bg-muted)]"
               }`}
             >
@@ -248,7 +248,7 @@ function ProviderSelector({
                 </span>
                 <span className={`rounded-full px-2 py-0.5 text-[0.625rem] font-medium ${
                   selected
-                    ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] text-[var(--theme-accent-secondary)]"
+                    ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_18%,transparent)] text-[var(--theme-accent-secondary)]"
                     : "bg-[var(--theme-bg-muted)] text-[var(--theme-text-soft)]"
                 }`}
                 >
@@ -306,7 +306,7 @@ function LocalModelCard({
     <div
       className={`rounded-lg border p-4 transition-colors ${
         selected
-          ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_58%,var(--theme-border-subtle))] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_10%,var(--theme-bg-surface))]"
+          ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_58%,var(--theme-border-subtle))] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_10%,var(--theme-bg-surface))]"
           : "border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_82%,transparent)]"
       }`}
       data-testid={`local-ai-pack-${model.manifest.tier}`}
@@ -319,7 +319,7 @@ function LocalModelCard({
               {statusLabel(model)}
             </span>
             {selected ? (
-              <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_18%,transparent)] px-2 py-0.5 text-[0.6875rem] font-medium text-[var(--theme-accent-secondary)]">
+              <span className="rounded-full bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_18%,transparent)] px-2 py-0.5 text-[0.6875rem] font-medium text-[var(--theme-accent-secondary)]">
                 Selected
               </span>
             ) : null}

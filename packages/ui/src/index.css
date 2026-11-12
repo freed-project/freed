@@ -41,6 +41,20 @@ html[data-theme="neon"] {
   --theme-accent-primary-rgb: 59 130 246;
   --theme-accent-secondary-rgb: 139 92 246;
   --theme-accent-tertiary-rgb: 6 182 212;
+  /* Decorative copies of the accent for tints, washes, glows, gradients and artwork. They follow
+     the accent in every theme except Starship, whose solid accent darkened for contrast while its
+     soft tints keep the brighter blue (theme reference: accentDecorative). Text, icons, focus
+     rings and control fills use the solid accent tokens instead. */
+  --theme-accent-primary-tint: var(--theme-accent-primary);
+  --theme-accent-primary-tint-rgb: var(--theme-accent-primary-rgb);
+  --theme-accent-secondary-tint: var(--theme-accent-secondary);
+  --theme-accent-secondary-tint-rgb: var(--theme-accent-secondary-rgb);
+  --theme-control-accent-tint-rgb: var(--theme-control-accent-rgb);
+  --theme-feedback-info-tint-rgb: var(--theme-feedback-info-rgb);
+  /* Text on the selection wash and the toggle knob default to the accent-fill text, but sit on
+     other backgrounds, so a theme can set them apart. */
+  --theme-selection-text: var(--theme-button-primary-text);
+  --theme-toggle-knob: var(--theme-button-primary-text);
 
   --theme-shell-rgb: 6 7 13;
   --theme-shell-background: linear-gradient(180deg, #090a11 0%, #0a0a0f 34%, #090909 100%);
@@ -52,13 +66,13 @@ html[data-theme="neon"] {
     var(--theme-accent-secondary)
   );
   --theme-button-primary-shadow: 0 0 20px
-    rgb(var(--theme-accent-secondary-rgb) / 0.3);
+    rgb(var(--theme-accent-secondary-tint-rgb) / 0.3);
   --theme-button-primary-shadow-hover:
-    0 0 16px rgb(var(--theme-accent-secondary-rgb) / 0.22),
-    0 0 28px rgb(var(--theme-accent-secondary-rgb) / 0.12);
+    0 0 16px rgb(var(--theme-accent-secondary-tint-rgb) / 0.22),
+    0 0 28px rgb(var(--theme-accent-secondary-tint-rgb) / 0.12);
   --theme-button-primary-text: #ffffff;
   --theme-button-secondary-background: rgb(255 255 255 / 0.02);
-  --theme-button-secondary-hover: rgb(var(--theme-accent-secondary-rgb) / 0.1);
+  --theme-button-secondary-hover: rgb(var(--theme-accent-secondary-tint-rgb) / 0.1);
   --theme-gradient-text-start: var(--theme-accent-primary);
   --theme-gradient-text-mid: var(--theme-accent-secondary);
   --theme-gradient-text-end: var(--theme-accent-tertiary);
@@ -126,32 +140,32 @@ html[data-theme="neon"] {
   --theme-media-linkedin: var(--theme-media-icon);
   --theme-platform-surface-fill: color-mix(
     in srgb,
-    var(--theme-accent-primary) 14%,
+    var(--theme-accent-primary-tint) 14%,
     var(--theme-bg-surface)
   );
   --theme-platform-surface-fill-active: var(--theme-platform-surface-fill);
   --theme-platform-ring-fill: var(--theme-platform-surface-fill);
   --theme-platform-ring-fill-active: var(--theme-platform-surface-fill-active);
-  --theme-platform-ring-stroke: rgb(var(--theme-accent-primary-rgb) / 0.48);
+  --theme-platform-ring-stroke: rgb(var(--theme-accent-primary-tint-rgb) / 0.48);
   --theme-platform-ring-stroke-active: rgb(
-    var(--theme-accent-primary-rgb) / 0.58
+    var(--theme-accent-primary-tint-rgb) / 0.58
   );
 
-  --theme-selection: rgb(var(--theme-accent-secondary-rgb) / 0.35);
+  --theme-selection: rgb(var(--theme-accent-secondary-tint-rgb) / 0.35);
   --theme-focus-ring: rgb(var(--theme-accent-secondary-rgb) / 0.55);
   --theme-control-accent: var(--theme-heading-accent-color);
   --theme-control-accent-rgb: var(--theme-accent-secondary-rgb);
 
   --theme-glow-sm:
-    0 0 12px rgb(var(--theme-accent-secondary-rgb) / 0.18),
-    0 0 24px rgb(var(--theme-accent-primary-rgb) / 0.08);
+    0 0 12px rgb(var(--theme-accent-secondary-tint-rgb) / 0.18),
+    0 0 24px rgb(var(--theme-accent-primary-tint-rgb) / 0.08);
   --theme-glow-md:
-    0 0 20px rgb(var(--theme-accent-secondary-rgb) / 0.26),
-    0 0 46px rgb(var(--theme-accent-primary-rgb) / 0.13),
+    0 0 20px rgb(var(--theme-accent-secondary-tint-rgb) / 0.26),
+    0 0 46px rgb(var(--theme-accent-primary-tint-rgb) / 0.13),
     0 0 72px rgb(var(--theme-accent-tertiary-rgb) / 0.07);
   --theme-glow-lg:
-    0 0 30px rgb(var(--theme-accent-secondary-rgb) / 0.3),
-    0 0 60px rgb(var(--theme-accent-primary-rgb) / 0.16),
+    0 0 30px rgb(var(--theme-accent-secondary-tint-rgb) / 0.3),
+    0 0 60px rgb(var(--theme-accent-primary-tint-rgb) / 0.16),
     0 0 100px rgb(var(--theme-accent-tertiary-rgb) / 0.08);
   --theme-transition-blur: 0px;
   --theme-transition-opacity: 1;
@@ -236,8 +250,8 @@ html[data-theme="midas"] {
   --theme-metric-value: var(--theme-text-secondary);
   --theme-logo-spectrum: linear-gradient(
     to right,
-    color-mix(in srgb, var(--theme-accent-primary) 92%, transparent),
-    color-mix(in srgb, var(--theme-accent-secondary) 72%, transparent)
+    color-mix(in srgb, var(--theme-accent-primary-tint) 92%, transparent),
+    color-mix(in srgb, var(--theme-accent-secondary-tint) 72%, transparent)
   );
   --theme-media-icon: #c6a06a;
   --theme-hero-media-icon: var(--theme-media-icon);
@@ -246,7 +260,7 @@ html[data-theme="midas"] {
   --theme-status-complete-text: #d0b89c;
   --theme-status-active-progress: color-mix(
     in srgb,
-    var(--theme-accent-primary) 38%,
+    var(--theme-accent-primary-tint) 38%,
     var(--theme-text-soft) 62%
   );
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
@@ -263,12 +277,12 @@ html[data-theme="midas"] {
   --theme-media-linkedin: var(--theme-media-icon);
   --theme-platform-surface-fill: color-mix(
     in srgb,
-    var(--theme-accent-secondary) 10%,
+    var(--theme-accent-secondary-tint) 10%,
     var(--theme-bg-surface)
   );
   --theme-platform-surface-fill-active: color-mix(
     in srgb,
-    var(--theme-accent-secondary) 12%,
+    var(--theme-accent-secondary-tint) 12%,
     var(--theme-bg-surface)
   );
   --theme-platform-ring-fill: var(--theme-platform-surface-fill);
@@ -351,8 +365,8 @@ html[data-theme="ember"] {
   --theme-metric-value: var(--theme-text-secondary);
   --theme-logo-spectrum: linear-gradient(
     to right,
-    color-mix(in srgb, var(--theme-accent-primary) 92%, transparent),
-    color-mix(in srgb, var(--theme-accent-secondary) 76%, transparent)
+    color-mix(in srgb, var(--theme-accent-primary-tint) 92%, transparent),
+    color-mix(in srgb, var(--theme-accent-secondary-tint) 76%, transparent)
   );
   --theme-media-icon: #d9895a;
   --theme-hero-media-icon: #e56a35;
@@ -361,7 +375,7 @@ html[data-theme="ember"] {
   --theme-status-complete-text: #d9895a;
   --theme-status-active-progress: color-mix(
     in srgb,
-    var(--theme-accent-primary) 28%,
+    var(--theme-accent-primary-tint) 28%,
     var(--theme-text-soft) 72%
   );
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
@@ -478,8 +492,8 @@ html[data-theme="scriptorium"] {
   --theme-metric-value: var(--theme-text-secondary);
   --theme-logo-spectrum: linear-gradient(
     to right,
-    color-mix(in srgb, var(--theme-accent-primary) 90%, transparent),
-    color-mix(in srgb, var(--theme-accent-secondary) 68%, transparent)
+    color-mix(in srgb, var(--theme-accent-primary-tint) 90%, transparent),
+    color-mix(in srgb, var(--theme-accent-secondary-tint) 68%, transparent)
   );
   --theme-media-icon: #8f704e;
   --theme-hero-media-icon: #b08a61;
@@ -488,7 +502,7 @@ html[data-theme="scriptorium"] {
   --theme-status-complete-text: #86684a;
   --theme-status-active-progress: color-mix(
     in srgb,
-    var(--theme-accent-primary) 18%,
+    var(--theme-accent-primary-tint) 18%,
     var(--theme-text-soft) 82%
   );
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
@@ -514,15 +528,15 @@ html[data-theme="scriptorium"] {
   --theme-media-youtube: var(--theme-media-icon);
   --theme-media-linkedin: var(--theme-media-icon);
   --theme-glow-sm:
-    0 0 4px rgb(var(--theme-accent-secondary-rgb) / 0.035),
-    0 0 8px rgb(var(--theme-accent-primary-rgb) / 0.02);
+    0 0 4px rgb(var(--theme-accent-secondary-tint-rgb) / 0.035),
+    0 0 8px rgb(var(--theme-accent-primary-tint-rgb) / 0.02);
   --theme-glow-md:
-    0 0 6px rgb(var(--theme-accent-secondary-rgb) / 0.045),
-    0 0 12px rgb(var(--theme-accent-primary-rgb) / 0.024),
+    0 0 6px rgb(var(--theme-accent-secondary-tint-rgb) / 0.045),
+    0 0 12px rgb(var(--theme-accent-primary-tint-rgb) / 0.024),
     0 0 18px rgb(var(--theme-accent-tertiary-rgb) / 0.015);
   --theme-glow-lg:
-    0 0 8px rgb(var(--theme-accent-secondary-rgb) / 0.055),
-    0 0 16px rgb(var(--theme-accent-primary-rgb) / 0.03),
+    0 0 8px rgb(var(--theme-accent-secondary-tint-rgb) / 0.055),
+    0 0 16px rgb(var(--theme-accent-primary-tint-rgb) / 0.03),
     0 0 24px rgb(var(--theme-accent-tertiary-rgb) / 0.018);
 }
 
@@ -539,9 +553,9 @@ html[data-theme="starship"] {
   --theme-focus-emphasis-weight-strong: 900;
 
   --theme-bg-root: #e2e2ee;
-  --theme-bg-deep: #d8d8e7;
+  --theme-bg-deep: #e8e8f1;
   --theme-bg-surface: #eeeef6;
-  --theme-bg-elevated: #f4f4fa;
+  --theme-bg-elevated: #f0f0f8;
   --theme-bg-card: #eeeef6;
   --theme-bg-card-hover: #f4f4fa;
   --theme-bg-input: #f4f4fa;
@@ -557,11 +571,18 @@ html[data-theme="starship"] {
   --theme-text-muted: #5f5f9c;
   --theme-text-soft: #8585b0;
 
-  --theme-accent-primary: #2997ff;
-  --theme-accent-secondary: #2997ff;
+  --theme-accent-primary: #0a5fbd;
+  --theme-accent-secondary: #0a5fbd;
   --theme-accent-tertiary: #08733b;
-  --theme-accent-primary-rgb: 41 151 255;
-  --theme-accent-secondary-rgb: 41 151 255;
+  --theme-accent-primary-rgb: 10 95 189;
+  --theme-accent-secondary-rgb: 10 95 189;
+  /* Soft tints, glows and artwork keep the brighter blue. */
+  --theme-accent-primary-tint: #2997ff;
+  --theme-accent-primary-tint-rgb: 41 151 255;
+  --theme-accent-secondary-tint: #2997ff;
+  --theme-accent-secondary-tint-rgb: 41 151 255;
+  --theme-control-accent-tint-rgb: 41 151 255;
+  --theme-feedback-info-tint-rgb: 41 151 255;
   --theme-accent-tertiary-rgb: 8 115 59;
 
   --theme-shell-rgb: 226 226 238;
@@ -586,25 +607,25 @@ html[data-theme="starship"] {
     ),
     #e2e2ee;
 
-  --theme-button-primary-background: #2997ff;
+  --theme-button-primary-background: #0a5fbd;
   --theme-button-primary-shadow:
     0 2px 6px rgb(0 0 30 / 0.06), 0 10px 36px rgb(0 0 40 / 0.09);
   --theme-button-primary-shadow-hover:
     0 2px 8px rgb(0 0 30 / 0.08), 0 12px 40px rgb(0 0 40 / 0.12);
-  --theme-button-primary-text: #f0f0fa;
+  --theme-button-primary-text: #ffffff;
   --theme-button-secondary-background: rgb(41 151 255 / 0.025);
   --theme-button-secondary-hover: rgb(41 151 255 / 0.07);
   --theme-gradient-text-start: #16163a;
-  --theme-gradient-text-mid: #2997ff;
-  --theme-gradient-text-end: #2997ff;
-  --theme-heading-accent-color: #2997ff;
+  --theme-gradient-text-mid: #0a5fbd;
+  --theme-gradient-text-end: #0a5fbd;
+  --theme-heading-accent-color: #0a5fbd;
   --theme-heading-accent-fill: none;
   --theme-heading-accent-text-fill: currentColor;
   --theme-heading-accent-clip: border-box;
   --theme-metric-value: #16163a;
   --theme-logo-spectrum: linear-gradient(to right, #16163a, #2997ff);
-  --theme-media-icon: #2997ff;
-  --theme-hero-media-icon: #2997ff;
+  --theme-media-icon: #0a5fbd;
+  --theme-hero-media-icon: #0a5fbd;
   --theme-status-complete-border: rgb(8 115 59 / 0.24);
   --theme-status-complete-bg: rgb(20 163 82 / 0.1);
   --theme-status-complete-text: #08733b;
@@ -620,10 +641,10 @@ html[data-theme="starship"] {
   --theme-overlay-scrim: rgb(22 22 58 / 0.26);
   --theme-code-background: rgb(244 244 250 / 0.92);
   --theme-selection: rgb(41 151 255 / 0.18);
-  --theme-focus-ring: rgb(41 151 255 / 0.38);
+  --theme-focus-ring: #0a5fbd;
   --theme-destructive: #b3261e;
   --theme-success: #08733b;
-  --theme-feedback-info-rgb: 41 151 255;
+  --theme-feedback-info-rgb: 10 95 189;
   --theme-feedback-success-rgb: 8 115 59;
   --theme-feedback-warning-rgb: 118 80 0;
   --theme-feedback-danger-rgb: 179 38 30;
@@ -639,8 +660,8 @@ html[data-theme="starship"] {
   --theme-platform-ring-fill-active: var(--theme-platform-surface-fill-active);
   --theme-platform-ring-stroke: rgb(41 151 255 / 0.34);
   --theme-platform-ring-stroke-active: rgb(41 151 255 / 0.5);
-  --theme-control-accent: #2997ff;
-  --theme-control-accent-rgb: 41 151 255;
+  --theme-control-accent: #0a5fbd;
+  --theme-control-accent-rgb: 10 95 189;
   --theme-glow-sm:
     0 2px 6px rgb(0 0 30 / 0.05), 0 8px 24px rgb(0 0 40 / 0.07);
   --theme-glow-md:
@@ -669,7 +690,7 @@ html[data-theme="dark-star"] {
   --theme-focus-emphasis-weight-strong: 900;
 
   --theme-bg-root: #222222;
-  --theme-bg-deep: #1c1c1e;
+  --theme-bg-deep: #29292b;
   --theme-bg-surface: #2c2c2e;
   --theme-bg-elevated: #343436;
   --theme-bg-card: #2c2c2e;
@@ -708,7 +729,11 @@ html[data-theme="dark-star"] {
     0 1px 2px rgb(0 0 0 / 0.18), 0 8px 22px rgb(0 0 0 / 0.14);
   --theme-button-primary-shadow-hover:
     0 0 16px rgb(41 151 255 / 0.18), 0 10px 26px rgb(0 0 0 / 0.18);
-  --theme-button-primary-text: #ffffff;
+  --theme-button-primary-text: #000000;
+  /* These sit on dark surfaces, not on the accent, so they stay white. */
+  --theme-selection-text: #ffffff;
+  --theme-toggle-knob: #ffffff;
+  --theme-avatar-text: #ffffff;
   --theme-button-secondary-background: rgb(255 255 255 / 0.025);
   --theme-button-secondary-hover: rgb(255 255 255 / 0.08);
   --theme-gradient-text-start: #64d2ff;
@@ -810,18 +835,18 @@ html[data-theme="dark-star"] {
   --theme-hero-accent-3: var(--theme-accent-tertiary);
   --theme-hero-accent-4: color-mix(
     in srgb,
-    var(--theme-accent-primary) 65%,
-    var(--theme-accent-secondary) 35%
+    var(--theme-accent-primary-tint) 65%,
+    var(--theme-accent-secondary-tint) 35%
   );
   --theme-hero-accent-5: color-mix(
     in srgb,
-    var(--theme-accent-secondary) 58%,
+    var(--theme-accent-secondary-tint) 58%,
     var(--theme-accent-tertiary) 42%
   );
   --theme-hero-warning: color-mix(
     in srgb,
     rgb(var(--theme-feedback-danger-rgb)) 78%,
-    var(--theme-accent-secondary) 22%
+    var(--theme-accent-secondary-tint) 22%
   );
   --theme-platform-icon: var(--theme-hero-media-icon);
   --theme-platform-surface-fill: color-mix(
@@ -852,48 +877,48 @@ html[data-theme="dark-star"] {
   );
   --theme-avatar-border-strong: color-mix(
     in srgb,
-    var(--theme-accent-primary) 68%,
+    var(--theme-accent-primary-tint) 68%,
     var(--theme-text-primary)
   );
-  --theme-avatar-border-soft: rgb(var(--theme-accent-primary-rgb) / 0.24);
-  --theme-avatar-glow: rgb(var(--theme-accent-secondary-rgb) / 0.3);
-  --theme-avatar-glow-soft: rgb(var(--theme-accent-secondary-rgb) / 0.18);
-  --theme-avatar-ring: rgb(var(--theme-accent-primary-rgb) / 0.2);
+  --theme-avatar-border-soft: rgb(var(--theme-accent-primary-tint-rgb) / 0.24);
+  --theme-avatar-glow: rgb(var(--theme-accent-secondary-tint-rgb) / 0.3);
+  --theme-avatar-glow-soft: rgb(var(--theme-accent-secondary-tint-rgb) / 0.18);
+  --theme-avatar-ring: rgb(var(--theme-accent-primary-tint-rgb) / 0.2);
   --theme-avatar-gradient-start: color-mix(
     in srgb,
-    var(--theme-accent-primary) 68%,
+    var(--theme-accent-primary-tint) 68%,
     white 32%
   );
   --theme-avatar-gradient-mid: color-mix(
     in srgb,
-    var(--theme-accent-primary) 36%,
-    var(--theme-accent-secondary) 64%
+    var(--theme-accent-primary-tint) 36%,
+    var(--theme-accent-secondary-tint) 64%
   );
   --theme-avatar-gradient-end: color-mix(
     in srgb,
     var(--theme-bg-deep) 64%,
-    var(--theme-accent-secondary) 36%
+    var(--theme-accent-secondary-tint) 36%
   );
   --theme-avatar-image-overlay: radial-gradient(
     circle at 30% 28%,
-    rgb(var(--theme-accent-primary-rgb) / 0.22),
-    rgb(var(--theme-accent-secondary-rgb) / 0.2) 42%,
+    rgb(var(--theme-accent-primary-tint-rgb) / 0.22),
+    rgb(var(--theme-accent-secondary-tint-rgb) / 0.2) 42%,
     rgb(var(--theme-shell-rgb) / 0.28) 100%
   );
   --theme-avatar-image-shadow: rgb(var(--theme-shell-rgb) / 0.36);
-  --theme-avatar-image-highlight: rgb(var(--theme-accent-primary-rgb) / 0.16);
+  --theme-avatar-image-highlight: rgb(var(--theme-accent-primary-tint-rgb) / 0.16);
   --theme-avatar-selection-stroke: color-mix(
     in srgb,
-    var(--theme-accent-primary) 56%,
+    var(--theme-accent-primary-tint) 56%,
     white 44%
   );
   --theme-avatar-selection-outer-stroke: color-mix(
     in srgb,
-    var(--theme-accent-secondary) 72%,
-    var(--theme-accent-primary) 28%
+    var(--theme-accent-secondary-tint) 72%,
+    var(--theme-accent-primary-tint) 28%
   );
-  --theme-avatar-label-border: rgb(var(--theme-accent-secondary-rgb) / 0.28);
-  --theme-avatar-initials-shadow: rgb(var(--theme-accent-primary-rgb) / 0.42);
+  --theme-avatar-label-border: rgb(var(--theme-accent-secondary-tint-rgb) / 0.28);
+  --theme-avatar-initials-shadow: rgb(var(--theme-accent-primary-tint-rgb) / 0.42);
   --theme-avatar-text: var(--theme-button-primary-text);
   --theme-graph-surface-fill: color-mix(
     in srgb,
@@ -912,7 +937,7 @@ html[data-theme="dark-star"] {
   --theme-marker-badge-shadow: 0 10px 22px rgb(var(--theme-shell-rgb) / 0.42);
   --theme-map-popup-shadow: 0 20px 48px rgb(var(--theme-shell-rgb) / 0.74);
   --theme-map-marker-hover-shadow:
-    0 0 24px rgb(var(--theme-accent-secondary-rgb) / 0.28),
+    0 0 24px rgb(var(--theme-accent-secondary-tint-rgb) / 0.28),
     0 20px 42px rgb(var(--theme-shell-rgb) / 0.76);
   --theme-map-fallback-card-background:
     linear-gradient(
@@ -923,7 +948,7 @@ html[data-theme="dark-star"] {
     ),
     color-mix(
       in oklab,
-      var(--theme-accent-secondary) 18%,
+      var(--theme-accent-secondary-tint) 18%,
       var(--theme-bg-surface)
     );
   --theme-map-fallback-card-shadow: 0 18px 34px
@@ -1330,7 +1355,7 @@ html[data-theme="scriptorium"] .glass-card-interactive:hover {
 .release-entry:focus-within .release-timeline-node > div:last-child {
   box-shadow:
     0 0 0 3px color-mix(in srgb, var(--theme-heading-accent) 12%, transparent),
-    0 0 16px rgb(var(--theme-accent-secondary-rgb) / 0.22);
+    0 0 16px rgb(var(--theme-accent-secondary-tint-rgb) / 0.22);
 }
 
 html[data-theme="scriptorium"] .phase-card-upcoming {
@@ -1350,28 +1375,28 @@ html[data-theme="scriptorium"] .phase-card-upcoming {
 html[data-theme="scriptorium"] .phase-card-current {
   background: color-mix(
     in oklab,
-    var(--theme-accent-secondary) 11%,
+    var(--theme-accent-secondary-tint) 11%,
     var(--theme-bg-surface)
   ) !important;
   border-color: color-mix(
     in srgb,
-    var(--theme-accent-primary) 26%,
+    var(--theme-accent-primary-tint) 26%,
     var(--theme-border-subtle)
   ) !important;
   box-shadow:
     0 10px 24px rgb(84 58 35 / 0.06),
-    0 0 0 1px color-mix(in srgb, var(--theme-accent-secondary) 8%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--theme-accent-secondary-tint) 8%, transparent);
 }
 
 html[data-theme="scriptorium"] .phase-card-complete {
   background: color-mix(
     in oklab,
-    var(--theme-accent-secondary) 9%,
+    var(--theme-accent-secondary-tint) 9%,
     var(--theme-bg-surface)
   ) !important;
   border-color: color-mix(
     in srgb,
-    var(--theme-accent-primary) 22%,
+    var(--theme-accent-primary-tint) 22%,
     var(--theme-border-subtle)
   ) !important;
   box-shadow: 0 8px 18px rgb(84 58 35 / 0.045);
@@ -1524,15 +1549,15 @@ html[data-theme="scriptorium"] .theme-tooltip-panel {
   background: linear-gradient(
     135deg,
     rgb(255 255 255 / 0.92),
-    rgb(var(--theme-accent-primary-rgb) / 0.92) 54%,
+    rgb(var(--theme-accent-primary-tint-rgb) / 0.92) 54%,
     rgb(255 255 255 / 0.76)
   );
   box-shadow:
     0 0 0 2px rgb(var(--theme-bg-root) / 0.38),
     0 0 0 4px rgb(var(--theme-accent-primary-rgb) / 0.68),
-    0 0 0 7px rgb(var(--theme-accent-primary-rgb) / 0.18),
+    0 0 0 7px rgb(var(--theme-accent-primary-tint-rgb) / 0.18),
     0 14px 30px rgb(0 0 0 / 0.18),
-    0 0 32px rgb(var(--theme-accent-primary-rgb) / 0.32);
+    0 0 32px rgb(var(--theme-accent-primary-tint-rgb) / 0.32);
   opacity: 1;
 }
 
@@ -1799,7 +1824,7 @@ html[data-theme="scriptorium"] .feed-card {
 
 @media (hover: hover) and (pointer: fine) {
   html[data-theme="scriptorium"] .feed-card:hover {
-    background-color: color-mix(in oklab, var(--theme-bg-surface) 94%, var(--theme-accent-secondary) 6%) !important;
+    background-color: color-mix(in oklab, var(--theme-bg-surface) 94%, var(--theme-accent-secondary-tint) 6%) !important;
   }
 }
 
@@ -1844,7 +1869,7 @@ html[data-theme="scriptorium"] .feed-card {
 .feed-card[data-selected="true"]:hover {
   border-left-width: 2px;
   border-left-color: var(--theme-accent-secondary);
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.12);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.12);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -2015,13 +2040,13 @@ html.freed-mobile-sidebar-open body {
 
 .theme-accent-button {
   cursor: pointer;
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.16);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.16);
   color: var(--theme-accent-secondary);
-  border: 1px solid rgb(var(--theme-accent-secondary-rgb) / 0.24);
+  border: 1px solid rgb(var(--theme-accent-secondary-tint-rgb) / 0.24);
 }
 
 .theme-accent-button:hover {
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.24);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.24);
 }
 
 .theme-toolbar-button-neutral {
@@ -2065,9 +2090,9 @@ html.freed-mobile-sidebar-open body {
 .theme-toolbar-button-active {
   cursor: pointer;
   border: 1px solid rgb(var(--theme-accent-secondary-rgb) / 0.72);
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.16);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.16);
   color: var(--theme-text-primary);
-  box-shadow: inset 0 0 0 1px rgb(var(--theme-accent-secondary-rgb) / 0.18);
+  box-shadow: inset 0 0 0 1px rgb(var(--theme-accent-secondary-tint-rgb) / 0.18);
   transition:
     color 0.18s ease,
     background-color 0.18s ease,
@@ -2077,7 +2102,7 @@ html.freed-mobile-sidebar-open body {
 
 @media (hover: hover) and (pointer: fine) {
   .theme-toolbar-button-active:hover {
-    background: rgb(var(--theme-accent-secondary-rgb) / 0.2);
+    background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.2);
     border-color: rgb(var(--theme-accent-secondary-rgb) / 0.82);
   }
 }
@@ -2331,7 +2356,7 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
   border-radius: 999px;
   background: var(--theme-bg-elevated);
   box-shadow:
-    0 0 0 2px rgb(var(--theme-accent-secondary-rgb) / 0.18),
+    0 0 0 2px rgb(var(--theme-accent-secondary-tint-rgb) / 0.18),
     0 2px 8px rgb(0 0 0 / 0.18);
 }
 
@@ -2348,7 +2373,7 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
   border-radius: 999px;
   background: var(--theme-bg-elevated);
   box-shadow:
-    0 0 0 2px rgb(var(--theme-accent-secondary-rgb) / 0.18),
+    0 0 0 2px rgb(var(--theme-accent-secondary-tint-rgb) / 0.18),
     0 2px 8px rgb(0 0 0 / 0.18);
 }
 
@@ -2488,7 +2513,7 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
     var(--theme-accent-secondary) 72%,
     var(--theme-text-primary)
   );
-  border: 1px solid rgb(var(--theme-accent-secondary-rgb) / 0.28);
+  border: 1px solid rgb(var(--theme-accent-secondary-tint-rgb) / 0.28);
   box-shadow:
     0 0 28px 16px rgb(var(--theme-shell-rgb) / 0.58),
     0 12px 40px 10px rgb(var(--theme-shell-rgb) / 0.32),
@@ -2562,7 +2587,7 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
 }
 
 .theme-accent-tag {
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.14);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.14);
   color: var(--theme-accent-secondary);
 }
 
@@ -2613,8 +2638,8 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
 }
 
 .theme-icon-well-info {
-  background: rgb(var(--theme-feedback-info-rgb) / 0.12);
-  border-color: rgb(var(--theme-feedback-info-rgb) / 0.22);
+  background: rgb(var(--theme-feedback-info-tint-rgb) / 0.12);
+  border-color: rgb(var(--theme-feedback-info-tint-rgb) / 0.22);
 }
 
 .theme-icon-well-success {
@@ -2641,8 +2666,8 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
 }
 
 .theme-status-pill-info {
-  background: rgb(var(--theme-feedback-info-rgb) / 0.12);
-  border-color: rgb(var(--theme-feedback-info-rgb) / 0.22);
+  background: rgb(var(--theme-feedback-info-tint-rgb) / 0.12);
+  border-color: rgb(var(--theme-feedback-info-tint-rgb) / 0.22);
   color: rgb(var(--theme-feedback-info-rgb));
 }
 
@@ -2667,10 +2692,10 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
 .theme-avatar-fallback {
   background: linear-gradient(
     135deg,
-    var(--theme-accent-primary),
+    var(--theme-accent-primary-tint),
     color-mix(
       in srgb,
-      var(--theme-accent-secondary) 72%,
+      var(--theme-accent-secondary-tint) 72%,
       var(--theme-accent-tertiary) 28%
     )
   );
@@ -3007,7 +3032,7 @@ html[data-theme="scriptorium"] .btn-primary:hover {
   background: var(--theme-header-background);
   color: var(--theme-accent-secondary);
   border-color: var(--theme-accent-secondary);
-  box-shadow: inset 0 0 0 999px rgb(var(--theme-accent-secondary-rgb) / 0.12), var(--theme-header-shadow);
+  box-shadow: inset 0 0 0 999px rgb(var(--theme-accent-secondary-tint-rgb) / 0.12), var(--theme-header-shadow);
 }
 
 html[data-theme="scriptorium"] .theme-canvas-control {
@@ -3117,7 +3142,7 @@ html[data-theme="scriptorium"] .theme-canvas-control {
   border-color: var(--theme-border-strong);
   background: color-mix(
     in oklab,
-    var(--theme-accent-secondary) 16%,
+    var(--theme-accent-secondary-tint) 16%,
     var(--theme-bg-surface)
   );
   color: var(--theme-text-primary);
@@ -3178,7 +3203,7 @@ html[data-theme="scriptorium"] .theme-canvas-control {
 }
 
 .theme-toolbar-segment-active {
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.16);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.16);
   color: var(--theme-text-primary);
   box-shadow: none;
   z-index: 1;
@@ -3245,7 +3270,7 @@ html[data-theme="scriptorium"] .theme-canvas-control {
 
 .theme-feedback-panel-info {
   --feedback-rgb: var(--theme-feedback-info-rgb);
-  border-color: rgb(var(--theme-feedback-info-rgb) / 0.22);
+  border-color: rgb(var(--theme-feedback-info-tint-rgb) / 0.22);
 }
 
 .theme-feedback-panel-success {
@@ -3325,19 +3350,19 @@ html[data-theme="scriptorium"] .theme-canvas-control {
 .theme-map-grid {
   background-image:
     linear-gradient(
-      rgb(var(--theme-accent-secondary-rgb) / 0.12) 1px,
+      rgb(var(--theme-accent-secondary-tint-rgb) / 0.12) 1px,
       transparent 1px
     ),
     linear-gradient(
       90deg,
-      rgb(var(--theme-accent-secondary-rgb) / 0.08) 1px,
+      rgb(var(--theme-accent-secondary-tint-rgb) / 0.08) 1px,
       transparent 1px
     );
 }
 
 ::selection {
   background: var(--theme-selection);
-  color: var(--theme-button-primary-text);
+  color: var(--theme-selection-text);
 }
 
 :focus-visible {
@@ -3375,7 +3400,7 @@ input[type="radio"]:focus-visible {
 .app-theme-shell ::-webkit-scrollbar-thumb,
 .theme-dialog-shell::-webkit-scrollbar-thumb,
 .theme-dialog-shell ::-webkit-scrollbar-thumb {
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.18);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.18);
   border-radius: 999px;
 }
 
@@ -3383,7 +3408,7 @@ input[type="radio"]:focus-visible {
 .app-theme-shell ::-webkit-scrollbar-thumb:hover,
 .theme-dialog-shell::-webkit-scrollbar-thumb:hover,
 .theme-dialog-shell ::-webkit-scrollbar-thumb:hover {
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.28);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.28);
 }
 
 .minimal-scroll {
@@ -3394,7 +3419,7 @@ input[type="radio"]:focus-visible {
 
 .minimal-scroll:hover,
 .minimal-scroll:active {
-  scrollbar-color: rgb(var(--theme-accent-secondary-rgb) / 0.24) transparent;
+  scrollbar-color: rgb(var(--theme-accent-secondary-tint-rgb) / 0.24) transparent;
 }
 
 .minimal-scroll::-webkit-scrollbar {
@@ -3411,7 +3436,7 @@ input[type="radio"]:focus-visible {
 }
 
 .minimal-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgb(var(--theme-accent-secondary-rgb) / 0.22);
+  background: rgb(var(--theme-accent-secondary-tint-rgb) / 0.22);
 }
 
 .hide-scrollbar::-webkit-scrollbar {
@@ -3527,13 +3552,13 @@ input[type="radio"]:focus-visible {
 
 @keyframes feed-signal-checkbox-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgb(var(--theme-accent-secondary-rgb) / 0);
+    box-shadow: 0 0 0 0 rgb(var(--theme-accent-secondary-tint-rgb) / 0);
   }
   42% {
-    box-shadow: 0 0 0 5px rgb(var(--theme-accent-secondary-rgb) / 0.18);
+    box-shadow: 0 0 0 5px rgb(var(--theme-accent-secondary-tint-rgb) / 0.18);
   }
   100% {
-    box-shadow: 0 0 0 9px rgb(var(--theme-accent-secondary-rgb) / 0);
+    box-shadow: 0 0 0 9px rgb(var(--theme-accent-secondary-tint-rgb) / 0);
   }
 }
 

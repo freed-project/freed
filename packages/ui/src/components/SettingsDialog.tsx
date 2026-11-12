@@ -1593,7 +1593,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                         onClick={() => handleReadingChange({ focusIntensity: level })}
                         className={`flex-1 py-1.5 rounded-lg text-sm capitalize transition-colors border ${
                           display.reading.focusIntensity === level
-                            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]"
+                            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_30%,transparent)]"
                             : "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-text-muted hover:text-text-primary border-transparent"
                         }`}
                       >
@@ -1614,7 +1614,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       onClick={() => handleDisplayChange({ animationIntensity: option.value })}
                       className={`flex-1 rounded-lg border py-1.5 text-sm transition-colors ${
                         display.animationIntensity === option.value
-                          ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]"
+                          ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_30%,transparent)]"
                           : "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-text-muted hover:text-text-primary border-transparent"
                       }`}
                     >
@@ -2020,7 +2020,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           indented ? "pl-7 pr-2 py-2" : "px-2 py-2"
         } ${
           isActive
-            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_15%,transparent)] text-[var(--theme-accent-secondary)]"
+            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_15%,transparent)] text-[var(--theme-accent-secondary)]"
             : isDanger
             ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.72)] hover:text-[rgb(var(--theme-feedback-danger-rgb))] hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.05)]"
             : "text-text-secondary hover:text-text-primary hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)]"

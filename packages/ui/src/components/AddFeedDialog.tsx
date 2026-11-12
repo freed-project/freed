@@ -93,7 +93,7 @@ function AddUrlTab({ onClose }: { onClose: () => void }) {
               key={exampleUrl}
               type="button"
               onClick={() => setUrl(exampleUrl)}
-              className="rounded-lg bg-[var(--theme-bg-muted)] px-3 py-1.5 text-xs text-[var(--theme-text-secondary)] transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.14)] hover:text-[var(--theme-accent-secondary)]"
+              className="rounded-lg bg-[var(--theme-bg-muted)] px-3 py-1.5 text-xs text-[var(--theme-text-secondary)] transition-colors hover:bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.14)] hover:text-[var(--theme-accent-secondary)]"
             >
               {new URL(exampleUrl).hostname}
             </button>

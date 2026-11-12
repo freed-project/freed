@@ -736,7 +736,7 @@ export function FeedList({
     if (isSearching) {
       return (
         <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
-          <div className="theme-icon-well-info mb-4 flex h-16 w-16 items-center justify-center rounded-full border bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-rgb)/0.12),rgb(var(--theme-accent-secondary-rgb)/0.1))]">
+          <div className="theme-icon-well-info mb-4 flex h-16 w-16 items-center justify-center rounded-full border bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-tint-rgb)/0.12),rgb(var(--theme-accent-secondary-tint-rgb)/0.1))]">
             <svg
               className="theme-icon-action h-7 w-7"
               fill="none"
@@ -786,7 +786,7 @@ export function FeedList({
 
     return (
       <div className="flex flex-col items-center justify-center flex-1 min-h-0 overflow-auto text-center px-6 py-12">
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-rgb)/0.16),rgb(var(--theme-accent-secondary-rgb)/0.14))]">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-tint-rgb)/0.16),rgb(var(--theme-accent-secondary-tint-rgb)/0.14))]">
           <span className="text-2xl">📡</span>
         </div>
         {hasFeedsSubscribed ? (

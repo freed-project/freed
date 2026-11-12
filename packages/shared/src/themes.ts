@@ -124,14 +124,14 @@ const DEFAULT_ROW_ORBS: ThemeBackgroundRowOrb = {
 
 const DEFAULT_OVERLAY_BACKGROUND = `radial-gradient(
       ellipse 900px 900px at -10% -15%,
-      rgb(var(--theme-accent-secondary-rgb) / 0.11) 0%,
-      rgb(var(--theme-accent-secondary-rgb) / 0.028) 36%,
+      rgb(var(--theme-accent-secondary-tint-rgb) / 0.11) 0%,
+      rgb(var(--theme-accent-secondary-tint-rgb) / 0.028) 36%,
       transparent 65%
     ),
     radial-gradient(
       ellipse 800px 800px at 110% 110%,
-      rgb(var(--theme-accent-primary-rgb) / 0.09) 0%,
-      rgb(var(--theme-accent-primary-rgb) / 0.022) 35%,
+      rgb(var(--theme-accent-primary-tint-rgb) / 0.09) 0%,
+      rgb(var(--theme-accent-primary-tint-rgb) / 0.022) 35%,
       transparent 65%
     ),
     radial-gradient(
@@ -189,7 +189,7 @@ const NEON_MAP: ThemeMapPalette = {
   labelHalo: "#091018",
   overlayVignette: `radial-gradient(
       circle at 18% 0%,
-      color-mix(in oklab, var(--theme-accent-secondary) 14%, transparent) 0%,
+      color-mix(in oklab, var(--theme-accent-secondary-tint) 14%, transparent) 0%,
       transparent 34%
     ),
     linear-gradient(
@@ -216,7 +216,7 @@ const EMBER_MAP: ThemeMapPalette = {
   labelHalo: "#140c0a",
   overlayVignette: `radial-gradient(
       circle at 20% 0%,
-      color-mix(in oklab, var(--theme-accent-secondary) 12%, transparent) 0%,
+      color-mix(in oklab, var(--theme-accent-secondary-tint) 12%, transparent) 0%,
       transparent 32%
     ),
     linear-gradient(
@@ -243,7 +243,7 @@ const MIDAS_MAP: ThemeMapPalette = {
   labelHalo: "#261f19",
   overlayVignette: `radial-gradient(
       circle at 20% 0%,
-      color-mix(in oklab, var(--theme-accent-secondary) 10%, transparent) 0%,
+      color-mix(in oklab, var(--theme-accent-secondary-tint) 10%, transparent) 0%,
       transparent 32%
     ),
     linear-gradient(
@@ -270,7 +270,7 @@ const SCRIPTORIUM_MAP: ThemeMapPalette = {
   labelHalo: "#f7efdf",
   overlayVignette: `radial-gradient(
       circle at 18% 0%,
-      color-mix(in oklab, var(--theme-accent-secondary) 5%, transparent) 0%,
+      color-mix(in oklab, var(--theme-accent-secondary-tint) 5%, transparent) 0%,
       transparent 34%
     ),
     linear-gradient(
@@ -289,8 +289,9 @@ const STARSHIP_MAP: ThemeMapPalette = {
   residential: "#e2e2ee",
   building: "#ccccd8",
   roadsMinor: "#4a4a84",
-  roadsMajor: "#2997ff",
-  boundary: "#2997ff",
+  // Starship's solid accent: thin strokes need 3:1 against water and buildings.
+  roadsMajor: "#0a5fbd",
+  boundary: "#0a5fbd",
   labelStrong: "#16163a",
   labelSoft: "#4a4a84",
   labelWater: "#356f9c",

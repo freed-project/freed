@@ -66,7 +66,7 @@ export function FacebookFeedEmptyState() {
   if (fbAuth.isAuthenticated) {
     return (
       <>
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,color-mix(in_srgb,var(--theme-media-facebook)_18%,transparent),rgb(var(--theme-accent-secondary-rgb)/0.12))]">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,color-mix(in_srgb,var(--theme-media-facebook)_18%,transparent),rgb(var(--theme-accent-secondary-tint-rgb)/0.12))]">
           <FbIcon />
         </div>
         <p className="text-lg font-medium mb-2">{EMPTY_PROVIDER_FEED_COPY.title}</p>
@@ -112,7 +112,7 @@ export function FacebookFeedEmptyState() {
 
   return (
     <>
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,color-mix(in_srgb,var(--theme-media-facebook)_18%,transparent),rgb(var(--theme-accent-secondary-rgb)/0.12))]">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,color-mix(in_srgb,var(--theme-media-facebook)_18%,transparent),rgb(var(--theme-accent-secondary-tint-rgb)/0.12))]">
         <FbIcon />
       </div>
       <p className="text-lg font-medium mb-2">Connect Facebook</p>

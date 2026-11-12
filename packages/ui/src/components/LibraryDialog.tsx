@@ -148,7 +148,7 @@ export function LibraryDialog({
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={importing}
-                    className="w-full rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-2.5 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {importing ? "Importing..." : "Select Markdown files"}
                   </button>
@@ -225,7 +225,7 @@ export function LibraryDialog({
                 >
                   {exporting ? (
                     <>
-                      <div className="h-4 w-4 animate-spin rounded-full border border-[rgb(var(--theme-accent-secondary-rgb)/0.3)] border-t-[var(--theme-accent-secondary)]" />
+                      <div className="h-4 w-4 animate-spin rounded-full border border-[rgb(var(--theme-accent-secondary-tint-rgb)/0.3)] border-t-[var(--theme-accent-secondary)]" />
                       Preparing export...
                     </>
                   ) : (

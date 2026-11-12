@@ -22,7 +22,7 @@ function StatusPill({
         : tone === "error"
           ? "bg-[rgb(var(--theme-feedback-danger-rgb)/0.15)] text-[rgb(var(--theme-feedback-danger-rgb))]"
           : tone === "syncing"
-            ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
+            ? "bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
             : "bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-secondary)]";
 
   return (

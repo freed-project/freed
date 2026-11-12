@@ -333,7 +333,7 @@ export function MapView({ viewportInsets }: MapViewProps) {
                     disabled={!timeBounds}
                     className={`rounded-full border px-2 py-0.5 text-[0.625rem] font-medium transition-colors ${
                       active
-                        ? "border-[color:rgb(var(--theme-accent-secondary-rgb)/0.28)] bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)] text-[color:var(--theme-text-primary)]"
+                        ? "border-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.28)] bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.14)] text-[color:var(--theme-text-primary)]"
                         : "border-transparent text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-bg-soft)] hover:text-[color:var(--theme-text-secondary)]"
                     } disabled:pointer-events-none disabled:opacity-50`}
                     onClick={() => handlePresetChange(preset.value)}

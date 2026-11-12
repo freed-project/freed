@@ -42,14 +42,14 @@ const PALETTE_OPTIONS: Record<string, StoryWallPaletteDefinition> = {
     accent: "var(--theme-control-accent)",
     surface: "color-mix(in oklab, var(--theme-bg-surface) 90%, var(--theme-bg-primary) 10%)",
     media: "var(--theme-bg-muted)",
-    tint: "rgb(var(--theme-accent-secondary-rgb) / 0.1)",
+    tint: "rgb(var(--theme-accent-secondary-tint-rgb) / 0.1)",
   },
   midnight: {
     label: "Midnight",
     accent: "var(--theme-accent-secondary)",
     surface: "color-mix(in oklab, var(--theme-bg-elevated) 88%, black 12%)",
     media: "color-mix(in oklab, var(--theme-bg-muted) 78%, black 22%)",
-    tint: "rgb(var(--theme-accent-primary-rgb) / 0.14)",
+    tint: "rgb(var(--theme-accent-primary-tint-rgb) / 0.14)",
   },
   gallery: {
     label: "Gallery",
@@ -109,7 +109,7 @@ function ToggleButton({
       onClick={onClick}
       className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
         active
-          ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-control-accent-rgb)/0.16)] text-[var(--theme-text-primary)]"
+          ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-control-accent-tint-rgb)/0.16)] text-[var(--theme-text-primary)]"
           : "border-[color:var(--theme-border-subtle)] bg-[var(--theme-bg-input)] text-[var(--theme-text-secondary)] hover:border-[color:var(--theme-border-strong)] hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
       }`}
     >

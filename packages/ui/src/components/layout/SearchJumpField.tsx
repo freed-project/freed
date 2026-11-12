@@ -1163,7 +1163,7 @@ export function SearchJumpField({
             className={compactSidebar
               ? `relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[var(--card-radius)] border transition-colors ${
                   triggerActive
-                    ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-text-primary)]"
+                    ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[var(--theme-text-primary)]"
                     : "border-transparent bg-transparent text-[var(--theme-text-secondary)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)]"
                 }`
               : `relative flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--theme-border-subtle)] bg-transparent text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-quiet)] hover:bg-[var(--theme-bg-muted)] hover:text-[var(--theme-text-primary)] ${

@@ -76,7 +76,7 @@ export function PwaFeedEmptyState() {
 
     return (
       <>
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-rgb)/0.16),rgb(var(--theme-accent-secondary-rgb)/0.14))]">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-[var(--theme-border-subtle)] bg-[radial-gradient(circle_at_top,var(--theme-bg-card-hover),transparent_72%),linear-gradient(135deg,rgb(var(--theme-accent-primary-tint-rgb)/0.16),rgb(var(--theme-accent-secondary-tint-rgb)/0.14))]">
           <span className="text-2xl">📡</span>
         </div>
         <p className="text-lg font-medium mb-2">Waiting for Freed Desktop</p>
