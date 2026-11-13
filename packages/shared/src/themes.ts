@@ -327,7 +327,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     name: "Ember",
     tagline: "Iron, soot, and a hand that means it.",
     description:
-      "Volcanic charcoal with ember-orange heat. Heavier, sharper, and forged for impact.",
+      "Charcoal and ember orange. Iron, soot, and a hand that means it.",
     previewGradient: "linear-gradient(135deg, #7a2f1f, #c15a2e 55%, #5b1711)",
     previewDisplayFont: '"Avenir Next Condensed", "Impact", "Arial Black", sans-serif',
     previewBodyFont: '"Optima", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif',
@@ -346,9 +346,9 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
   {
     id: "neon",
     name: "Neon",
-    tagline: "Electric, rebellious, and gloriously overclocked.",
+    tagline: "Wired hot and ready to defend a sovereign protopia.",
     description:
-      "Blue, purple, and cyan. Wired hot, moving fast, and ready to defend a sovereign protopia.",
+      "Blue, purple and cyan. Wired hot and ready to defend a sovereign protopia.",
     previewGradient: "linear-gradient(135deg, #3b82f6, #8b5cf6 55%, #06b6d4)",
     previewDisplayFont: '"Space Grotesk", "Manrope", system-ui, sans-serif',
     previewBodyFont: '"Manrope", system-ui, -apple-system, sans-serif',
@@ -371,7 +371,7 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
     name: "Midas",
     tagline: "A rescued scroll lit by candle and ambition.",
     description:
-      "Parchment, bronze, and old-world warmth. Elegant, ceremonial, and quietly grand.",
+      "Parchment and bronze. A rescued scroll lit by candle and ambition.",
     previewGradient: "linear-gradient(135deg, #7c5c38, #b08a48 55%, #5f4a32)",
     previewDisplayFont: '"Baskerville", "Didot", "Bodoni 72", "Palatino Linotype", serif',
     previewBodyFont: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif',
@@ -390,9 +390,9 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
   {
     id: "scriptorium",
     name: "Scriptorium",
-    tagline: "Warm paper, dark ink, and a mind finally left alone.",
+    tagline: "A lamp, a closed door, and time to think.",
     description:
-      "A low-blue-light editorial theme for long reading sessions. Vellum, walnut, and quietly dignified typography.",
+      "Warm paper and dark ink. A lamp, a closed door, and time to think.",
     previewGradient: "linear-gradient(135deg, #f4ead7, #d8c4a1 55%, #86684a)",
     previewDisplayFont: '"Baskerville", "Hoefler Text", "Iowan Old Style", "Palatino Linotype", Georgia, serif',
     previewBodyFont: '"Manrope", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif',
@@ -414,9 +414,9 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
   {
     id: "starship",
     name: "Starship",
-    tagline: "Bright command deck",
+    tagline: "Hull plating polished for first contact.",
     description:
-      "Cool silver surfaces, deep indigo controls, and crisp condensed type tuned for daylight.",
+      "Silver and indigo. Hull plating polished for first contact.",
     previewGradient:
       "radial-gradient(circle at 71% 22%, #faffff 0 7%, rgb(139 234 255 / 0.34) 8% 13%, transparent 14%), radial-gradient(ellipse 82% 58% at 50% 112%, #77f1ff 0%, #3a8ee8 30%, #3644b8 68%, #211c72 100%), linear-gradient(180deg, #fbffff 0%, #e9f8ff 35%, #c9e6ff 68%, #aabcf6 100%)",
     previewDisplayFont: '"Barlow Condensed", "Arial Narrow", sans-serif',
@@ -448,9 +448,9 @@ export const THEME_DEFINITIONS: readonly ThemeDefinition[] = [
   {
     id: "dark-star",
     name: "Dark Star",
-    tagline: "Night command deck",
+    tagline: "A command deck for your starship.",
     description:
-      "A midnight command deck lit by electric blue, orbital traces, and distant stars.",
+      "Midnight and electric blue. A command deck for your starship.",
     previewGradient:
       "radial-gradient(circle at 72% 28%, #d8f7ff 0 4%, transparent 5%), linear-gradient(145deg, #07090d 0%, #171a24 54%, #28405e 100%)",
     previewDisplayFont: '"Barlow Condensed", "Arial Narrow", sans-serif',
