@@ -192,14 +192,14 @@ function statusLabel(model: LocalAIModelViewState): string {
 function statusTone(status: string): string {
   switch (status) {
     case "available":
-      return "bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] text-[rgb(var(--theme-feedback-success-rgb))]";
+      return "bg-[rgb(var(--theme-feedback-success-rgb)/var(--theme-status-tint-opacity))] text-[rgb(var(--theme-feedback-success-rgb))]";
     case "downloading":
       return "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_16%,transparent)] text-[var(--theme-accent-secondary)]";
     case "error":
     case "unsupported":
-      return "bg-[rgb(var(--theme-feedback-danger-rgb)/0.12)] text-[rgb(var(--theme-feedback-danger-rgb))]";
+      return "bg-[rgb(var(--theme-feedback-danger-rgb)/var(--theme-status-tint-opacity))] text-[rgb(var(--theme-feedback-danger-rgb))]";
     case "paused":
-      return "bg-[rgb(var(--theme-feedback-warning-rgb)/0.16)] text-[rgb(var(--theme-feedback-warning-rgb))]";
+      return "bg-[rgb(var(--theme-feedback-warning-rgb)/var(--theme-status-tint-opacity))] text-[rgb(var(--theme-feedback-warning-rgb))]";
     default:
       return "bg-[var(--theme-bg-muted)] text-[var(--theme-text-muted)]";
   }
@@ -324,7 +324,7 @@ function LocalModelCard({
               </span>
             ) : null}
             {recommended ? (
-              <span className="rounded-full bg-[rgb(var(--theme-feedback-success-rgb)/0.12)] px-2 py-0.5 text-[0.6875rem] font-medium text-[rgb(var(--theme-feedback-success-rgb))]">
+              <span className="rounded-full bg-[rgb(var(--theme-feedback-success-rgb)/var(--theme-status-tint-opacity))] px-2 py-0.5 text-[0.6875rem] font-medium text-[rgb(var(--theme-feedback-success-rgb))]">
                 Recommended
               </span>
             ) : null}
@@ -550,7 +550,7 @@ export function ApiKeyInput({
           type="button"
           onClick={handleClear}
           disabled={saving}
-          className="rounded-lg px-3 py-1.5 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.1)] hover:text-[rgb(var(--theme-feedback-danger-rgb))]"
+          className="rounded-lg px-3 py-1.5 text-xs text-[color:var(--theme-text-muted)] transition-colors hover:bg-[rgb(var(--theme-feedback-danger-rgb)/var(--theme-status-tint-hover-opacity))] hover:text-[rgb(var(--theme-feedback-danger-rgb))]"
         >
           Clear
         </button>

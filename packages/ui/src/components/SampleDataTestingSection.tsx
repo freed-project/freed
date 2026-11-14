@@ -122,7 +122,7 @@ export function SampleDataTestingSection() {
               <p className="theme-feedback-text-danger text-xs leading-5">
                 Remove {formatSampleDataSummary(sampleDataSummary)}?
               </p>
-              <p className="mt-1 text-xs leading-5 text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">
+              <p className="mt-1 text-xs leading-5 text-[rgb(var(--theme-feedback-danger-rgb)/0.93)]">
                 Only internally marked sample records will be removed.
               </p>
               <div className="mt-3 flex gap-2">

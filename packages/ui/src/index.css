@@ -132,6 +132,11 @@ html[data-theme="neon"] {
   --theme-feedback-success-rgb: 157 202 166;
   --theme-feedback-warning-rgb: 213 185 151;
   --theme-feedback-danger-rgb: 229 173 166;
+  /* Tints behind status text: badges, status buttons and danger rows. Each theme keeps status
+     text at 4.5:1 on its tint over every surface, so lighter dark surfaces and the light themes
+     use less tint. */
+  --theme-status-tint-opacity: 0.12;
+  --theme-status-tint-hover-opacity: 0.18;
   --theme-icon-media: var(--theme-media-icon);
   --theme-icon-action: var(--theme-accent-secondary);
   --theme-icon-muted: var(--theme-text-soft);
@@ -280,6 +285,8 @@ html[data-theme="midas"] {
   --theme-feedback-success-rgb: 157 202 166;
   --theme-feedback-warning-rgb: 213 185 151;
   --theme-feedback-danger-rgb: 229 173 166;
+  --theme-status-tint-opacity: 0.08;
+  --theme-status-tint-hover-opacity: 0.1;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -537,6 +544,7 @@ html[data-theme="scriptorium"] {
   --theme-feedback-success-rgb: 52 99 64;
   --theme-feedback-warning-rgb: 108 81 49;
   --theme-feedback-danger-rgb: 143 58 51;
+  --theme-status-tint-hover-opacity: 0.12;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -665,6 +673,7 @@ html[data-theme="starship"] {
   --theme-feedback-success-rgb: 52 99 64;
   --theme-feedback-warning-rgb: 108 81 49;
   --theme-feedback-danger-rgb: 143 58 51;
+  --theme-status-tint-hover-opacity: 0.12;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -787,6 +796,7 @@ html[data-theme="dark-star"] {
   --theme-feedback-success-rgb: 157 202 166;
   --theme-feedback-warning-rgb: 213 185 151;
   --theme-feedback-danger-rgb: 229 173 166;
+  --theme-status-tint-hover-opacity: 0.12;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -2128,8 +2138,8 @@ html.freed-mobile-sidebar-open body {
 .theme-toolbar-button-success-active {
   cursor: pointer;
   border: 1px solid rgb(var(--theme-feedback-success-rgb) / 0.58);
-  background: rgb(var(--theme-feedback-success-rgb) / 0.12);
-  color: rgb(var(--theme-feedback-success-rgb) / 0.96);
+  background: rgb(var(--theme-feedback-success-rgb) / var(--theme-status-tint-opacity));
+  color: rgb(var(--theme-feedback-success-rgb));
   transition:
     color 0.18s ease,
     background-color 0.18s ease,
@@ -2138,7 +2148,7 @@ html.freed-mobile-sidebar-open body {
 
 @media (hover: hover) and (pointer: fine) {
   .theme-toolbar-button-success-active:hover {
-    background: rgb(var(--theme-feedback-success-rgb) / 0.18);
+    background: rgb(var(--theme-feedback-success-rgb) / var(--theme-status-tint-hover-opacity));
     border-color: rgb(var(--theme-feedback-success-rgb) / 0.72);
   }
 }
@@ -2690,19 +2700,19 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
 }
 
 .theme-status-pill-success {
-  background: rgb(var(--theme-feedback-success-rgb) / 0.12);
+  background: rgb(var(--theme-feedback-success-rgb) / var(--theme-status-tint-opacity));
   border-color: rgb(var(--theme-feedback-success-rgb) / 0.22);
   color: rgb(var(--theme-feedback-success-rgb));
 }
 
 .theme-status-pill-warning {
-  background: rgb(var(--theme-feedback-warning-rgb) / 0.12);
+  background: rgb(var(--theme-feedback-warning-rgb) / var(--theme-status-tint-opacity));
   border-color: rgb(var(--theme-feedback-warning-rgb) / 0.22);
   color: rgb(var(--theme-feedback-warning-rgb));
 }
 
 .theme-status-pill-danger {
-  background: rgb(var(--theme-feedback-danger-rgb) / 0.12);
+  background: rgb(var(--theme-feedback-danger-rgb) / var(--theme-status-tint-opacity));
   border-color: rgb(var(--theme-feedback-danger-rgb) / 0.22);
   color: rgb(var(--theme-feedback-danger-rgb));
 }
@@ -3343,7 +3353,7 @@ html[data-theme="scriptorium"] .theme-canvas-control {
 .theme-feedback-button-danger {
   border-radius: var(--button-radius);
   border: 1px solid rgb(var(--feedback-rgb) / 0.22);
-  background: rgb(var(--feedback-rgb) / 0.12);
+  background: rgb(var(--feedback-rgb) / var(--theme-status-tint-opacity));
   color: rgb(var(--feedback-rgb));
   transition:
     background-color 0.18s ease,
@@ -3353,7 +3363,7 @@ html[data-theme="scriptorium"] .theme-canvas-control {
 
 .theme-feedback-button-warning:hover,
 .theme-feedback-button-danger:hover {
-  background: rgb(var(--feedback-rgb) / 0.18);
+  background: rgb(var(--feedback-rgb) / var(--theme-status-tint-hover-opacity));
   border-color: rgb(var(--feedback-rgb) / 0.3);
 }
 
