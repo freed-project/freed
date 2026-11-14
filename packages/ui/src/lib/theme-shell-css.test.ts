@@ -80,6 +80,17 @@ const SHARED_PALETTES = ["neon", "midas", "ember", "scriptorium"] as const;
 /** Freed adapts these two from Vorton's `--aub-*` roles. */
 const ADAPTED_PALETTES = ["starship-light", "starship-dark"] as const;
 
+/**
+ * Status and destructive roles. Status text, badges and dots read `--theme-feedback-*-rgb`
+ * through the `--theme-icon-*` tokens; destructive is a separate, stronger red.
+ */
+const STATUS_ROLE_TOKENS: Record<string, readonly string[]> = {
+  success: ["--theme-success", "--theme-icon-success"],
+  warning: ["--theme-icon-warning"],
+  danger: ["--theme-icon-danger"],
+  destructive: ["--theme-destructive"],
+};
+
 /** Reference role to the Freed tokens that must carry it in Starship and Dark Star. */
 const ROLE_TOKENS: Record<string, readonly string[]> = {
   background: ["--theme-bg-root"],
@@ -96,12 +107,23 @@ const ROLE_TOKENS: Record<string, readonly string[]> = {
     "--theme-heading-accent-color",
     "--theme-button-primary-background",
   ],
-  accentForeground: ["--theme-button-primary-text"],
+  accentForeground: ["--theme-button-primary-text", "--theme-accent-foreground"],
   accentDecorative: ["--theme-accent-primary-tint", "--theme-accent-secondary-tint"],
   focusRing: ["--theme-focus-ring"],
   selection: ["--theme-selection"],
-  success: ["--theme-success"],
-  danger: ["--theme-destructive"],
+  ...STATUS_ROLE_TOKENS,
+};
+
+/**
+ * Reference roles the four shared palettes must also carry in Freed's own tokens. Their
+ * `--theme-*` palette check covers the status colors only as written in Vorton's stylesheet;
+ * this pins what Freed's consumers read. Freed's raised surface is `--theme-bg-elevated`, and
+ * flat accent fills carry `--theme-accent-foreground` (the primary button is a gradient there).
+ */
+const SHARED_ROLE_TOKENS: Record<string, readonly string[]> = {
+  surfaceRaised: ["--theme-bg-elevated"],
+  accentForeground: ["--theme-accent-foreground"],
+  ...STATUS_ROLE_TOKENS,
 };
 
 /**
@@ -135,10 +157,18 @@ const DECLARED_DIFFERENCES: Record<string, { freed: string; reason: string }> = 
     freed: "#86684a",
     reason: "D4: Scriptorium controls use the primary brown; Vorton's accent role is the secondary.",
   },
-  "starship-dark:surfaceRaised:--theme-bg-elevated": {
-    freed: "#343436",
+  "neon:--theme-bg-elevated": {
+    freed: "#20202d",
     reason:
-      "Vorton's raised role is the opaque header color, darker than its cards. Freed's elevated surface lifts menus and popovers above cards.",
+      "Freed's elevated surface is the raised role (surfaceRaised) for menus, popovers and dialogs. Vorton carries that role in --aub-surface-raised and leaves its own --theme-bg-elevated at the older, darker value.",
+  },
+  "midas:--theme-bg-elevated": {
+    freed: "#493c30",
+    reason: "Freed's elevated surface is the raised role; see neon:--theme-bg-elevated.",
+  },
+  "ember:--theme-bg-elevated": {
+    freed: "#38221c",
+    reason: "Freed's elevated surface is the raised role; see neon:--theme-bg-elevated.",
   },
   "starship-dark:accentDecorative:--theme-accent-secondary-tint": {
     freed: "#64d2ff",
@@ -262,6 +292,11 @@ describe("Vorton theme reference", () => {
         check(`${theme}:${token}`, `${theme} ${token}`, expected, freedValue(values, token));
       }
       check(`${theme}:accent:--theme-control-accent`, `${theme} accent (--theme-control-accent)`, roles.accent, freedValue(values, "--theme-control-accent"));
+      for (const [role, tokens] of Object.entries(SHARED_ROLE_TOKENS)) {
+        for (const token of tokens) {
+          check(`${theme}:${role}:${token}`, `${theme} ${role} (${token})`, roles[role], freedValue(values, token));
+        }
+      }
     }
     for (const theme of ADAPTED_PALETTES) {
       const values = freedTheme(theme);

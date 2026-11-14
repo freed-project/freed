@@ -19,7 +19,9 @@ html[data-theme="neon"] {
   --theme-bg-root: #0a0a0a;
   --theme-bg-deep: #0f0f15;
   --theme-bg-surface: #14141b;
-  --theme-bg-elevated: #15151e;
+  /* The raised step above a card, for menus, popovers, toasts and dialogs (reference role
+     surfaceRaised). */
+  --theme-bg-elevated: #20202d;
   --theme-bg-card: rgba(255, 255, 255, 0.035);
   --theme-bg-card-hover: rgba(255, 255, 255, 0.06);
   --theme-bg-input: rgba(255, 255, 255, 0.05);
@@ -55,6 +57,10 @@ html[data-theme="neon"] {
      other backgrounds, so a theme can set them apart. */
   --theme-selection-text: var(--theme-button-primary-text);
   --theme-toggle-knob: var(--theme-button-primary-text);
+  /* Text and marks on a flat accent fill (reference role accentForeground). The primary button
+     text stays separate because Neon, Midas, Ember and Scriptorium paint that button with a
+     gradient. */
+  --theme-accent-foreground: #000000;
 
   --theme-shell-rgb: 6 7 13;
   --theme-shell-background: linear-gradient(180deg, #090a11 0%, #0a0a0f 34%, #090909 100%);
@@ -118,12 +124,14 @@ html[data-theme="neon"] {
   --theme-header-shadow: 0 4px 30px rgb(0 0 0 / 0.5);
   --theme-overlay-scrim: rgb(0 0 0 / 0.62);
   --theme-code-background: rgb(255 255 255 / 0.03);
-  --theme-destructive: #ef4444;
-  --theme-success: #22c55e;
+  /* The dark status family and destructive red shared with Dark Star, Vorton and Vorteo.
+     Destructive is a stronger red than status danger, for destructive actions. */
+  --theme-destructive: #ff7168;
+  --theme-success: #9dcaa6;
   --theme-feedback-info-rgb: var(--theme-accent-secondary-rgb);
-  --theme-feedback-success-rgb: 34 197 94;
-  --theme-feedback-warning-rgb: 245 158 11;
-  --theme-feedback-danger-rgb: 239 68 68;
+  --theme-feedback-success-rgb: 157 202 166;
+  --theme-feedback-warning-rgb: 213 185 151;
+  --theme-feedback-danger-rgb: 229 173 166;
   --theme-icon-media: var(--theme-media-icon);
   --theme-icon-action: var(--theme-accent-secondary);
   --theme-icon-muted: var(--theme-text-soft);
@@ -195,7 +203,7 @@ html[data-theme="midas"] {
   --theme-bg-root: #2b231d;
   --theme-bg-deep: #352b23;
   --theme-bg-surface: #3e3229;
-  --theme-bg-elevated: rgb(55 45 36);
+  --theme-bg-elevated: #493c30;
   --theme-bg-card: rgb(243 233 218 / 0.04);
   --theme-bg-card-hover: rgb(243 233 218 / 0.07);
   --theme-bg-input: rgb(243 233 218 / 0.06);
@@ -265,10 +273,13 @@ html[data-theme="midas"] {
   );
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.05);
+  --theme-accent-foreground: #000000;
+  --theme-destructive: #ff7168;
+  --theme-success: #9dcaa6;
   --theme-feedback-info-rgb: 176 138 72;
-  --theme-feedback-success-rgb: 122 156 104;
-  --theme-feedback-warning-rgb: 196 154 93;
-  --theme-feedback-danger-rgb: 171 86 74;
+  --theme-feedback-success-rgb: 157 202 166;
+  --theme-feedback-warning-rgb: 213 185 151;
+  --theme-feedback-danger-rgb: 229 173 166;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -310,7 +321,7 @@ html[data-theme="ember"] {
   --theme-bg-root: #180f0d;
   --theme-bg-deep: #221411;
   --theme-bg-surface: #2a1a16;
-  --theme-bg-elevated: rgb(39 24 20);
+  --theme-bg-elevated: #38221c;
   --theme-bg-card: rgb(255 237 220 / 0.03);
   --theme-bg-card-hover: rgb(255 237 220 / 0.05);
   --theme-bg-input: rgb(255 237 220 / 0.05);
@@ -380,10 +391,13 @@ html[data-theme="ember"] {
   );
   --theme-card-top-glint: rgb(255 255 255 / 0.04);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.05);
+  --theme-accent-foreground: #000000;
+  --theme-destructive: #ff7168;
+  --theme-success: #9dcaa6;
   --theme-feedback-info-rgb: 193 90 46;
-  --theme-feedback-success-rgb: 112 155 91;
-  --theme-feedback-warning-rgb: 215 142 78;
-  --theme-feedback-danger-rgb: 197 92 82;
+  --theme-feedback-success-rgb: 157 202 166;
+  --theme-feedback-warning-rgb: 213 185 151;
+  --theme-feedback-danger-rgb: 229 173 166;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -515,12 +529,14 @@ html[data-theme="scriptorium"] {
   --theme-code-background: rgb(255 251 244 / 0.94);
   --theme-selection: rgb(176 138 97 / 0.24);
   --theme-focus-ring: rgb(132 100 68 / 0.35);
-  --theme-destructive: #b74f43;
-  --theme-success: #2f7a57;
+  /* The light status family and destructive red shared with Starship, Vorton and Vorteo. */
+  --theme-accent-foreground: #ffffff;
+  --theme-destructive: #b3261e;
+  --theme-success: #346340;
   --theme-feedback-info-rgb: 134 104 74;
-  --theme-feedback-success-rgb: 47 122 87;
-  --theme-feedback-warning-rgb: 176 138 97;
-  --theme-feedback-danger-rgb: 183 79 67;
+  --theme-feedback-success-rgb: 52 99 64;
+  --theme-feedback-warning-rgb: 108 81 49;
+  --theme-feedback-danger-rgb: 143 58 51;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -626,9 +642,9 @@ html[data-theme="starship"] {
   --theme-logo-spectrum: linear-gradient(to right, #16163a, #2997ff);
   --theme-media-icon: #0a5fbd;
   --theme-hero-media-icon: #0a5fbd;
-  --theme-status-complete-border: rgb(8 115 59 / 0.24);
-  --theme-status-complete-bg: rgb(20 163 82 / 0.1);
-  --theme-status-complete-text: #08733b;
+  --theme-status-complete-border: rgb(52 99 64 / 0.24);
+  --theme-status-complete-bg: rgb(52 99 64 / 0.1);
+  --theme-status-complete-text: #346340;
   --theme-status-active-progress: #5f5f9c;
   --theme-card-top-glint: rgb(255 255 255 / 0.24);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.34);
@@ -642,12 +658,13 @@ html[data-theme="starship"] {
   --theme-code-background: rgb(244 244 250 / 0.92);
   --theme-selection: rgb(41 151 255 / 0.18);
   --theme-focus-ring: #0a5fbd;
+  --theme-accent-foreground: #ffffff;
   --theme-destructive: #b3261e;
-  --theme-success: #08733b;
+  --theme-success: #346340;
   --theme-feedback-info-rgb: 10 95 189;
-  --theme-feedback-success-rgb: 8 115 59;
-  --theme-feedback-warning-rgb: 118 80 0;
-  --theme-feedback-danger-rgb: 179 38 30;
+  --theme-feedback-success-rgb: 52 99 64;
+  --theme-feedback-warning-rgb: 108 81 49;
+  --theme-feedback-danger-rgb: 143 58 51;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
@@ -692,7 +709,7 @@ html[data-theme="dark-star"] {
   --theme-bg-root: #222222;
   --theme-bg-deep: #29292b;
   --theme-bg-surface: #2c2c2e;
-  --theme-bg-elevated: #343436;
+  --theme-bg-elevated: #38383a;
   --theme-bg-card: #2c2c2e;
   --theme-bg-card-hover: #343436;
   --theme-bg-input: #29292b;
@@ -747,9 +764,9 @@ html[data-theme="dark-star"] {
   --theme-logo-spectrum: linear-gradient(to right, #64d2ff, #2997ff, #9b78ff);
   --theme-media-icon: #64d2ff;
   --theme-hero-media-icon: #2997ff;
-  --theme-status-complete-border: rgb(48 209 88 / 0.3);
-  --theme-status-complete-bg: rgb(48 209 88 / 0.12);
-  --theme-status-complete-text: #30d158;
+  --theme-status-complete-border: rgb(157 202 166 / 0.3);
+  --theme-status-complete-bg: rgb(157 202 166 / 0.12);
+  --theme-status-complete-text: #9dcaa6;
   --theme-status-active-progress: #aeaeb2;
   --theme-card-top-glint: rgb(255 255 255 / 0.03);
   --theme-card-top-glint-hover: rgb(255 255 255 / 0.045);
@@ -763,12 +780,13 @@ html[data-theme="dark-star"] {
   --theme-code-background: #29292b;
   --theme-selection: rgb(41 151 255 / 0.32);
   --theme-focus-ring: #64d2ff;
-  --theme-destructive: #ff453a;
-  --theme-success: #30d158;
+  --theme-accent-foreground: #000000;
+  --theme-destructive: #ff7168;
+  --theme-success: #9dcaa6;
   --theme-feedback-info-rgb: 41 151 255;
-  --theme-feedback-success-rgb: 48 209 88;
-  --theme-feedback-warning-rgb: 255 214 10;
-  --theme-feedback-danger-rgb: 255 69 58;
+  --theme-feedback-success-rgb: 157 202 166;
+  --theme-feedback-warning-rgb: 213 185 151;
+  --theme-feedback-danger-rgb: 229 173 166;
   --theme-media-facebook: var(--theme-media-icon);
   --theme-media-instagram: var(--theme-media-icon);
   --theme-media-x: var(--theme-media-icon);
