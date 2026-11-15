@@ -168,7 +168,8 @@ html[data-theme="neon"] {
   );
 
   --theme-selection: rgb(var(--theme-accent-secondary-tint-rgb) / 0.35);
-  --theme-focus-ring: rgb(var(--theme-accent-secondary-rgb) / 0.55);
+  /* Focus rings are the opaque accent so they reach 3:1 on every surface (Vorton ef7f386). */
+  --theme-focus-ring: var(--theme-accent-secondary);
   /* The accent role: Neon's violet for controls, checkboxes, sliders and selected rings. */
   --theme-control-accent: var(--theme-accent-secondary);
   --theme-control-accent-rgb: var(--theme-accent-secondary-rgb);
@@ -549,7 +550,7 @@ html[data-theme="scriptorium"] {
   --theme-overlay-scrim: rgb(48 30 17 / 0.2);
   --theme-code-background: rgb(255 251 244 / 0.94);
   --theme-selection: rgb(176 138 97 / 0.24);
-  --theme-focus-ring: rgb(132 100 68 / 0.35);
+  --theme-focus-ring: var(--theme-accent-primary);
   /* The accent role is the primary brown. As text it reads 4.30:1 on the page and 3.93:1 on the
      deep surface, so accent text uses the darker gradient brown, 5.49:1 or better. */
   --theme-control-accent: var(--theme-accent-primary);
@@ -2202,7 +2203,7 @@ html.freed-mobile-sidebar-open body {
   }
 
   :is(.theme-topbar, .theme-attached-topbar) .theme-toolbar-icon-button:focus-visible {
-    outline: 2px solid var(--theme-accent-secondary);
+    outline: 2px solid var(--theme-focus-ring);
     outline-offset: 2px;
   }
 }
@@ -2370,14 +2371,14 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
   touch-action: pan-y;
 }
 .friend-closeness-slider:active { cursor: grabbing; }
-.friend-closeness-slider:focus-visible { outline: 2px solid var(--theme-accent-secondary); outline-offset: 2px; border-radius: 0.6rem; }
+.friend-closeness-slider:focus-visible { outline: 2px solid var(--theme-focus-ring); outline-offset: 2px; border-radius: 0.6rem; }
 .friend-closeness-slider::-webkit-slider-runnable-track { height: 1.75rem; background: transparent; }
 .friend-closeness-slider::-moz-range-track { height: 1.75rem; background: transparent; }
 .friend-closeness-slider::-webkit-slider-thumb { appearance: none; width: var(--care-handle-width); height: 1.75rem; border: 0; background: transparent; }
 .friend-closeness-slider::-moz-range-thumb { width: var(--care-handle-width); height: 1.75rem; border: 0; background: transparent; }
 
 .theme-toolbar-density-slider:focus-visible {
-  outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
+  outline: 2px solid var(--theme-focus-ring);
   outline-offset: 3px;
   border-radius: 999px;
 }
@@ -2452,7 +2453,7 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
 }
 
 .theme-toolbar-zoom-step:focus-visible {
-  outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
+  outline: 2px solid var(--theme-focus-ring);
   outline-offset: -2px;
 }
 
@@ -2542,7 +2543,7 @@ html:is([data-theme="midas"], [data-theme="starship"], [data-theme="dark-star"])
 }
 
 .theme-toolbar-select-control select:focus-visible {
-  outline: 2px solid rgb(var(--theme-accent-secondary-rgb) / 0.65);
+  outline: 2px solid var(--theme-focus-ring);
   outline-offset: 3px;
   border-radius: calc(var(--button-radius) - 2px);
 }
@@ -3418,12 +3419,6 @@ html[data-theme="scriptorium"] .theme-canvas-control {
 input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--theme-control-accent);
-}
-
-input[type="checkbox"]:focus-visible,
-input[type="radio"]:focus-visible {
-  outline: 2px solid rgb(var(--theme-control-accent-rgb) / 0.28);
-  outline-offset: 2px;
 }
 
 .app-theme-shell::-webkit-scrollbar,

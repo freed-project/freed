@@ -149,11 +149,6 @@ const DECLARED_DIFFERENCES: Record<string, { freed: string; reason: string }> = 
     freed: "rgb(249 241 226 / 0.985)",
     reason: "D1: Freed keeps see-through glass headers.",
   },
-  "neon:--theme-control-accent": {
-    freed: "#8b5cf6",
-    reason:
-      "Freed's control accent carries the accent role, Neon's violet (owner decision 2026-11-14). Vorton's own --theme-control-accent still holds the text color; Vorton's interface reads --aub-accent and nothing reads its control accent.",
-  },
   "starship-dark:accentDecorative:--theme-accent-secondary-tint": {
     freed: "#64d2ff",
     reason: "Dark Star's secondary accent is Freed's cyan; its tints follow it.",

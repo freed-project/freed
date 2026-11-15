@@ -236,7 +236,7 @@ function ProviderSelector({
               type="button"
               aria-pressed={selected}
               onClick={() => onChange(option.id)}
-              className={`min-h-[118px] rounded-lg border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--theme-accent-secondary)_38%,transparent)] ${
+              className={`min-h-[118px] rounded-lg border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-[color:var(--theme-focus-ring)] ${
                 selected
                   ? "border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_54%,var(--theme-border-subtle))] bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_12%,var(--theme-bg-surface))]"
                   : "border-[var(--theme-border-subtle)] bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_78%,transparent)] hover:border-[var(--theme-border-strong)] hover:bg-[var(--theme-bg-muted)]"
