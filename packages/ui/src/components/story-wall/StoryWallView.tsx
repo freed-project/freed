@@ -254,7 +254,7 @@ function ArchiveInstructionsModal({
       >
         <div className="theme-dialog-divider flex items-start justify-between gap-4 border-b pb-4">
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent-text)]">
               Instagram archive
             </p>
             <h2 id="story-wall-archive-title" className="text-xl font-semibold text-[var(--theme-text-primary)]">
@@ -510,7 +510,7 @@ export function StoryWallView({
         {!isSettings ? (
           <header className="theme-dialog-divider flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent)]">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent-text)]">
                 Story Wall
               </div>
               <h1 className="text-3xl font-semibold leading-tight text-[var(--theme-text-primary)]">
@@ -527,7 +527,7 @@ export function StoryWallView({
           <section className={PANEL_CLASS} data-testid="story-wall-disabled-gate">
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent-text)]">
                   Private setup
                 </p>
                 <h2 className="mt-2 text-xl font-semibold leading-tight text-[var(--theme-text-primary)]">

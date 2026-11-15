@@ -53,10 +53,12 @@ html[data-theme="neon"] {
   --theme-accent-secondary-tint-rgb: var(--theme-accent-secondary-rgb);
   --theme-control-accent-tint-rgb: var(--theme-control-accent-rgb);
   --theme-feedback-info-tint-rgb: var(--theme-feedback-info-rgb);
-  /* Text on the selection wash and the toggle knob default to the accent-fill text, but sit on
-     other backgrounds, so a theme can set them apart. */
-  --theme-selection-text: var(--theme-button-primary-text);
-  --theme-toggle-knob: var(--theme-button-primary-text);
+  /* Text on the selection wash, the toggle knob and avatar initials sit on dark surfaces, not
+     on the accent, so they stay white while Neon's primary button text is black. A theme can set
+     them apart. */
+  --theme-selection-text: #ffffff;
+  --theme-toggle-knob: #ffffff;
+  --theme-avatar-text: #ffffff;
   /* Text and marks on a flat accent fill (reference role accentForeground). The primary button
      text stays separate because Neon, Midas, Ember and Scriptorium paint that button with a
      gradient. */
@@ -76,7 +78,8 @@ html[data-theme="neon"] {
   --theme-button-primary-shadow-hover:
     0 0 16px rgb(var(--theme-accent-secondary-tint-rgb) / 0.22),
     0 0 28px rgb(var(--theme-accent-secondary-tint-rgb) / 0.12);
-  --theme-button-primary-text: #ffffff;
+  /* Black reads 5.71:1 and 4.96:1 on the gradient stops, where white reads 3.68:1 and 4.23:1. */
+  --theme-button-primary-text: #000000;
   --theme-button-secondary-background: rgb(255 255 255 / 0.02);
   --theme-button-secondary-hover: rgb(var(--theme-accent-secondary-tint-rgb) / 0.1);
   --theme-gradient-text-start: var(--theme-accent-primary);
@@ -166,8 +169,15 @@ html[data-theme="neon"] {
 
   --theme-selection: rgb(var(--theme-accent-secondary-tint-rgb) / 0.35);
   --theme-focus-ring: rgb(var(--theme-accent-secondary-rgb) / 0.55);
-  --theme-control-accent: var(--theme-heading-accent-color);
+  /* The accent role: Neon's violet for controls, checkboxes, sliders and selected rings. */
+  --theme-control-accent: var(--theme-accent-secondary);
   --theme-control-accent-rgb: var(--theme-accent-secondary-rgb);
+  /* The control accent and the primary accent as text. They follow those accents except where
+     the accent reads below 4.5:1 on a surface it sits on: Neon's violet reads 4.33:1 on its
+     surface and 3.80:1 raised, so its accent text keeps the heading color, and Scriptorium
+     uses its darker gradient brown. */
+  --theme-control-accent-text: var(--theme-heading-accent-color);
+  --theme-accent-primary-text: var(--theme-accent-primary);
 
   --theme-glow-sm:
     0 0 12px rgb(var(--theme-accent-secondary-tint-rgb) / 0.18),
@@ -253,6 +263,7 @@ html[data-theme="midas"] {
   --theme-button-primary-shadow: 0 10px 28px rgb(176 138 72 / 0.22);
   --theme-button-primary-shadow-hover:
     0 0 14px rgb(176 138 72 / 0.16), 0 0 24px rgb(176 138 72 / 0.1);
+  --theme-button-primary-text: #ffffff;
   --theme-gradient-text-start: #f0dec2;
   --theme-gradient-text-mid: #d0b89c;
   --theme-gradient-text-end: #b08a48;
@@ -373,6 +384,7 @@ html[data-theme="ember"] {
   --theme-button-primary-shadow: 0 10px 28px rgb(193 90 46 / 0.24);
   --theme-button-primary-shadow-hover:
     0 0 15px rgb(193 90 46 / 0.18), 0 0 26px rgb(193 90 46 / 0.11);
+  --theme-button-primary-text: #ffffff;
   --theme-gradient-text-start: #f4c3a2;
   --theme-gradient-text-mid: #d9895a;
   --theme-gradient-text-end: #b44f2f;
@@ -501,6 +513,8 @@ html[data-theme="scriptorium"] {
   --theme-button-primary-shadow-hover:
     0 0 10px rgb(134 104 74 / 0.055), 0 0 18px rgb(134 104 74 / 0.035);
   --theme-button-primary-text: #fffaf2;
+  --theme-selection-text: var(--theme-button-primary-text);
+  --theme-toggle-knob: var(--theme-button-primary-text);
   --theme-button-secondary-background: rgb(84 58 35 / 0.03);
   --theme-button-secondary-hover: rgb(84 58 35 / 0.06);
   --theme-gradient-text-start: #6e5239;
@@ -536,6 +550,11 @@ html[data-theme="scriptorium"] {
   --theme-code-background: rgb(255 251 244 / 0.94);
   --theme-selection: rgb(176 138 97 / 0.24);
   --theme-focus-ring: rgb(132 100 68 / 0.35);
+  /* The accent role is the primary brown. As text it reads 4.30:1 on the page and 3.93:1 on the
+     deep surface, so accent text uses the darker gradient brown, 5.49:1 or better. */
+  --theme-control-accent: var(--theme-accent-primary);
+  --theme-control-accent-text: var(--theme-gradient-text-start);
+  --theme-accent-primary-text: var(--theme-gradient-text-start);
   /* The light status family and destructive red shared with Starship, Vorton and Vorteo. */
   --theme-accent-foreground: #ffffff;
   --theme-destructive: #b3261e;
@@ -856,8 +875,6 @@ html[data-theme="dark-star"] {
   --color-text-secondary: var(--theme-text-secondary);
   --color-text-muted: var(--theme-text-muted);
   --theme-heading-accent: var(--theme-heading-accent-color);
-  --theme-control-accent: var(--theme-heading-accent-color);
-  --theme-control-accent-rgb: var(--theme-accent-secondary-rgb);
   --theme-hero-accent-1: var(--theme-accent-primary);
   --theme-hero-accent-2: var(--theme-accent-secondary);
   --theme-hero-accent-3: var(--theme-accent-tertiary);

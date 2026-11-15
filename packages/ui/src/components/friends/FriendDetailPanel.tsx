@@ -116,7 +116,7 @@ function ProfileDescription({ text }: { text: string }) {
       {(truncated || expanded) && (
         <button type="button" aria-expanded={expanded} aria-controls={id}
           onClick={() => setExpanded(value => !value)}
-          className="mt-1 text-xs text-[color:var(--theme-accent-primary)] hover:underline focus-visible:underline">
+          className="mt-1 text-xs text-[color:var(--theme-accent-primary-text)] hover:underline focus-visible:underline">
           {expanded ? "Show less" : "Show more"}
         </button>
       )}
@@ -181,7 +181,7 @@ export function FriendDetailPanel({
                 key={`${src.platform}-${src.authorId}`}
                 type="button"
                 onClick={() => onSelectSource(src)}
-                className="theme-chip inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 py-1 text-xs text-[color:var(--theme-accent-primary)] transition-colors hover:bg-[color:var(--theme-accent-glow)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-current"
+                className="theme-chip inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 py-1 text-xs text-[color:var(--theme-accent-primary-text)] transition-colors hover:bg-[color:var(--theme-accent-glow)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-current"
                 title={`Select ${providerLabel(src.platform)} profile: ${src.handle ?? src.displayName ?? friend.name}`}
               >
                 {platformIcons[src.platform]}

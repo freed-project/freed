@@ -9,7 +9,7 @@ export function RssPlanetDetail({ url, sourceVersion, onBack }: {
   const platform = usePlatform();
   return <section className="p-4 space-y-4">
     <button type="button" className="btn-secondary" onClick={onBack}>Back</button>
-    <p className="text-xs text-[color:var(--theme-accent-primary)]">RSS feed</p>
+    <p className="text-xs text-[color:var(--theme-accent-primary-text)]">RSS feed</p>
     <h2 className="text-lg font-semibold">{feed?.title || "RSS feed"}</h2>
     {loading ? <p>Loading feed...</p> : error ? <p role="alert">{error}</p> : <>
       <p className="break-words text-sm text-[color:var(--theme-text-muted)]">{url}</p>

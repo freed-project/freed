@@ -188,7 +188,7 @@ export function AccountDetailPanel({
             </p>
             {linkedPerson ? (
               <button type="button" onClick={() => onOpenPerson(linkedPerson.id)}
-                className="mt-2 rounded text-xs text-[color:var(--theme-accent-primary)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-current">
+                className="mt-2 rounded text-xs text-[color:var(--theme-accent-primary-text)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-current">
                 Identity: {personName(linkedPerson)}
               </button>
             ) : (

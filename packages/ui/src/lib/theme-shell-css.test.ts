@@ -149,26 +149,10 @@ const DECLARED_DIFFERENCES: Record<string, { freed: string; reason: string }> = 
     freed: "rgb(249 241 226 / 0.985)",
     reason: "D1: Freed keeps see-through glass headers.",
   },
-  "neon:accent:--theme-control-accent": {
-    freed: "#f7f7fb",
-    reason: "D4: Neon controls use the text color in Freed; Vorton's accent role is violet.",
-  },
-  "scriptorium:accent:--theme-control-accent": {
-    freed: "#86684a",
-    reason: "D4: Scriptorium controls use the primary brown; Vorton's accent role is the secondary.",
-  },
-  "neon:--theme-bg-elevated": {
-    freed: "#20202d",
+  "neon:--theme-control-accent": {
+    freed: "#8b5cf6",
     reason:
-      "Freed's elevated surface is the raised role (surfaceRaised) for menus, popovers and dialogs. Vorton carries that role in --aub-surface-raised and leaves its own --theme-bg-elevated at the older, darker value.",
-  },
-  "midas:--theme-bg-elevated": {
-    freed: "#493c30",
-    reason: "Freed's elevated surface is the raised role; see neon:--theme-bg-elevated.",
-  },
-  "ember:--theme-bg-elevated": {
-    freed: "#38221c",
-    reason: "Freed's elevated surface is the raised role; see neon:--theme-bg-elevated.",
+      "Freed's control accent carries the accent role, Neon's violet (owner decision 2026-11-14). Vorton's own --theme-control-accent still holds the text color; Vorton's interface reads --aub-accent and nothing reads its control accent.",
   },
   "starship-dark:accentDecorative:--theme-accent-secondary-tint": {
     freed: "#64d2ff",
