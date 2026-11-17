@@ -73,7 +73,7 @@ export function AuthorIdentityLink({
     <button
       type="button"
       data-testid={testId}
-      className={`rounded-sm text-left underline-offset-4 transition-colors hover:text-[color:var(--theme-accent-primary)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--theme-accent-primary)] ${className}`}
+      className={`rounded-sm text-left underline-offset-4 transition-colors hover:text-[color:var(--theme-accent-primary-text)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-[color:var(--theme-accent-primary)] ${className}`}
       onPointerEnter={showProfileTooltip ? warm : undefined}
       onFocus={showProfileTooltip ? warm : undefined}
       onKeyDown={(event) => event.stopPropagation()}

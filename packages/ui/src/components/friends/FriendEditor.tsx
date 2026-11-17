@@ -805,7 +805,7 @@ export function FriendEditor({
                     <span
                       className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors ${
                         isSourceLinked(c)
-                          ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-accent-secondary)] text-white"
+                          ? "border-[color:var(--theme-border-strong)] bg-[color:var(--theme-accent-secondary)] text-[var(--theme-accent-foreground)]"
                           : "border-[color:var(--theme-border-subtle)]"
                       }`}
                       aria-hidden

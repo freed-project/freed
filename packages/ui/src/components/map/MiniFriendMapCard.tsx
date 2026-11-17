@@ -63,7 +63,7 @@ export function MiniFriendMapCard({
       </div> : resolvingCount > 0 ? (
         <LoadingState message="Locating profile" className="h-32" />
       ) : null}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 transition-colors group-hover:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)] group-focus-visible:bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.12)]">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 transition-colors group-hover:bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.12)] group-focus-visible:bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.12)]">
         <div className="min-w-0 w-full">
           <p className="text-[0.6875rem] font-medium uppercase tracking-[0.18em] text-[color:var(--theme-accent-secondary)]">
             Last seen

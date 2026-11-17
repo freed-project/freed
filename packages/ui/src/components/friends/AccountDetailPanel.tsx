@@ -188,7 +188,7 @@ export function AccountDetailPanel({
             </p>
             {linkedPerson ? (
               <button type="button" onClick={() => onOpenPerson(linkedPerson.id)}
-                className="mt-2 rounded text-xs text-[color:var(--theme-accent-primary)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-current">
+                className="mt-2 rounded text-xs text-[color:var(--theme-accent-primary-text)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-current">
                 Identity: {personName(linkedPerson)}
               </button>
             ) : (
@@ -376,7 +376,7 @@ export function AccountDetailPanel({
                       </p>
                     </div>
                     {suggestionIds.has(person.id) ? (
-                      <span className="rounded-full bg-[color:rgb(var(--theme-feedback-success-rgb)/0.16)] px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-[color:rgb(var(--theme-feedback-success-rgb))]">
+                      <span className="rounded-full bg-[color:rgb(var(--theme-feedback-success-rgb)/var(--theme-status-tint-opacity))] px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-[0.12em] text-[color:rgb(var(--theme-feedback-success-rgb))]">
                         Suggested
                       </span>
                     ) : null}

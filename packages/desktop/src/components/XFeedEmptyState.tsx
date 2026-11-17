@@ -66,7 +66,7 @@ export function XFeedEmptyState() {
   if (activeFilter.platform !== "x") {
     return (
       <>
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)]">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.14)]">
           <span className="text-2xl">📡</span>
         </div>
         <p className="text-lg font-medium mb-2">{EMPTY_PROVIDER_FEED_COPY.title}</p>
@@ -80,7 +80,7 @@ export function XFeedEmptyState() {
   if (xAuth.isAuthenticated) {
     return (
       <>
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)]">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.14)]">
           <XIcon />
         </div>
         <p className="text-lg font-medium mb-2">{EMPTY_PROVIDER_FEED_COPY.title}</p>
@@ -127,7 +127,7 @@ export function XFeedEmptyState() {
   // X not connected — invite to settings
   return (
     <>
-        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.14)]">
+        <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.14)]">
           <XIcon />
         </div>
       <p className="text-lg font-medium mb-2">Connect X / Twitter</p>

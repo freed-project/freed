@@ -58,7 +58,7 @@ export function ScraperWindowModeControl({
               onClick={() => onChange(option.mode)}
               className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
                 active
-                  ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.12)]"
+                  ? "border-[var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.12)]"
                   : "border-[var(--theme-border-subtle)] bg-[var(--theme-bg-muted)] hover:bg-[var(--theme-bg-card)]"
               }`}
             >

@@ -161,7 +161,7 @@ function SidebarNavRow({
 }: SidebarNavRowProps) {
   const hasTrailingSlot = count || menu;
   const rowToneClass = active
-    ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+    ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
     : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]";
   const primaryToneClass = active
     ? "text-[color:var(--theme-text-primary)]"
@@ -466,7 +466,7 @@ function FeedContextMenu({
         )}
         <button
           onClick={onUnsubscribe}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[rgb(var(--theme-feedback-danger-rgb))] hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.1)] hover:text-[rgb(var(--theme-feedback-danger-rgb))] transition-colors text-left"
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-[rgb(var(--theme-feedback-danger-rgb))] hover:bg-[rgb(var(--theme-feedback-danger-rgb)/var(--theme-status-tint-hover-opacity))] hover:text-[rgb(var(--theme-feedback-danger-rgb))] transition-colors text-left"
         >
           <svg className="w-3.5 h-3.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 4.411m0 0L21 21" />
@@ -558,7 +558,7 @@ function SourceContextMenu({
             data-testid={`source-menu-sync-${sourceKey}`}
             className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors text-left ${
               syncInitiated
-                ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-accent-secondary)]"
+                ? "bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[color:var(--theme-accent-secondary)]"
                 : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
             }`}
           >
@@ -1252,7 +1252,7 @@ export function Sidebar({
           data-testid={args.testId}
           className={`group/compact relative flex aspect-square w-full items-center justify-center overflow-visible rounded-[var(--card-radius)] border transition-all ${
             args.active
-              ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
+              ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[color:var(--theme-text-primary)]"
               : "border-transparent text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
         }`}
         aria-label={args.label}
@@ -1556,7 +1556,7 @@ export function Sidebar({
                   count={rowCountsVisible && (pendingMatchCount > 0 || friendCount > 0) ? (
                     <>
                       {pendingMatchCount > 0 ? (
-                        <span className="rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.22)] px-1.5 py-0.5 font-medium text-[var(--theme-text-primary)]">
+                        <span className="rounded-full bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.22)] px-1.5 py-0.5 font-medium text-[var(--theme-text-primary)]">
                           {fmt(pendingMatchCount)}
                         </span>
                       ) : null}
@@ -2109,7 +2109,7 @@ function TagTreeNode({
           onClick={onClick}
           className={`flex-1 flex items-center gap-2 pl-3 pr-1 py-1.5 rounded-lg text-xs transition-all text-left ${
             active
-              ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
+              ? "bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
               : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-bg-muted)] hover:text-[color:var(--theme-text-primary)]"
           }`}
         >

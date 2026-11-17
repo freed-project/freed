@@ -25,7 +25,7 @@ export function SettingsToggle({
       onClick={() => {
         if (!disabled) onChange(!checked);
       }}
-      className="group flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[rgb(var(--theme-control-accent-rgb)/0.08)] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
+      className="group flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-[rgb(var(--theme-control-accent-tint-rgb)/0.08)] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
     >
       <div
         aria-hidden="true"
@@ -36,7 +36,7 @@ export function SettingsToggle({
         }`}
       >
         <span
-          className={`block h-4 w-4 rounded-full border border-[rgb(var(--theme-control-accent-rgb)/0.12)] bg-[var(--theme-button-primary-text)] shadow-[0_1px_3px_rgb(0_0_0_/_0.22)] transition-transform ${
+          className={`block h-4 w-4 rounded-full border border-[rgb(var(--theme-control-accent-tint-rgb)/0.12)] bg-[var(--theme-toggle-knob)] shadow-[0_1px_3px_rgb(0_0_0_/_0.22)] transition-transform ${
             checked ? "translate-x-4" : "translate-x-0"
           }`}
         />

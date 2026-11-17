@@ -113,7 +113,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       "bg-[var(--theme-bg-elevated)] ring-1 ring-[rgb(var(--theme-feedback-success-rgb)/0.3)] border-[rgb(var(--theme-feedback-success-rgb)/0.3)]",
     error:
       "bg-[var(--theme-bg-elevated)] ring-1 ring-[rgb(var(--theme-feedback-danger-rgb)/0.3)] border-[rgb(var(--theme-feedback-danger-rgb)/0.3)]",
-    info: "bg-[var(--theme-bg-elevated)] ring-1 ring-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]",
+    info: "bg-[var(--theme-bg-elevated)] ring-1 ring-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_30%,transparent)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_30%,transparent)]",
   }[toast.type];
 
   const textColor = {

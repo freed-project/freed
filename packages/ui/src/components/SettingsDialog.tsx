@@ -1593,7 +1593,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                         onClick={() => handleReadingChange({ focusIntensity: level })}
                         className={`flex-1 py-1.5 rounded-lg text-sm capitalize transition-colors border ${
                           display.reading.focusIntensity === level
-                            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]"
+                            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_30%,transparent)]"
                             : "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-text-muted hover:text-text-primary border-transparent"
                         }`}
                       >
@@ -1614,7 +1614,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                       onClick={() => handleDisplayChange({ animationIntensity: option.value })}
                       className={`flex-1 rounded-lg border py-1.5 text-sm transition-colors ${
                         display.animationIntensity === option.value
-                          ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary)_30%,transparent)]"
+                          ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_20%,transparent)] text-[var(--theme-accent-secondary)] border-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_30%,transparent)]"
                           : "bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)] text-text-muted hover:text-text-primary border-transparent"
                       }`}
                     >
@@ -1972,11 +1972,11 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
                     <p className="theme-feedback-text-danger text-sm">
                       {clearingSampleData ? "Clearing sample data..." : "Clear sample data"}
                     </p>
-                    <p className="mt-0.5 text-xs text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">
+                    <p className="mt-0.5 text-xs text-[rgb(var(--theme-feedback-danger-rgb)/0.93)]">
                       Removes only internally marked sample records: {formatSampleDataSummary(sampleDataSummary)}
                     </p>
                   </div>
-                  <svg className="ml-3 h-4 w-4 shrink-0 text-[rgb(var(--theme-feedback-danger-rgb)/0.56)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="ml-3 h-4 w-4 shrink-0 text-[rgb(var(--theme-feedback-danger-rgb)/0.67)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-8 0h10" />
                   </svg>
                 </button>
@@ -1987,9 +1987,9 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               >
                 <div>
                   <p className="theme-feedback-text-danger text-sm">Reset this device</p>
-                  <p className="mt-0.5 text-xs text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">Wipes all local data and restarts fresh</p>
+                  <p className="mt-0.5 text-xs text-[rgb(var(--theme-feedback-danger-rgb)/0.93)]">Wipes all local data and restarts fresh</p>
                 </div>
-                <svg className="ml-3 h-4 w-4 shrink-0 text-[rgb(var(--theme-feedback-danger-rgb)/0.56)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg className="ml-3 h-4 w-4 shrink-0 text-[rgb(var(--theme-feedback-danger-rgb)/0.67)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>
@@ -2020,13 +2020,13 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
           indented ? "pl-7 pr-2 py-2" : "px-2 py-2"
         } ${
           isActive
-            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary)_15%,transparent)] text-[var(--theme-accent-secondary)]"
+            ? "bg-[color:color-mix(in_srgb,var(--theme-accent-secondary-tint)_15%,transparent)] text-[var(--theme-accent-secondary)]"
             : isDanger
-            ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.72)] hover:text-[rgb(var(--theme-feedback-danger-rgb))] hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.05)]"
+            ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.93)] hover:text-[rgb(var(--theme-feedback-danger-rgb))] hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.05)]"
             : "text-text-secondary hover:text-text-primary hover:bg-[color:color-mix(in_srgb,var(--theme-bg-surface)_72%,transparent)]"
         }`}
       >
-        <span className={`shrink-0 ${isActive ? "text-[var(--theme-accent-secondary)]" : isDanger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"}`}>
+        <span className={`shrink-0 ${isActive ? "text-[var(--theme-accent-secondary)]" : isDanger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.67)]" : "text-text-muted"}`}>
           {section.icon}
         </span>
         <span>{section.label}</span>
@@ -2422,7 +2422,7 @@ export function SettingsDialog({ open, onClose }: SettingsDialogProps) {
               <p className="theme-feedback-text-danger text-xs leading-5">
                 Ready to remove {formatSampleDataSummary(sampleDataSummary)}.
               </p>
-              <p className="mt-2 text-xs leading-5 text-[rgb(var(--theme-feedback-danger-rgb)/0.72)]">
+              <p className="mt-2 text-xs leading-5 text-[rgb(var(--theme-feedback-danger-rgb)/0.93)]">
                 Older unmarked sample data will stay in place.
               </p>
             </div>
@@ -2538,7 +2538,7 @@ function SectionHeading({
   return (
     <h3
       className={`mb-4 flex items-center gap-2 text-base font-semibold uppercase tracking-wide sm:mb-5 sm:text-sm ${
-        danger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.64)]" : "text-text-muted"
+        danger ? "text-[rgb(var(--theme-feedback-danger-rgb)/0.93)]" : "text-text-muted"
       }`}
     >
       <span>{label}</span>

@@ -1026,7 +1026,7 @@ export function ReaderView({
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label={`View original on ${PLATFORM_LABELS[item.platform]}`}
-                className="theme-accent-tag ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.24)]"
+                className="theme-accent-tag ml-auto inline-flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors hover:bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.24)]"
                 onClick={(event) => {
                   const openExternal = onOpenUrl ?? platformOpenUrl;
                   if (openExternal && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
