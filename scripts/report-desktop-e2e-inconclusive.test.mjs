@@ -92,13 +92,15 @@ test("missing or unsupported evidence never becomes a zero-inconclusive result",
 });
 
 test("untrusted names cannot inject Markdown table cells or HTML", () => {
-  const summary = summarizeInconclusive(report(spec([attempt(1)], {
-    project: "a|b", file: "<script>&.ts", title: "[link](x)*`\\\nnext",
-  })));
-  assert.match(summary, /a&#124;b/);
-  assert.match(summary, /&#60;script&#62;&amp;.ts/);
-  assert.match(summary, /&#91;link&#93;\(x\)&#42;&#96;&#92;<br>next/);
-  assert.doesNotMatch(summary, /<script>|\[link\]/);
+  for (const tag of ["script", "SCRIPT", "ScRiPt"]) {
+    const summary = summarizeInconclusive(report(spec([attempt(1)], {
+      project: "a|b", file: `<${tag}>&.ts`, title: "[link](x)*`\\\nnext",
+    })));
+    assert.equal(
+      summary.split("\n").at(-2),
+      `| a&#124;b | &#60;${tag}&#62;&amp;.ts | Friends › &#91;link&#93;(x)&#42;&#96;&#92;<br>next | 1 | 1 | 1 | EVERY ATTEMPT INCONCLUSIVE |`,
+    );
+  }
 });
 
 test("CLI appends summaries, reports read failures and leaves informational runs successful", () => {
