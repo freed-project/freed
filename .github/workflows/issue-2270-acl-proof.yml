@@ -1,0 +1,89 @@
+name: Issue 2270 ACL fixture proof
+
+on:
+  pull_request:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-2270-acl-proof-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  acl-proof:
+    if: >-
+      github.repository == 'freed-project/freed' &&
+      github.event.pull_request.head.repo.full_name == 'freed-project/freed' &&
+      github.head_ref == 'factory/issue-2270'
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [ubuntu-24.04, ubuntu-26.04]
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Record image, source and executable metadata
+        run: |
+          cat /etc/os-release
+          printf 'ImageOS=%s ImageVersion=%s\n' "$ImageOS" "$ImageVersion"
+          git rev-parse HEAD
+          node --version
+          npm --version
+          for candidate in /bin/sleep /usr/bin/dash /usr/bin/bash /usr/bin/getfacl; do
+            if [ ! -e "$candidate" ]; then
+              printf 'Missing candidate: %s\n' "$candidate"
+              continue
+            fi
+            canonical="$(realpath "$candidate")"
+            printf 'Candidate=%s realpath=%s\n' "$candidate" "$canonical"
+            stat --format='lstat path=%n type=%F uid=%u gid=%g owner=%U:%G mode=%a links=%h' "$candidate" "$canonical"
+            stat --dereference --format='stat path=%n type=%F uid=%u gid=%g owner=%U:%G mode=%a links=%h' "$candidate" "$canonical"
+          done
+          node --input-type=module <<'JS'
+          import { lstat, realpath } from 'node:fs/promises';
+          import path from 'node:path';
+          // Diagnostic mirrors config.ts predicates without changing production code.
+          for (const candidate of ['/bin/sleep', '/usr/bin/dash', '/usr/bin/bash', '/usr/bin/getfacl']) {
+            try {
+              const executable = await realpath(candidate);
+              const metadata = await lstat(executable);
+              const rejected = {
+                'metadata.kind !== "file"': !metadata.isFile(),
+                'metadata.uid !== 0': metadata.uid !== 0,
+                '(metadata.mode & 0o7000) !== 0': (metadata.mode & 0o7000) !== 0,
+                '(metadata.mode & 0o022) !== 0': (metadata.mode & 0o022) !== 0,
+                '(metadata.mode & 0o111) === 0': (metadata.mode & 0o111) === 0,
+                'metadata.links !== 1': metadata.nlink !== 1,
+              };
+              console.log(JSON.stringify({ candidate, executable, symbolicLink: metadata.isSymbolicLink(), rejected }));
+              for (let component = path.dirname(executable); ; component = path.dirname(component)) {
+                const entry = await lstat(component);
+                console.log(JSON.stringify({ component, directory: entry.isDirectory(), uid: entry.uid, mode: entry.mode.toString(8), safe: entry.isDirectory() && entry.uid === 0 && (entry.mode & 0o022) === 0 }));
+                if (component === '/') break;
+              }
+            } catch (error) {
+              console.log(JSON.stringify({ candidate, error: error.code }));
+            }
+          }
+          JS
+      - name: Install committed dependencies
+        run: npm ci
+      - name: Build shared prerequisites
+        working-directory: packages/shared
+        run: npm run build
+      - name: Build sync prerequisites
+        working-directory: packages/sync
+        run: npm run build
+      - name: Run existing ACL proof with compiled CLI
+        working-directory: packages/library-service
+        run: npm test -- src/runtime.integration.test.ts -t 'reports the production Linux ACL proof without assuming a clean runner root' --maxWorkers=1
