@@ -3,8 +3,10 @@
   "version": "26.11.1700-dev",
   "channel": "dev",
   "dayKey": "26.11.17",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Curated by Releases from the typed changes since v26.10.900-dev. Owner approved tagging this dev release before installed Desktop verification. No Library Core activation; provider-visible changes carry recorded diff_authorized or behavior_approved decisions (#2208, #2230, #2234, #2269)."
+  ],
   "generatedAt": "2026-11-17T20:58:57.466Z",
   "model": "heuristic",
   "source": {
@@ -96,21 +98,20 @@
     ]
   },
   "release": {
-    "deck": "Scope tooling smoke for manifest-only pull requests, name this installation for Freed's Factory roles, and make clipboard preview loading tests deterministic",
-    "features": [],
+    "deck": "Freed Desktop starts reliably after a slow annotation upgrade, and the built-in themes match their Vorton reference.",
+    "features": [
+      "Starship, Dark Star and Scriptorium themes realigned with the Vorton reference across the feed, settings and map"
+    ],
     "fixes": [
-      "Make Linux ACL proof fixture portable across Ubuntu runners",
-      "Exact attribution prefix in workflow posts now uses the correct path",
-      "Select Windows native compilation for Rust changes",
-      "Treat missing Friends renderer label samples as inconclusive",
-      "Make annotation resume tests independent of runner speed",
-      "Friends graph lane geometry validation are now more stable",
-      "Gate automated debt selection on trusted issue authors",
-      "Restrict Google OAuth relay to exact first-party origins"
+      "Freed Desktop no longer stalls at launch when annotation catalog verification runs long",
+      "Google sign-in relay accepts only Freed's exact first-party origins",
+      "Articles with unreadable publication dates no longer store invalid timestamps"
     ],
     "followUps": [
-      "Restore the native Clippy gate on Rust 1.96"
+      "Desktop native code is linted on a pinned Rust toolchain, and Rust changes now trigger the Windows native build",
+      "Annotation resume, clipboard preview, Friends graph and Linux ACL tests no longer depend on runner speed or Ubuntu version",
+      "Automated debt selection only picks up issues from trusted authors"
     ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.11.1700-dev\n\nScope tooling smoke for manifest-only pull requests, name this installation for Freed's Factory roles, and make clipboard preview loading tests deterministic\n\n### Fixes\n\n- Make Linux ACL proof fixture portable across Ubuntu runners\n- Exact attribution prefix in workflow posts now uses the correct path\n- Select Windows native compilation for Rust changes\n- Treat missing Friends renderer label samples as inconclusive\n- Make annotation resume tests independent of runner speed\n- Friends graph lane geometry validation are now more stable\n- Gate automated debt selection on trusted issue authors\n- Restrict Google OAuth relay to exact first-party origins\n\n### Follow-ups\n\n- Restore the native Clippy gate on Rust 1.96\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.11.1700-dev\n\nFreed Desktop starts reliably after a slow annotation upgrade, and the built-in themes match their Vorton reference\n\n### Features\n\n- Starship, Dark Star and Scriptorium themes realigned with the Vorton reference across the feed, settings and map\n\n### Fixes\n\n- Freed Desktop no longer stalls at launch when annotation catalog verification runs long\n- Google sign-in relay accepts only Freed's exact first-party origins\n- Articles with unreadable publication dates no longer store invalid timestamps\n\n### Follow-ups\n\n- Desktop native code is linted on a pinned Rust toolchain, and Rust changes now trigger the Windows native build\n- Annotation resume, clipboard preview, Friends graph and Linux ACL tests no longer depend on runner speed or Ubuntu version\n- Automated debt selection only picks up issues from trusted authors\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
