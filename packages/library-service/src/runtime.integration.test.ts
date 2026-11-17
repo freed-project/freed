@@ -98,7 +98,11 @@ async function createServiceFixture(): Promise<{
     ),
     writeFile(statusPath, "", { mode: 0o600 }),
   ]);
-  const executable = await realpath("/bin/sleep");
+  // This read-only fixture binds but never launches the executable. Linux sleep
+  // can be a hard-linked coreutils applet, so use the single-link dash binary.
+  const executable = await realpath(
+    process.platform === "linux" ? "/usr/bin/dash" : "/bin/sleep",
+  );
   const executableDigest = createHash("sha256")
     .update(await readFile(executable))
     .digest("hex");
