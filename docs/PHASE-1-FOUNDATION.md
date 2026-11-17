@@ -182,6 +182,8 @@ curl -X POST http://localhost:3000/api/subscribe \
 
 ### Desktop and PWA follow up
 
+- Freed Desktop and the PWA use the vendored Vorton 26.11.1503 theme reference for shared colors, status tints, destructive controls and opaque focus rings. Starship and Dark Star surfaces, Scriptorium's page background, Neon accents and map palettes follow that reference. The source record pins the upstream commit and content hash; sync and CSS drift tests protect the mapping. This source alignment does not claim a release or update the public website.
+
 - [x] Add a shared in-app newsletter signup to Freed Desktop Settings and the PWA, including the anonymous demo Field Guide. The form collects email and name, completes Turnstile in place, submits directly to Freed's protected Brevo proxy, confirms success without navigation, and remembers the successful signup on that device.
 
 **Files:**

@@ -1250,13 +1250,13 @@ export function FriendsView({
               >
                 {openingSyncModal ? "Syncing..." : "Import Contacts"}
                 {pendingMatchCount > 0 && (
-                  <span className="ml-2 rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.24)] px-1.5 py-0.5 text-[0.625rem] font-semibold text-[color:var(--theme-text-primary)]">
+                  <span className="ml-2 rounded-full bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.24)] px-1.5 py-0.5 text-[0.625rem] font-semibold text-[color:var(--theme-text-primary)]">
                     {pendingMatchCount.toLocaleString()}
                   </span>
                 )}
               </button>
             ) : pendingMatchCount > 0 ? (
-              <span className="rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] px-2 py-1 text-[0.625rem] font-semibold text-[color:var(--theme-text-primary)]">
+              <span className="rounded-full bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] px-2 py-1 text-[0.625rem] font-semibold text-[color:var(--theme-text-primary)]">
                 {pendingMatchCount.toLocaleString()} contact review
               </span>
             ) : null}

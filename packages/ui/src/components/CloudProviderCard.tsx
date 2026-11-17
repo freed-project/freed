@@ -120,7 +120,7 @@ export function CloudProviderCard({
       {isConnected && onDisconnect ? (
         <button
           onClick={(e) => { e.stopPropagation(); onDisconnect(provider); }}
-          className="flex-shrink-0 rounded-lg bg-[var(--theme-bg-muted)] px-2.5 py-1 text-xs text-[var(--theme-text-muted)] transition-colors hover:bg-[rgb(var(--theme-feedback-danger-rgb)/0.1)] hover:text-[rgb(var(--theme-feedback-danger-rgb))]"
+          className="flex-shrink-0 rounded-lg bg-[var(--theme-bg-muted)] px-2.5 py-1 text-xs text-[var(--theme-text-muted)] transition-colors hover:bg-[rgb(var(--theme-feedback-danger-rgb)/var(--theme-status-tint-hover-opacity))] hover:text-[rgb(var(--theme-feedback-danger-rgb))]"
         >
           Disconnect
         </button>

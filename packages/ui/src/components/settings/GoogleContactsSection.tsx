@@ -16,13 +16,13 @@ function StatusPill({
 }) {
   const toneClass =
     tone === "success"
-      ? "bg-[rgb(var(--theme-feedback-success-rgb)/0.15)] text-[rgb(var(--theme-feedback-success-rgb))]"
+      ? "bg-[rgb(var(--theme-feedback-success-rgb)/var(--theme-status-tint-opacity))] text-[rgb(var(--theme-feedback-success-rgb))]"
       : tone === "warning"
-        ? "bg-[rgb(var(--theme-feedback-warning-rgb)/0.15)] text-[rgb(var(--theme-feedback-warning-rgb))]"
+        ? "bg-[rgb(var(--theme-feedback-warning-rgb)/var(--theme-status-tint-opacity))] text-[rgb(var(--theme-feedback-warning-rgb))]"
         : tone === "error"
-          ? "bg-[rgb(var(--theme-feedback-danger-rgb)/0.15)] text-[rgb(var(--theme-feedback-danger-rgb))]"
+          ? "bg-[rgb(var(--theme-feedback-danger-rgb)/var(--theme-status-tint-opacity))] text-[rgb(var(--theme-feedback-danger-rgb))]"
           : tone === "syncing"
-            ? "bg-[rgb(var(--theme-accent-secondary-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
+            ? "bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] text-[var(--theme-accent-secondary)]"
             : "bg-[color:var(--theme-bg-muted)] text-[color:var(--theme-text-secondary)]";
 
   return (

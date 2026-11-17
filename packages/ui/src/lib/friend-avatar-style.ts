@@ -21,27 +21,27 @@ export interface FriendAvatarPalette {
 
 const FALLBACK_PALETTE: FriendAvatarPalette = {
   borderStrong:
-    "color-mix(in srgb, var(--theme-accent-primary) 68%, var(--theme-text-primary))",
-  borderSoft: "rgb(var(--theme-accent-primary-rgb) / 0.24)",
-  glow: "rgb(var(--theme-accent-secondary-rgb) / 0.3)",
-  glowSoft: "rgb(var(--theme-accent-secondary-rgb) / 0.18)",
-  ring: "rgb(var(--theme-accent-primary-rgb) / 0.2)",
+    "color-mix(in srgb, var(--theme-accent-primary-tint) 68%, var(--theme-text-primary))",
+  borderSoft: "rgb(var(--theme-accent-primary-tint-rgb) / 0.24)",
+  glow: "rgb(var(--theme-accent-secondary-tint-rgb) / 0.3)",
+  glowSoft: "rgb(var(--theme-accent-secondary-tint-rgb) / 0.18)",
+  ring: "rgb(var(--theme-accent-primary-tint-rgb) / 0.2)",
   gradientStart:
-    "color-mix(in srgb, var(--theme-accent-primary) 68%, white 32%)",
+    "color-mix(in srgb, var(--theme-accent-primary-tint) 68%, white 32%)",
   gradientMid:
-    "color-mix(in srgb, var(--theme-accent-primary) 36%, var(--theme-accent-secondary) 64%)",
+    "color-mix(in srgb, var(--theme-accent-primary-tint) 36%, var(--theme-accent-secondary-tint) 64%)",
   gradientEnd:
-    "color-mix(in srgb, var(--theme-bg-deep) 64%, var(--theme-accent-secondary) 36%)",
+    "color-mix(in srgb, var(--theme-bg-deep) 64%, var(--theme-accent-secondary-tint) 36%)",
   imageOverlay:
-    "radial-gradient(circle at 30% 28%, rgb(var(--theme-accent-primary-rgb) / 0.22), rgb(var(--theme-accent-secondary-rgb) / 0.2) 42%, rgb(var(--theme-shell-rgb) / 0.28) 100%)",
+    "radial-gradient(circle at 30% 28%, rgb(var(--theme-accent-primary-tint-rgb) / 0.22), rgb(var(--theme-accent-secondary-tint-rgb) / 0.2) 42%, rgb(var(--theme-shell-rgb) / 0.28) 100%)",
   imageShadow: "rgb(var(--theme-shell-rgb) / 0.36)",
-  imageHighlight: "rgb(var(--theme-accent-primary-rgb) / 0.16)",
+  imageHighlight: "rgb(var(--theme-accent-primary-tint-rgb) / 0.16)",
   selectionStroke:
-    "color-mix(in srgb, var(--theme-accent-primary) 56%, white 44%)",
+    "color-mix(in srgb, var(--theme-accent-primary-tint) 56%, white 44%)",
   selectionOuterStroke:
-    "color-mix(in srgb, var(--theme-accent-secondary) 72%, var(--theme-accent-primary) 28%)",
-  labelBorder: "rgb(var(--theme-accent-secondary-rgb) / 0.28)",
-  initialsShadow: "rgb(var(--theme-accent-primary-rgb) / 0.42)",
+    "color-mix(in srgb, var(--theme-accent-secondary-tint) 72%, var(--theme-accent-primary-tint) 28%)",
+  labelBorder: "rgb(var(--theme-accent-secondary-tint-rgb) / 0.28)",
+  initialsShadow: "rgb(var(--theme-accent-primary-tint-rgb) / 0.42)",
   text: "var(--theme-button-primary-text)",
 };
 

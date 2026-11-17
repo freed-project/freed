@@ -295,7 +295,7 @@ function ImportPane() {
         <div className="flex gap-3">
           <button
             onClick={() => folderInputRef.current?.click()}
-            className="flex flex-1 flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-4 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)]"
+            className="flex flex-1 flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-4 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)]"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V7z" />
@@ -305,7 +305,7 @@ function ImportPane() {
 
           <button
             onClick={() => filesInputRef.current?.click()}
-            className="flex flex-1 flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-4 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)]"
+            className="flex flex-1 flex-col items-center gap-2 rounded-xl border border-dashed border-[var(--theme-border-quiet)] py-4 text-sm text-[var(--theme-text-secondary)] transition-colors hover:border-[var(--theme-border-strong)] hover:bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.06)] hover:text-[var(--theme-accent-secondary)]"
           >
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
@@ -476,7 +476,7 @@ function ExportPane() {
       >
         {exporting ? (
           <>
-            <span className="h-4 w-4 animate-spin rounded-full border border-[rgb(var(--theme-accent-secondary-rgb)/0.3)] border-t-[var(--theme-accent-secondary)]" />
+            <span className="h-4 w-4 animate-spin rounded-full border border-[rgb(var(--theme-accent-secondary-tint-rgb)/0.3)] border-t-[var(--theme-accent-secondary)]" />
             Preparing export...
           </>
         ) : (

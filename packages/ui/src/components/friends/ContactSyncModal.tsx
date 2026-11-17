@@ -41,7 +41,7 @@ function ContactAvatar({ contact }: { contact: GoogleContact }) {
   }
 
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-rgb)/0.18)] ring-1 ring-[color:var(--theme-border-strong)]">
+    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[color:rgb(var(--theme-accent-secondary-tint-rgb)/0.18)] ring-1 ring-[color:var(--theme-border-strong)]">
       <span className="text-xs font-semibold text-[color:var(--theme-text-primary)]">{initials}</span>
     </div>
   );

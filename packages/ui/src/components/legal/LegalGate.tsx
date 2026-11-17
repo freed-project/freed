@@ -86,14 +86,14 @@ export function LegalGate({
             className="absolute top-0 left-1/4 h-32 w-32 rounded-full blur-3xl"
             style={{
               background:
-                "color-mix(in srgb, var(--theme-accent-secondary) 14%, transparent)",
+                "color-mix(in srgb, var(--theme-accent-secondary-tint) 14%, transparent)",
             }}
           />
           <div
             className="absolute bottom-0 right-1/4 h-40 w-40 rounded-full blur-3xl"
             style={{
               background:
-                "color-mix(in srgb, var(--theme-accent-primary) 12%, transparent)",
+                "color-mix(in srgb, var(--theme-accent-primary-tint) 12%, transparent)",
             }}
           />
 

@@ -334,7 +334,7 @@ export function PwaSyncSettings() {
 
           {/* New user welcome */}
           <div className="flex items-center gap-4 px-4 py-4">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-accent-secondary-rgb)/0.1)]">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgb(var(--theme-accent-secondary-tint-rgb)/0.1)]">
               <svg
                 className="h-4 w-4 text-[var(--theme-accent-secondary)]"
                 fill="none"
@@ -516,7 +516,7 @@ export function PwaSyncSettings() {
             >
               <span
                 aria-label="Syncing"
-                className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[rgb(var(--theme-accent-secondary-rgb)/0.24)] border-t-[var(--theme-accent-secondary)]"
+                className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-[rgb(var(--theme-accent-secondary-tint-rgb)/0.24)] border-t-[var(--theme-accent-secondary)]"
               />
               <span className="font-medium text-[var(--theme-text-primary)]">
                 {cloudActivity.detailLabel}

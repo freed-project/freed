@@ -42,14 +42,14 @@ const PALETTE_OPTIONS: Record<string, StoryWallPaletteDefinition> = {
     accent: "var(--theme-control-accent)",
     surface: "color-mix(in oklab, var(--theme-bg-surface) 90%, var(--theme-bg-primary) 10%)",
     media: "var(--theme-bg-muted)",
-    tint: "rgb(var(--theme-accent-secondary-rgb) / 0.1)",
+    tint: "rgb(var(--theme-accent-secondary-tint-rgb) / 0.1)",
   },
   midnight: {
     label: "Midnight",
     accent: "var(--theme-accent-secondary)",
     surface: "color-mix(in oklab, var(--theme-bg-elevated) 88%, black 12%)",
     media: "color-mix(in oklab, var(--theme-bg-muted) 78%, black 22%)",
-    tint: "rgb(var(--theme-accent-primary-rgb) / 0.14)",
+    tint: "rgb(var(--theme-accent-primary-tint-rgb) / 0.14)",
   },
   gallery: {
     label: "Gallery",
@@ -109,7 +109,7 @@ function ToggleButton({
       onClick={onClick}
       className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
         active
-          ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-control-accent-rgb)/0.16)] text-[var(--theme-text-primary)]"
+          ? "border-[color:var(--theme-border-strong)] bg-[rgb(var(--theme-control-accent-tint-rgb)/0.16)] text-[var(--theme-text-primary)]"
           : "border-[color:var(--theme-border-subtle)] bg-[var(--theme-bg-input)] text-[var(--theme-text-secondary)] hover:border-[color:var(--theme-border-strong)] hover:bg-[var(--theme-bg-card-hover)] hover:text-[var(--theme-text-primary)]"
       }`}
     >
@@ -254,7 +254,7 @@ function ArchiveInstructionsModal({
       >
         <div className="theme-dialog-divider flex items-start justify-between gap-4 border-b pb-4">
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent-text)]">
               Instagram archive
             </p>
             <h2 id="story-wall-archive-title" className="text-xl font-semibold text-[var(--theme-text-primary)]">
@@ -510,7 +510,7 @@ export function StoryWallView({
         {!isSettings ? (
           <header className="theme-dialog-divider flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl space-y-2">
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent)]">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent-text)]">
                 Story Wall
               </div>
               <h1 className="text-3xl font-semibold leading-tight text-[var(--theme-text-primary)]">
@@ -527,7 +527,7 @@ export function StoryWallView({
           <section className={PANEL_CLASS} data-testid="story-wall-disabled-gate">
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent)]">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--theme-control-accent-text)]">
                   Private setup
                 </p>
                 <h2 className="mt-2 text-xl font-semibold leading-tight text-[var(--theme-text-primary)]">
