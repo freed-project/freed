@@ -1,0 +1,117 @@
+{
+  "tag": "v26.11.1700-dev",
+  "version": "26.11.1700-dev",
+  "channel": "dev",
+  "dayKey": "26.11.17",
+  "approved": true,
+  "editorialNotes": [
+    "Curated by Releases from the typed changes since v26.10.900-dev. Owner approved tagging this dev release before installed Desktop verification. No Library Core activation; provider-visible changes carry recorded diff_authorized or behavior_approved decisions (#2208, #2230, #2234, #2269)."
+  ],
+  "generatedAt": "2026-11-17T20:58:57.466Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.10.900-dev",
+    "previousPublishedDayTag": "v26.10.900-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "cae70b0932e782df964193c00f49ec0bef96d74e",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.10.900-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "d7494682581ccc6ae2291cc4e486e9204cf11f90",
+        "toInclusiveProductCommitSha": "cae70b0932e782df964193c00f49ec0bef96d74e"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:95183417ce01a730879a0066ff7d24648b4fec325a1c3038ec2980bae57b806c",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.11.1700-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.11.1700-dev"
+    ],
+    "prNumbers": [
+      2204,
+      2208,
+      2214,
+      2221,
+      2227,
+      2229,
+      2230,
+      2234,
+      2235,
+      2237,
+      2244,
+      2245,
+      2248,
+      2250,
+      2251,
+      2255,
+      2257,
+      2260,
+      2261,
+      2269,
+      2271
+    ],
+    "commitSubjects": [
+      "fix: make Linux ACL proof fixture portable across Ubuntu runners (#2271)",
+      "style: align themes with the Vorton reference (#2269)",
+      "chore: report nightly Desktop e2e inconclusive attempts (#2261)",
+      "fix: use exact attribution prefix in workflow posts",
+      "fix: select Windows native compilation for Rust changes",
+      "chore: retain raw nightly feed frame evidence",
+      "docs: correct website redeploy comment",
+      "chore: cap parallel tooling smoke shards so required checks get runners",
+      "chore: pin Rust toolchain and deny Desktop clippy warnings (#2250)",
+      "chore: use no-period generated GitHub post prefix (#2244)",
+      "fix: prevent annotation upgrade startup livelock (#2248)",
+      "ci: support merge queue events in Validation (#2247)",
+      "fix: treat missing Friends renderer label samples as inconclusive (#2245)",
+      "perf: scope tooling smoke for manifest-only pull requests (#2237)",
+      "docs: correct dev-release changelog refresh description (#2241)",
+      "chore: restore the native Clippy gate on Rust 1.96 (#2234)",
+      "chore: add a Factory task issue template (#2235)",
+      "fix: make annotation resume tests independent of runner speed (#2229)",
+      "fix: omit non-finite article publication timestamps (#2230)",
+      "fix: stabilize Friends graph lane geometry validation (#2227)",
+      "Name this installation for Freed's Factory Triage and Releases (#2221)",
+      "fix: gate automated debt selection on trusted issue authors (#2214)",
+      "fix: restrict Google OAuth relay to exact first-party origins (#2208)",
+      "fix: make clipboard preview loading tests deterministic"
+    ]
+  },
+  "release": {
+    "deck": "Freed Desktop starts reliably after a slow annotation upgrade, and the built-in themes match their Vorton reference.",
+    "features": [
+      "Starship, Dark Star and Scriptorium themes realigned with the Vorton reference across the feed, settings and map"
+    ],
+    "fixes": [
+      "Freed Desktop no longer stalls at launch when annotation catalog verification runs long",
+      "Google sign-in relay accepts only Freed's exact first-party origins",
+      "Articles with unreadable publication dates no longer store invalid timestamps"
+    ],
+    "followUps": [
+      "Desktop native code is linted on a pinned Rust toolchain, and Rust changes now trigger the Windows native build",
+      "Annotation resume, clipboard preview, Friends graph and Linux ACL tests no longer depend on runner speed or Ubuntu version",
+      "Automated debt selection only picks up issues from trusted authors"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.11.1700-dev\n\nFreed Desktop starts reliably after a slow annotation upgrade, and the built-in themes match their Vorton reference\n\n### Features\n\n- Starship, Dark Star and Scriptorium themes realigned with the Vorton reference across the feed, settings and map\n\n### Fixes\n\n- Freed Desktop no longer stalls at launch when annotation catalog verification runs long\n- Google sign-in relay accepts only Freed's exact first-party origins\n- Articles with unreadable publication dates no longer store invalid timestamps\n\n### Follow-ups\n\n- Desktop native code is linted on a pinned Rust toolchain, and Rust changes now trigger the Windows native build\n- Annotation resume, clipboard preview, Friends graph and Linux ACL tests no longer depend on runner speed or Ubuntu version\n- Automated debt selection only picks up issues from trusted authors\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
