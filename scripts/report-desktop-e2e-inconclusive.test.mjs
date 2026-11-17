@@ -7,6 +7,8 @@ import { URL } from "node:url";
 import test from "node:test";
 import { reportInconclusive, summarizeInconclusive } from "./report-desktop-e2e-inconclusive.mjs";
 
+const summaryPrefix = "(AI Generated)\n\n## Freed Desktop e2e inconclusive attempts\n\n";
+
 // Playwright 1.62.0 JSON reporter shape, checked against a real synthetic retry run.
 const attempt = (annotations = 0, overrides = {}) => ({
   status: "passed", workerIndex: 0, retry: 0,
@@ -23,6 +25,7 @@ const report = (...specs) => ({
 
 test("zero annotations uses result evidence, never the test aggregate", () => {
   const summary = summarizeInconclusive(report(spec([attempt()])));
+  assert.equal(summary.slice(0, summaryPrefix.length), summaryPrefix);
   assert.match(summary, /0 inconclusive annotations across 0 affected executed attempts \/ 1 total/);
   assert.match(summary, /No inconclusive annotations were recorded/);
   assert.doesNotMatch(summary, /EVERY ATTEMPT|Reporting unavailable/);
@@ -86,6 +89,7 @@ test("missing or unsupported evidence never becomes a zero-inconclusive result",
     const input = report(spec([attempt()]));
     const changed = mutate(input);
     const summary = summarizeInconclusive(changed === undefined ? input : changed);
+    assert.equal(summary.slice(0, summaryPrefix.length), summaryPrefix);
     assert.match(summary, /Reporting unavailable/);
     assert.doesNotMatch(summary, /0 inconclusive|No inconclusive annotations|EVERY ATTEMPT/);
   }
@@ -114,12 +118,18 @@ test("CLI appends summaries, reports read failures and leaves informational runs
       encoding: "utf8", env: { ...process.env, GITHUB_STEP_SUMMARY: output },
     });
     assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.slice(0, summaryPrefix.length), summaryPrefix);
     assert.match(result.stdout, /EVERY ATTEMPT INCONCLUSIVE/);
     assert.equal(readFileSync(output, "utf8"), `Existing summary\n\n${result.stdout}\n`);
-    assert.match(reportInconclusive(input, dir), /Reporting unavailable.*Could not append/);
+    const writeFailure = reportInconclusive(input, dir);
+    assert.equal(writeFailure.slice(0, summaryPrefix.length), summaryPrefix);
+    assert.match(writeFailure, /Reporting unavailable.*Could not append/);
     writeFileSync(input, "{");
-    assert.match(reportInconclusive(input, output), /Reporting unavailable/);
-    assert.match(reportInconclusive(join(dir, "missing"), output), /Reporting unavailable/);
+    for (const reportPath of [input, join(dir, "missing")]) {
+      const unavailable = reportInconclusive(reportPath, output);
+      assert.equal(unavailable.slice(0, summaryPrefix.length), summaryPrefix);
+      assert.match(unavailable, /Reporting unavailable/);
+    }
     assert.equal(readFileSync(output, "utf8").match(/Reporting unavailable/g).length, 2);
   } finally {
     rmSync(dir, { recursive: true, force: true });

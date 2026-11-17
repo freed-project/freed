@@ -2,7 +2,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
-const heading = "## Freed Desktop e2e inconclusive attempts\n\n";
+const heading = "(AI Generated)\n\n## Freed Desktop e2e inconclusive attempts\n\n";
 const count = (value) => value.toLocaleString("en-US");
 const escapeCell = (value) => value
   .replace(/&/g, "&amp;")
