@@ -408,8 +408,9 @@ function manifestFixture() {
     },
   };
 }
-function manifestChange(change) {
+function manifestChange(change, prepare = () => {}) {
   const before = manifestFixture();
+  prepare(before);
   const after = structuredClone(before);
   change(after);
   return compareToolingManifests({
@@ -448,6 +449,77 @@ test("unreachable workspace dependency bumps skip all tooling lanes", () => {
     ),
     true,
   );
+});
+
+// Tier 1: npm classification churn must not schedule shards, while installed
+// package identity and dependency edges must still invalidate the full lane.
+test("install-classification flags alone select no suites or shards", () => {
+  for (const flag of ["dev", "optional", "devOptional", "peer"]) {
+    for (const [before, after] of [
+      [undefined, true], [true, undefined], [true, false], [false, true],
+    ]) {
+      const verdict = manifestChange(
+        ({ lock }) => {
+          const entry = lock.packages["node_modules/rollup"];
+          if (after === undefined) delete entry[flag];
+          else entry[flag] = after;
+        },
+        ({ lock }) => {
+          if (before !== undefined) lock.packages["node_modules/rollup"][flag] = before;
+        },
+      );
+      assertManifestLanes(verdict, false);
+      const plan = buildToolingSmokeMatrix({
+        changedFiles: ["package-lock.json"], manifestVerdict: verdict,
+      });
+      assert.deepEqual(plan.suites, []);
+      assert.deepEqual(plan.include, []);
+      assert.equal(plan.jobCount, 0);
+      assert.equal(plan.applicable, false);
+    }
+  }
+});
+
+test("reachable package identity changes invalidate even with flag flips", () => {
+  for (const field of ["version", "resolved", "integrity"]) {
+    for (const flipFlags of [false, true]) {
+      assertManifestLanes(manifestChange(
+        ({ lock }) => {
+          const entry = lock.packages["node_modules/rollup"];
+          entry[field] = "changed";
+          if (flipFlags) {
+            for (const flag of ["dev", "optional", "devOptional", "peer"]) entry[flag] = false;
+          }
+        },
+        ({ lock }) => {
+          Object.assign(lock.packages["node_modules/rollup"], {
+            resolved: "https://example.test/rollup.tgz", integrity: "sha512-original",
+            dev: true, optional: true, devOptional: true, peer: true,
+          });
+        },
+      ), true);
+    }
+  }
+});
+
+test("flag flips cannot hide reachable dependency edge additions or removals", () => {
+  for (const field of ["dependencies", "optionalDependencies", "peerDependencies"]) {
+    for (const remove of [false, true]) {
+      assertManifestLanes(manifestChange(
+        ({ lock }) => {
+          const entry = lock.packages["node_modules/rollup"];
+          entry.dev = false;
+          if (remove) delete entry[field].next;
+          else entry[field].next = "1";
+        },
+        ({ lock }) => {
+          Object.assign(lock.packages["node_modules/rollup"], {
+            dev: true, [field]: remove ? { next: "1" } : {},
+          });
+        },
+      ), true);
+    }
+  }
 });
 
 for (const [name, change] of [

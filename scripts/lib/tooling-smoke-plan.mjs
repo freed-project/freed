@@ -389,8 +389,21 @@ export function compareToolingManifests({
         }
       }
     }
+    // Tooling jobs install all dependency classes with npm ci (Windows adds
+    // --ignore-scripts). Classification flags do not change those installs.
+    // Revisit this exemption if a tooling job starts omitting dependency classes.
+    const installedEntry = (entry) => {
+      if (entry === undefined) return entry;
+      const { dev, optional, devOptional, peer, ...installed } = entry;
+      return installed;
+    };
     for (const key of names.keys()) {
-      if (isDeepStrictEqual(locks[0].packages[key], locks[1].packages[key])) {
+      if (
+        isDeepStrictEqual(
+          installedEntry(locks[0].packages[key]),
+          installedEntry(locks[1].packages[key]),
+        )
+      ) {
         continue;
       }
       for (const lock of locks) {
