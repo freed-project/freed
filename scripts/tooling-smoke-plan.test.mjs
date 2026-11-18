@@ -480,6 +480,29 @@ test("install-classification flags alone select no suites or shards", () => {
   }
 });
 
+test("malformed classification flags fail closed on either side, including equal values", () => {
+  for (const flag of ["dev", "optional", "devOptional", "peer"]) {
+    for (const value of [{ unexpected: "object" }, [], "true", 1, null]) {
+      for (const side of ["old", "new", "both"]) {
+        // An unrelated package must not hide malformed metadata either.
+        for (const name of ["rollup", "next"]) {
+          const key = `node_modules/${name}`;
+          const verdict = manifestChange(
+            ({ lock }) => {
+              lock.packages[key][flag] = side === "old" ? true : value;
+            },
+            ({ lock }) => {
+              lock.packages[key][flag] = side === "new" ? true : value;
+            },
+          );
+          assert.match(verdict.reason, /invalid lockfile classification flag/);
+          assertManifestLanes(verdict, true);
+        }
+      }
+    }
+  }
+});
+
 test("reachable package identity changes invalidate even with flag flips", () => {
   for (const field of ["version", "resolved", "integrity"]) {
     for (const flipFlags of [false, true]) {

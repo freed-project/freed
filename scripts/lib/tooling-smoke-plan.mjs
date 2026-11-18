@@ -364,6 +364,13 @@ export function compareToolingManifests({
         if (!object(entry)) {
           return global("invalid lockfile package entry");
         }
+        // Validate both locks before comparison, even when malformed flags
+        // are equal or belong to an unreachable package.
+        for (const flag of ["dev", "optional", "devOptional", "peer"]) {
+          if (Object.hasOwn(entry, flag) && typeof entry[flag] !== "boolean") {
+            return global(`invalid lockfile classification flag: ${key}.${flag}`);
+          }
+        }
         const name = lockEntryName(key, entry, lock.packages);
         if (!name) {
           return global(`ambiguous lockfile package name: ${key}`);
