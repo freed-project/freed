@@ -364,6 +364,13 @@ export function compareToolingManifests({
         if (!object(entry)) {
           return global("invalid lockfile package entry");
         }
+        // Validate both locks before comparison, even when malformed flags
+        // are equal or belong to an unreachable package.
+        for (const flag of ["dev", "optional", "devOptional", "peer"]) {
+          if (Object.hasOwn(entry, flag) && typeof entry[flag] !== "boolean") {
+            return global(`invalid lockfile classification flag: ${key}.${flag}`);
+          }
+        }
         const name = lockEntryName(key, entry, lock.packages);
         if (!name) {
           return global(`ambiguous lockfile package name: ${key}`);
@@ -389,8 +396,21 @@ export function compareToolingManifests({
         }
       }
     }
+    // Tooling jobs install all dependency classes with npm ci (Windows adds
+    // --ignore-scripts). Classification flags do not change those installs.
+    // Revisit this exemption if a tooling job starts omitting dependency classes.
+    const installedEntry = (entry) => {
+      if (entry === undefined) return entry;
+      const { dev, optional, devOptional, peer, ...installed } = entry;
+      return installed;
+    };
     for (const key of names.keys()) {
-      if (isDeepStrictEqual(locks[0].packages[key], locks[1].packages[key])) {
+      if (
+        isDeepStrictEqual(
+          installedEntry(locks[0].packages[key]),
+          installedEntry(locks[1].packages[key]),
+        )
+      ) {
         continue;
       }
       for (const lock of locks) {
