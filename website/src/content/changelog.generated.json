@@ -1,5 +1,73 @@
 [
   {
+    "version": "26.11.1700-dev",
+    "tagName": "v26.11.1700-dev",
+    "channel": "dev",
+    "date": "2026-11-19T22:55:18Z",
+    "deck": "Freed Desktop starts reliably after a slow annotation upgrade, and the built-in themes match their Vorton reference.",
+    "features": [
+      {
+        "text": "Starship, Dark Star and Scriptorium themes realigned with the Vorton reference across the feed, settings and map"
+      }
+    ],
+    "fixes": [
+      {
+        "text": "Freed Desktop no longer stalls at launch when annotation catalog verification runs long"
+      },
+      {
+        "text": "Google sign-in relay accepts only Freed's exact first-party origins"
+      },
+      {
+        "text": "Articles with unreadable publication dates no longer store invalid timestamps"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Desktop native code is linted on a pinned Rust toolchain, and Rust changes now trigger the Windows native build"
+      },
+      {
+        "text": "Annotation resume, clipboard preview, Friends graph and Linux ACL tests no longer depend on runner speed or Ubuntu version"
+      },
+      {
+        "text": "Automated debt selection only picks up issues from trusted authors"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.11.1700-dev",
+    "prNumbers": [
+      2204,
+      2208,
+      2214,
+      2221,
+      2227,
+      2229,
+      2230,
+      2234,
+      2235,
+      2237,
+      2244,
+      2245,
+      2248,
+      2250,
+      2251,
+      2255,
+      2257,
+      2260,
+      2261,
+      2269,
+      2271
+    ],
+    "builds": [
+      "26.11.1700-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.11.1700-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.11.1700-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.10.900-dev",
     "tagName": "v26.10.900-dev",
     "channel": "dev",
