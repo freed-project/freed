@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { mockInvoke, mockNativeFiles, mockStoreShouldThrow } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
@@ -53,11 +53,75 @@ import {
 
 describe("desktop release channel helpers", () => {
   beforeEach(() => {
+    vi.stubGlobal("__BUILD_CHANNEL__", "production");
     mockInvoke.mockReset();
     mockNativeFiles.clear();
     mockStoreShouldThrow.current = false;
     window.localStorage.clear();
   });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each(["dev", "production"] as const)(
+    "seeds the installed channel from a fresh %s build without changing update preferences",
+    async (buildChannel) => {
+      vi.stubGlobal("__BUILD_CHANNEL__", buildChannel);
+
+      await expect(loadDesktopReleaseChannelState()).resolves.toEqual({
+        selectedChannel: "production",
+        installedChannel: buildChannel,
+      });
+      expect(JSON.parse(mockNativeFiles.get("/mock/app-data/release-channel.json") ?? "{}")).toEqual({
+        channel: "production",
+        installedChannel: buildChannel,
+      });
+      expect(window.localStorage.getItem("freed-release-channel")).toBe("production");
+    },
+  );
+
+  it.each(["dev", "production"] as const)(
+    "preserves a stored %s installed channel when the build differs",
+    async (installedChannel) => {
+      vi.stubGlobal("__BUILD_CHANNEL__", installedChannel === "dev" ? "production" : "dev");
+      const stored = JSON.stringify({ channel: "production", installedChannel });
+      mockNativeFiles.set("/mock/app-data/release-channel.json", stored);
+
+      await expect(loadDesktopReleaseChannelState()).resolves.toEqual({
+        selectedChannel: "production",
+        installedChannel,
+      });
+      expect(mockNativeFiles.get("/mock/app-data/release-channel.json")).toBe(stored);
+    },
+  );
+
+  it("replaces an invalid installed channel with the build channel", async () => {
+    vi.stubGlobal("__BUILD_CHANNEL__", "dev");
+    mockNativeFiles.set("/mock/app-data/release-channel.json", JSON.stringify({
+      channel: "production", installedChannel: "invalid",
+    }));
+
+    await expect(loadDesktopReleaseChannelState()).resolves.toEqual({
+      selectedChannel: "production", installedChannel: "dev",
+    });
+    expect(JSON.parse(mockNativeFiles.get("/mock/app-data/release-channel.json") ?? "{}").installedChannel).toBe("dev");
+  });
+
+  it.each(["dev", "production"] as const)(
+    "keeps the %s build identity when native storage is unavailable",
+    async (buildChannel) => {
+      vi.stubGlobal("__BUILD_CHANNEL__", buildChannel);
+      mockStoreShouldThrow.current = true;
+      const selectedChannel = buildChannel === "dev" ? "production" : "dev";
+      window.localStorage.setItem("freed-release-channel", selectedChannel);
+
+      await expect(loadDesktopReleaseChannelState()).resolves.toEqual({
+        selectedChannel, installedChannel: buildChannel,
+      });
+      await expect(persistDesktopInstalledReleaseChannel(buildChannel)).resolves.toBeUndefined();
+    },
+  );
 
   it("reads the native updater target from Tauri", async () => {
     mockInvoke.mockResolvedValue("darwin-aarch64");
