@@ -198,6 +198,20 @@ const ALL_PROVIDER_SCOPES = Object.freeze([
 ]);
 
 export const PROVIDER_VISIBLE_EXACT_SCOPES = new Map([
+  // Release-channel inputs can enable dev sync for these providers.
+  ["packages/desktop/src/lib/release-channel.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/ui/src/lib/release-channel.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/desktop/src/components/StartupRecoveryScreen.tsx", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/desktop/src/lib/desktop-updater.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/shared/src/release-channel.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/desktop/vite.config.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/lib/build-metadata.mjs", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/desktop/package.json", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  [".github/workflows/release.yml", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/release.sh", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/release-version.mjs", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/prepare-release-notes.mjs", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/lib/provider-visible-paths.mjs", ALL_PROVIDER_SCOPES],
   // Explicit recovery can make saved URLs eligible for the Primary content policy.
   ["packages/desktop/src/components/ConsumerRecoverySavedUrlEditor.tsx", ALL_PROVIDER_SCOPES],
   ["packages/pwa/src/components/PwaRecoverySavedUrlEditor.tsx", ALL_PROVIDER_SCOPES],

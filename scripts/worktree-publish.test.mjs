@@ -204,6 +204,9 @@ async function createPublishFixture(
     );
     await fs.mkdir(path.dirname(providerPath), { recursive: true });
     await fs.writeFile(providerPath, "// original provider extractor\n");
+    const releaseChannelPath = path.join(seed, "packages/desktop/src/lib/release-channel.ts");
+    await fs.mkdir(path.dirname(releaseChannelPath), { recursive: true });
+    await fs.writeFile(releaseChannelPath, 'export const channel = "stable";\n');
   }
   assert.equal(run("git", ["add", "-A"], { cwd: seed }).status, 0);
   assert.equal(
@@ -952,6 +955,17 @@ process.exit(result.status ?? 92);
     assert.deepEqual(await queryState(fixture), before);
     return result;
   };
+  // A release-channel-only change must reach the provider gate, while the
+  // query preserves the candidate bytes and raw index like every other query.
+  const releaseChannel = "packages/desktop/src/lib/release-channel.ts";
+  await fs.writeFile(path.join(cwd, releaseChannel), 'export const channel = "dev";\n');
+  assert.equal(git("diff", "--name-only", "origin/dev"), releaseChannel);
+  const releaseOnly = await query(directPublishEnv(fixture));
+  assert.match(releaseOnly.stdout.trim(), /^[a-f0-9]{40}$/);
+  const releasePatch = git("diff", "--binary", "--no-ext-diff", "--no-textconv", "origin/dev", "--", releaseChannel) + "\n";
+  assert.equal(releaseOnly.stdout.trim(), run("git", ["hash-object", "--stdin"], { cwd, input: releasePatch }).stdout.trim());
+  git("restore", releaseChannel);
+
   // Protected/detached branches and incomplete publisher environments are
   // irrelevant to a local query. No publication tooling may be required.
   git("checkout", "dev");
