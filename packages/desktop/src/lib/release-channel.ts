@@ -53,7 +53,8 @@ export async function loadDesktopReleaseChannelState(): Promise<DesktopReleaseCh
         DESKTOP_INSTALLED_RELEASE_CHANNEL_STORE_KEY,
       ),
     );
-    const installedChannel = storedInstalledChannel ?? selectedChannel;
+    // Update preferences do not identify the build installed on a fresh data root.
+    const installedChannel = storedInstalledChannel ?? __BUILD_CHANNEL__;
     persistReleaseChannel(selectedChannel);
 
     if (!storedChannel) {
@@ -75,7 +76,7 @@ export async function loadDesktopReleaseChannelState(): Promise<DesktopReleaseCh
 
     return { selectedChannel, installedChannel };
   } catch {
-    return { selectedChannel: fallbackChannel, installedChannel: fallbackChannel };
+    return { selectedChannel: fallbackChannel, installedChannel: __BUILD_CHANNEL__ };
   }
 }
 
