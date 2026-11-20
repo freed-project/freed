@@ -161,3 +161,11 @@
 /packages/desktop/src/components/ConsumerRecoverySavedUrlEditor.tsx @AubreyF
 /packages/pwa/src/components/PwaRecoverySavedUrlEditor.tsx @AubreyF
 /packages/ui/src/components/RecoverySavedUrlFields.tsx @AubreyF
+
+# Release-channel inputs to the dev sync trigger gate.
+/packages/desktop/src/lib/release-channel.ts @AubreyF
+/packages/ui/src/lib/release-channel.ts @AubreyF
+/packages/desktop/src/components/StartupRecoveryScreen.tsx @AubreyF
+/packages/desktop/src/lib/desktop-updater.ts @AubreyF
+/packages/shared/src/release-channel.ts @AubreyF
+/packages/desktop/vite.config.ts @AubreyF

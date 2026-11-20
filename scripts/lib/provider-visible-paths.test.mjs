@@ -45,6 +45,20 @@ const ALL_PROVIDER_SCOPES = [
 ];
 
 const CRITICAL_EXACT_SCOPE_CASES = [
+  // Release-channel inputs can enable dev sync for these providers.
+  ["packages/desktop/src/lib/release-channel.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/ui/src/lib/release-channel.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/desktop/src/components/StartupRecoveryScreen.tsx", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/desktop/src/lib/desktop-updater.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/shared/src/release-channel.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/desktop/vite.config.ts", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/lib/build-metadata.mjs", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["packages/desktop/package.json", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  [".github/workflows/release.yml", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/release.sh", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/release-version.mjs", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/prepare-release-notes.mjs", ["facebook", "instagram", "linkedin", "other", "youtube"]],
+  ["scripts/lib/provider-visible-paths.mjs", ALL_PROVIDER_SCOPES],
   ["packages/desktop/src/components/ConsumerRecoverySavedUrlEditor.tsx", ["facebook", "instagram", "linkedin", "medium", "other", "substack", "x", "youtube"]],
   ["packages/pwa/src/components/PwaRecoverySavedUrlEditor.tsx", ["facebook", "instagram", "linkedin", "medium", "other", "substack", "x", "youtube"]],
   ["packages/ui/src/components/RecoverySavedUrlFields.tsx", ["facebook", "instagram", "linkedin", "medium", "other", "substack", "x", "youtube"]],
@@ -1115,6 +1129,7 @@ test("CLI filters stdin to provider-visible paths only", () => {
   assert.deepEqual(result.stdout.split("\n").filter(Boolean), [
     "packages/desktop/src-tauri/src/fb-extract.js",
     "packages/capture-linkedin/src/browser.ts",
+    "scripts/release.sh",
   ]);
 });
 
@@ -1149,7 +1164,7 @@ test("CLI prints the sorted provider union for provider-visible paths", () => {
 
 test("CLI prints nothing when no path is provider-visible", () => {
   const result = spawnSync(process.execPath, [cliPath, "--stdin"], {
-    input: "docs/README.md\nscripts/release.sh\n",
+    input: "docs/README.md\nscripts/worktree-publish.sh\n",
     encoding: "utf8",
   });
 
