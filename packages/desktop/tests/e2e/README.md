@@ -69,12 +69,13 @@ The recovery archive and handoff resume scenarios run once in the
 dependency cache. The fixture verifies that compiled capability when opening
 the app and blocks external HTTP(S). These synthetic scenarios do not prove
 installed convergence acceptance or activate native Library authority.
-The ordinary `chromium` project keeps the capability disabled and checks
-transfer refusal, retained restart fences and read-only archive review in
-`library-transfer-hold.spec.ts`. Do not enable the capability on the ordinary
-server to satisfy the acceptance scenarios. When using external servers, set
+Every product build now compiles the transfer capability, so the ordinary
+`chromium` project has it too. It checks read-only viewer browsing in
+`library-read-only-viewer.spec.ts`. The native hold regression remains in
+`packages/library-core-native/tests/transfer_hold.rs`, built with
+`--no-default-features`. When using external servers, set
 `TRANSFER_BASE_URL` to the separate mocked acceptance server as well as
-`BASE_URL` for the ordinary server; a missing acceptance capability fails.
+`BASE_URL` for the ordinary server; a missing capability fails.
 
 The full command includes the `chromium` functional project, the
 `chromium-transfer-acceptance` recovery project and the `chromium-feed-perf`
