@@ -293,10 +293,43 @@ function lockEntryName(key, entry, packages) {
   return link ? lockEntryName(link[0], link[1], {}) : null;
 }
 
+// Parse installation paths before reachability filtering. Missing ancestors or
+// noncanonical paths are ambiguous even when their apparent names are unrelated.
+function lockEntryAncestry(key, entry, packages) {
+  if (!key.includes("node_modules/")) {
+    const name = lockEntryName(key, entry, packages);
+    return name ? [name] : null;
+  }
+  const [workspace, ...parts] = `/${key}`.split("/node_modules/");
+  if (!parts.length) return null;
+  let parent = workspace.slice(1);
+  if (
+    parent &&
+    (!object(packages[parent]) ||
+      !lockEntryName(parent, packages[parent], packages))
+  ) {
+    return null;
+  }
+  const names = [];
+  for (const name of parts) {
+    if (!/^(?:@[a-z0-9~][a-z0-9._~-]*\/)?[a-z0-9~][a-z0-9._~-]*$/i.test(name)) {
+      return null;
+    }
+    if (names.length && (!object(packages[parent]) || packages[parent].link)) {
+      return null;
+    }
+    names.push(name);
+    parent = `${parent ? `${parent}/` : ""}node_modules/${name}`;
+  }
+  return names;
+}
+
 /**
  * Compare immutable manifests before allowing a PR to skip tooling. Every doubt
  * goes global: extra jobs are safer than silently dropping a required test.
- * Matching by name deliberately over-approximates nested npm resolution.
+ * Matching by name still over-approximates npm resolution, but a nested copy
+ * must have a reachable name and reachable names for every installed ancestor.
+ * Workspace entries and links retain their existing name-based resolution.
  * Non-root devDependencies are not installed as transitive dependencies, so
  * only their runtime, optional, and peer dependencies become graph edges.
  */
@@ -372,8 +405,8 @@ export function compareToolingManifests({
           }
         }
         const name = lockEntryName(key, entry, lock.packages);
-        if (!name) {
-          return global(`ambiguous lockfile package name: ${key}`);
+        if (!name || !lockEntryAncestry(key, entry, lock.packages)) {
+          return global(`ambiguous lockfile package name or ancestry: ${key}`);
         }
         names.set(key, name);
         const dependencies = edges.get(name) ?? new Set();
@@ -416,7 +449,9 @@ export function compareToolingManifests({
       for (const lock of locks) {
         if (
           lock.packages[key] &&
-          reachable.has(lockEntryName(key, lock.packages[key], lock.packages))
+          lockEntryAncestry(key, lock.packages[key], lock.packages).every(
+            (name) => reachable.has(name),
+          )
         ) {
           return global(
             `tooling-reachable dependency changed: ${names.get(key)}`,
