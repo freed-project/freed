@@ -451,6 +451,113 @@ test("unreachable workspace dependency bumps skip all tooling lanes", () => {
   );
 });
 
+// Tier 1: installed ancestors bound nested-copy invalidation without changing
+// the conservative name graph. Both locks matter for additions and removals.
+test("nested copies require their own name and every ancestor to be reachable", () => {
+  for (const names of [
+    ["next", "rollup"],
+    ["vite", "rollup"],
+    ["vite", "next"],
+    ["next", "vite", "rollup"],
+    ["vite", "next", "rollup"],
+    ["vite", "typescript", "rollup"],
+    ["@scope/parent", "@scope/middle", "@scope/leaf"],
+    ["next", "@scope/middle", "@scope/leaf"],
+    ["@scope/parent", "next", "@scope/leaf"],
+  ]) {
+    const key = `node_modules/${names.join("/node_modules/")}`;
+    const reachable = !names.includes("next");
+    for (const operation of ["add", "change", "remove"]) {
+      const verdict = manifestChange(
+        ({ lock }) => {
+          if (operation === "remove") delete lock.packages[key];
+          else lock.packages[key] = { version: "2" };
+        },
+        ({ lock }) => {
+          lock.packages["node_modules/vite"].dependencies["@scope/parent"] = "1";
+          lock.packages["node_modules/vite"].dependencies["@scope/middle"] = "1";
+          lock.packages["node_modules/vite"].dependencies["@scope/leaf"] = "1";
+          for (let index = 0; index < names.length; index += 1) {
+            if (index === names.length - 1 && operation === "add") continue;
+            const ancestor = `node_modules/${names.slice(0, index + 1).join("/node_modules/")}`;
+            lock.packages[ancestor] ??= { version: "1" };
+          }
+        },
+      );
+      assertManifestLanes(verdict, reachable);
+      if (!reachable) {
+        const plan = buildToolingSmokeMatrix({
+          changedFiles: ["package-lock.json"], manifestVerdict: verdict,
+        });
+        assert.deepEqual(plan.suites, []);
+        assert.deepEqual(plan.include, []);
+        assert.equal(plan.jobCount, 0);
+        assert.equal(plan.applicable, false);
+      }
+    }
+  }
+});
+
+test("an unreachable nested copy does not suppress a root change to the same name", () => {
+  assertManifestLanes(manifestChange(({ lock }) => {
+    lock.packages["node_modules/next/node_modules/rollup"] = { version: "2" };
+    lock.packages["node_modules/rollup"].version = "2";
+  }), true);
+});
+
+test("malformed or ambiguous installation ancestry fails closed on either side", () => {
+  for (const key of [
+    "node_modules/absent/node_modules/rollup",
+    "node_modules/next/node_modules/absent/node_modules/rollup",
+    "node_modules/next//node_modules/rollup",
+    "node_modules/next/extra/node_modules/rollup",
+    "node_modules/next/node_modules/rollup/extra",
+    "node_modules/next/node_modules/@scope",
+    "node_modules/next/node_modules/@scope/",
+    "node_modules/next/node_modules/@/rollup",
+    "node_modules/next/node_modules/../rollup",
+    "node_modules/next/node_modules/",
+    "unknown/node_modules/rollup",
+    "node_modules/linked/node_modules/rollup",
+  ]) {
+    for (const side of ["old", "new", "both"]) {
+      const verdict = manifestChange(
+        ({ lock }) => {
+          if (side === "old") delete lock.packages[key];
+          else lock.packages[key] = { version: side === "both" ? "1" : "2" };
+        },
+        ({ lock }) => {
+          lock.packages["node_modules/linked"] = { link: true, resolved: "website" };
+          if (side !== "new") lock.packages[key] = { version: "1" };
+        },
+      );
+      assertManifestLanes(verdict, true);
+      assert.match(verdict.reason, /ambiguous lockfile package name or ancestry/);
+    }
+  }
+});
+
+test("workspace names, links and workspace-local dependencies retain reachability", () => {
+  for (const named of [true, false]) {
+    for (const reachable of [true, false]) {
+      const verdict = manifestChange(
+        ({ lock }) => { lock.packages.website.version = "2"; },
+        ({ lock }) => {
+          if (!named) delete lock.packages.website.name;
+          lock.packages["node_modules/website"] = { link: true, resolved: "website" };
+          if (reachable) lock.packages["node_modules/vite"].dependencies.website = "1";
+        },
+      );
+      assertManifestLanes(verdict, reachable);
+    }
+  }
+  for (const name of ["rollup", "next"]) {
+    assertManifestLanes(manifestChange(({ lock }) => {
+      lock.packages[`website/node_modules/${name}`] = { version: "2" };
+    }), name === "rollup");
+  }
+});
+
 // Tier 1: npm classification churn must not schedule shards, while installed
 // package identity and dependency edges must still invalidate the full lane.
 test("install-classification flags alone select no suites or shards", () => {
@@ -614,7 +721,7 @@ for (const [name, change] of [
     },
   ],
   [
-    "nested reachable dependency",
+    "nested dependency with missing parent",
     ({ lock }) => {
       lock.packages["node_modules/other/node_modules/rollup"] = {
         version: "2",
@@ -688,11 +795,16 @@ for (const args of [
 
 test("npm packages sharing builtin names are derivable lock entries", () => {
   assertManifestLanes(
-    manifestChange(({ lock }) => {
-      lock.packages["node_modules/jszip/node_modules/string_decoder"] = {
-        version: "1",
-      };
-    }),
+    manifestChange(
+      ({ lock }) => {
+        lock.packages["node_modules/jszip/node_modules/string_decoder"] = {
+          version: "1",
+        };
+      },
+      ({ lock }) => {
+        lock.packages["node_modules/jszip"] = { version: "1" };
+      },
+    ),
     false,
   );
 });
