@@ -3,8 +3,10 @@
   "version": "26.11.2300-dev",
   "channel": "dev",
   "dayKey": "26.11.23",
-  "approved": false,
-  "editorialNotes": [],
+  "approved": true,
+  "editorialNotes": [
+    "Curated by Releases from typed changes since v26.11.1700-dev. Owner approved tagging this dev release before installed Desktop verification (bound to 2c86ac77). No Library Core activation. #2279 provider-observable effect is covered by the owner's Level 5 decision recorded on #2276 on 2026-11-19; #2280 is diff_authorized; #2205 changes only Actions pins."
+  ],
   "generatedAt": "2026-11-23T23:41:57.072Z",
   "model": "heuristic",
   "source": {
@@ -65,10 +67,17 @@
     ]
   },
   "release": {
-    "deck": "Bump the github-actions-updates group across 1 directory with 4 updates",
+    "deck": "Easier-to-see keyboard focus in three themes, and new dev installs start on the right channel.",
     "features": [],
-    "fixes": [],
-    "followUps": []
+    "fixes": [
+      "Midas, Ember and Neon themes use brighter focus rings that meet contrast targets",
+      "Fresh Freed Desktop dev installs record the dev channel they were built for, so existing dev sync triggers work from the first install"
+    ],
+    "followUps": [
+      "Nightly scroll performance budgets report breaches with measured values instead of failing the run",
+      "Release-channel and release-tooling files are now reviewed as provider-visible changes",
+      "Tooling test selection handles lockfile flags and nested dependencies correctly, and GitHub Actions dependencies are updated"
+    ]
   },
-  "releaseBody": "(AI Generated).\n\n## Freed v26.11.2300-dev\n\nBump the github-actions-updates group across 1 directory with 4 updates\n\n### Fixes\n\n- Bug fixes and improvements\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+  "releaseBody": "(AI Generated).\n\n## Freed v26.11.2300-dev\n\nEasier-to-see keyboard focus in three themes, and new dev installs start on the right channel\n\n### Fixes\n\n- Midas, Ember and Neon themes use brighter focus rings that meet contrast targets\n- Fresh Freed Desktop dev installs record the dev channel they were built for, so existing dev sync triggers work from the first install\n\n### Follow-ups\n\n- Nightly scroll performance budgets report breaches with measured values instead of failing the run\n- Release-channel and release-tooling files are now reviewed as provider-visible changes\n- Tooling test selection handles lockfile flags and nested dependencies correctly, and GitHub Actions dependencies are updated\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
 }
