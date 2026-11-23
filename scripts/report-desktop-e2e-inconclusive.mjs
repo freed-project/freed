@@ -20,6 +20,7 @@ export function summarizeInconclusive(report) {
     requireShape(Array.isArray(report.suites) && Array.isArray(report.errors));
     if (report.errors.length) throw new Error("Playwright reported run-level errors; coverage is incomplete.");
     const rows = new Map();
+    const budgetRows = [];
     let excluded = 0;
     let unexecuted = 0;
     function visit(suite, parents = [], root = false) {
@@ -47,6 +48,14 @@ export function summarizeInconclusive(report) {
             row.annotations += annotations;
             row.affected += Number(annotations > 0);
             row.attempts++;
+            for (const annotation of result.annotations) {
+              if (annotation.type !== "perf budget exceeded (report-only)") continue;
+              requireShape(typeof annotation.description === "string");
+              budgetRows.push({
+                project: test.projectName, file: spec.file, title: fullTitle.join(" › "),
+                attempt: result.retry + 1, description: annotation.description,
+              });
+            }
           }
           rows.set(key, row);
         }
@@ -62,11 +71,20 @@ export function summarizeInconclusive(report) {
     const attempts = affected.reduce((sum, row) => sum + row.affected, 0);
     let summary = heading + `${count(annotations)} inconclusive annotations across ${count(attempts)} affected executed attempts / ${count(total)} total executed attempts.\n\n`;
     summary += `${count(excluded)} skipped or never-started results and ${count(unexecuted)} test cases without results excluded. Flags are informational; test verdicts are unchanged.\n\n`;
-    if (!affected.length) return summary + "No inconclusive annotations were recorded in executed attempts.\n";
-    summary += "| Project | File | Full test title | Inconclusive annotations | Affected attempts | Executed attempts | Flag |\n| --- | --- | --- | ---: | ---: | ---: | --- |\n";
+    if (!affected.length) summary += "No inconclusive annotations were recorded in executed attempts.\n";
+    else summary += "| Project | File | Full test title | Inconclusive annotations | Affected attempts | Executed attempts | Flag |\n| --- | --- | --- | ---: | ---: | ---: | --- |\n";
     for (const row of affected) {
       const flag = row.affected === row.attempts ? "EVERY ATTEMPT INCONCLUSIVE" : "";
       summary += `| ${escapeCell(row.project)} | ${escapeCell(row.file)} | ${escapeCell(row.title)} | ${count(row.annotations)} | ${count(row.affected)} | ${count(row.attempts)} | ${flag} |\n`;
+    }
+    summary += "\n## Freed Desktop e2e perf budgets exceeded (report-only)\n\n";
+    if (!budgetRows.length) summary += "No report-only budget annotations were recorded in executed attempts.\n";
+    else {
+      summary += `${count(budgetRows.length)} report-only budget annotations. Attempts are numbered from 1 using the recorded retry; test verdicts are unchanged.\n\n`;
+      summary += "| Project | File | Full test title | Attempt | Measured value and budget |\n| --- | --- | --- | ---: | --- |\n";
+      for (const row of budgetRows) {
+        summary += `| ${escapeCell(row.project)} | ${escapeCell(row.file)} | ${escapeCell(row.title)} | ${count(row.attempt)} | ${escapeCell(row.description)} |\n`;
+      }
     }
     return summary;
   } catch (error) {
