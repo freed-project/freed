@@ -2,19 +2,20 @@
 // Copies Vorton's generated theme reference into Freed and records where it came from.
 //
 // Vorton authors the six shared themes and generates web/design/theme-reference.json from its
-// stylesheet. Vorton has no Git remote, so Freed vendors the file from a local checkout instead
-// of fetching it. The drift test in packages/ui/src/lib/theme-shell-css.test.ts compares Freed's
-// palettes against the vendored copy and checks the copy against the recorded hash.
+// stylesheet. Freed vendors committed checkout bytes or an explicitly verified supplied file.
+// The drift test in packages/ui/src/lib/theme-shell-css.test.ts compares Freed's palettes
+// against the vendored copy and checks the copy against the recorded hash.
 //
 // Usage:
 //   node scripts/sync-vorton-theme-reference.mjs --from <vorton-checkout> [--rev <commit-ish>]
+//   node scripts/sync-vorton-theme-reference.mjs --file <reference.json> --commit <full-sha> --sha256 <expected-hash>
 //
 // --rev defaults to HEAD of the checkout. The file is read from the commit with `git show`, so a
 // dirty working tree in Vorton never leaks into Freed.
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,7 +38,7 @@ export function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     const value = argv[index + 1];
-    if (arg === "--from" || arg === "--rev" || arg === "--to") {
+    if (["--from", "--rev", "--to", "--file", "--commit", "--sha256"].includes(arg)) {
       if (!value || value.startsWith("--")) throw new Error(`${arg} needs a value.`);
       options[arg.slice(2)] = value;
       index += 1;
@@ -45,8 +46,20 @@ export function parseArgs(argv) {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
-  if (!options.from) throw new Error("--from <vorton-checkout> is required.");
+  validateInput(options);
   return options;
+}
+
+/** Supplied bytes require explicit provenance; never invent a source checkout. */
+function validateInput({ from, file, commit, sha256: expectedHash, rev }) {
+  if (Boolean(from) === Boolean(file)) throw new Error("Provide exactly one of --from or --file.");
+  if (file) {
+    if (rev && rev !== "HEAD") throw new Error("--rev is only supported with --from.");
+    if (!/^[0-9a-f]{40}$/.test(commit ?? "")) throw new Error("--commit requires a full lowercase source commit SHA.");
+    if (!/^[0-9a-f]{64}$/.test(expectedHash ?? "")) throw new Error("--sha256 requires the expected lowercase SHA-256.");
+  } else if (commit !== undefined || expectedHash !== undefined) {
+    throw new Error("--commit and --sha256 require --file.");
+  }
 }
 
 /** Fails closed on anything that is not a schema 1 reference with all six themes. */
@@ -69,17 +82,21 @@ export function sha256(text) {
   return createHash("sha256").update(text).digest("hex");
 }
 
-export function syncReference({ from, rev, to }) {
+export function syncReference(options) {
+  validateInput(options);
+  const { from, rev = "HEAD", to, file, commit: suppliedCommit, sha256: expectedHash } = options;
   const git = (...args) =>
     execFileSync("git", ["-C", from, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  const commit = git("rev-parse", "--verify", `${rev}^{commit}`).trim();
-  const text = git("show", `${commit}:${REFERENCE_PATH}`);
+  const commit = file ? suppliedCommit : git("rev-parse", "--verify", `${rev}^{commit}`).trim();
+  const text = file ? readFileSync(file) : git("show", `${commit}:${REFERENCE_PATH}`);
+  const hash = sha256(text);
+  if (file && hash !== expectedHash) throw new Error("Reference SHA-256 does not match --sha256.");
   validateReference(text);
   const record = {
     source: "vorton",
     path: REFERENCE_PATH,
     commit,
-    sha256: sha256(text),
+    sha256: hash,
   };
   mkdirSync(to, { recursive: true });
   writeFileSync(path.join(to, REFERENCE_FILE), text);

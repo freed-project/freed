@@ -244,6 +244,28 @@ describe("Vorton theme reference", () => {
     );
   });
 
+  it("resolves brighter focus rings without changing ordinary accents or other theme rings", () => {
+    const expected = {
+      midas: ["#d0b89c", "#7c5c38", "#b08a48"],
+      ember: ["#e99468", "#7a2f1f", "#c15a2e"],
+      neon: ["#a78bfa", "#3b82f6", "#8b5cf6"],
+      "starship-light": ["#0a5fbd", "#0a5fbd", "#0a5fbd"],
+      "starship-dark": ["#64d2ff", "#2997ff", "#64d2ff"],
+      scriptorium: ["#86684a", "#86684a", "#b08a61"],
+    };
+    for (const [theme, [ring, primary, secondary]] of Object.entries(expected)) {
+      const values = freedTheme(theme);
+      expect(freedValue(values, "--theme-focus-ring"), theme).toBe(normalize(ring));
+      expect(freedValue(values, "--theme-accent-primary"), theme).toBe(normalize(primary));
+      expect(freedValue(values, "--theme-accent-secondary"), theme).toBe(normalize(secondary));
+    }
+    for (const theme of ["ember", "neon"]) {
+      const values = freedTheme(theme);
+      expect(values["--theme-focus-ring"]).toBe("var(--theme-accent-bright)");
+      expect(freedValue(values, "--theme-accent-bright")).toBe(normalize(expected[theme as "ember" | "neon"][0]));
+    }
+  });
+
   it("matches Freed's palettes except declared differences", () => {
     const drift: string[] = [];
     const used = new Set<string>();
