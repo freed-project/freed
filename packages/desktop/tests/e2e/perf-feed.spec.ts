@@ -18,6 +18,7 @@ import { type Page } from "@playwright/test";
 import { test, expect } from "./fixtures/app";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { classifyFeedFrameBudgets } from "./helpers/feed-frame-budget";
 import { createFrameCapture, isolateFrameDiagnostic, serializeFrameEvidence, FRAME_CAPTURE_LIMITS, summarizeFrameCapture, withFrameEvidence } from "./helpers/feed-frame-capture";
 
 type FrameCapture = ReturnType<typeof createFrameCapture>;
@@ -168,6 +169,8 @@ const ITEM_COUNT_LARGE = 3_000;
 const ITEM_COUNT_XLARGE = 5_000;
 const SCROLL_LONG_TASK_COUNT_BUDGET = 2;
 const SCROLL_LONG_TASK_WORST_MS_BUDGET = 120;
+// Shared-runner frame timing is report-only per Tier 4 in docs/TESTING-STANDARD.md.
+// Owner decision: https://github.com/freed-project/freed/issues/2252.
 const SCROLL_FRAME_P95_MS_BUDGET = 50;
 const SCROLL_DROPPED_FRAME_BUDGET = 10;
 
@@ -1028,10 +1031,14 @@ test.describe("FPS harness (rAF-based frame measurement)", () => {
           });
           return;
         }
-        // Keep this below obvious jank while leaving room for shared CI runners.
         console.log(`[PERF] fps harness scroll 3k items p95: ${fps.p95Ms} ms`);
-        expect(fps.p95Ms).toBeLessThan(SCROLL_FRAME_P95_MS_BUDGET);
-        expect(fps.droppedFrames).toBeLessThanOrEqual(SCROLL_DROPPED_FRAME_BUDGET);
+        for (const annotation of classifyFeedFrameBudgets(
+          { p95Ms: fps.p95Ms, droppedFrames: fps.droppedFrames },
+          { p95Ms: SCROLL_FRAME_P95_MS_BUDGET, droppedFrames: SCROLL_DROPPED_FRAME_BUDGET },
+        )) {
+          test.info().annotations.push(annotation);
+          console.log(`[PERF] ${annotation.type}: ${annotation.description}`);
+        }
       },
     });
   });
