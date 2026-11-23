@@ -39,6 +39,7 @@ html[data-theme="neon"] {
 
   --theme-accent-primary: #3b82f6;
   --theme-accent-secondary: #8b5cf6;
+  --theme-accent-bright: #a78bfa;
   --theme-accent-tertiary: #06b6d4;
   --theme-accent-primary-rgb: 59 130 246;
   --theme-accent-secondary-rgb: 139 92 246;
@@ -168,8 +169,8 @@ html[data-theme="neon"] {
   );
 
   --theme-selection: rgb(var(--theme-accent-secondary-tint-rgb) / 0.35);
-  /* Focus rings are the opaque accent so they reach 3:1 on every surface (Vorton ef7f386). */
-  --theme-focus-ring: var(--theme-accent-secondary);
+  /* Brighter focus rings stay separate from ordinary accents (Vorton fbaca819). */
+  --theme-focus-ring: var(--theme-accent-bright);
   /* The accent role: Neon's violet for controls, checkboxes, sliders and selected rings. */
   --theme-control-accent: var(--theme-accent-secondary);
   --theme-control-accent-rgb: var(--theme-accent-secondary-rgb);
@@ -237,6 +238,7 @@ html[data-theme="midas"] {
 
   --theme-accent-primary: #7c5c38;
   --theme-accent-secondary: #b08a48;
+  --theme-focus-ring: #d0b89c;
   --theme-accent-tertiary: #5f4a32;
   --theme-accent-primary-rgb: 124 92 56;
   --theme-accent-secondary-rgb: 176 138 72;
@@ -358,6 +360,8 @@ html[data-theme="ember"] {
 
   --theme-accent-primary: #7a2f1f;
   --theme-accent-secondary: #c15a2e;
+  --theme-accent-bright: #e99468;
+  --theme-focus-ring: var(--theme-accent-bright);
   --theme-accent-tertiary: #5b1711;
   --theme-accent-primary-rgb: 122 47 31;
   --theme-accent-secondary-rgb: 193 90 46;

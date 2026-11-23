@@ -61,3 +61,42 @@ test("refuses a reference missing a theme, and arguments without a checkout", ()
     rmSync(to, { recursive: true, force: true });
   }
 });
+
+test("imports supplied bytes with explicit provenance and preserves outputs on rejection", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "supplied-reference-"));
+  const file = path.join(root, "reference.json");
+  const to = path.join(root, "output");
+  const commit = "fbaca819157c9310666a72bed0325c01aae16dbb";
+  const contents = reference();
+  try {
+    writeFileSync(file, contents);
+    const options = parseArgs(["--file", file, "--commit", commit, "--sha256", sha256(contents), "--to", to]);
+    const record = syncReference(options);
+    assert.deepEqual(record, { source: "vorton", path: "web/design/theme-reference.json", commit, sha256: sha256(contents) });
+    assert.equal(readFileSync(path.join(to, REFERENCE_FILE), "utf8"), contents);
+    const source = readFileSync(path.join(to, SOURCE_FILE), "utf8");
+    assert.deepEqual(JSON.parse(source), record);
+
+    const rejected = [
+      [{ sha256: "0".repeat(64) }, contents, /does not match/],
+      [{ sha256: undefined }, contents, /--sha256/],
+      [{ commit: "fbaca819" }, contents, /--commit/],
+      [{ commit: undefined }, contents, /--commit/],
+      [{ from: root }, contents, /exactly one/],
+      [{ rev: "main" }, contents, /--rev/],
+      [{}, "{broken", /not valid JSON/],
+      [{}, '{"schema":2}', /Unsupported/],
+      [{}, reference(REQUIRED_THEMES.slice(1)), /missing starship-light/],
+    ];
+    for (const [overrides, text, error] of rejected) {
+      writeFileSync(file, text);
+      assert.throws(() => syncReference({ ...options, sha256: sha256(text), ...overrides }), error);
+      assert.equal(readFileSync(path.join(to, REFERENCE_FILE), "utf8"), contents);
+      assert.equal(readFileSync(path.join(to, SOURCE_FILE), "utf8"), source);
+    }
+    assert.throws(() => parseArgs(["--file", file]), /--commit/);
+    assert.throws(() => parseArgs(["--from", root, "--commit", commit]), /require --file/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
