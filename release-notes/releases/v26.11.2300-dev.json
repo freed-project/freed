@@ -1,0 +1,83 @@
+{
+  "tag": "v26.11.2300-dev",
+  "version": "26.11.2300-dev",
+  "channel": "dev",
+  "dayKey": "26.11.23",
+  "approved": true,
+  "editorialNotes": [
+    "Curated by Releases from typed changes since v26.11.1700-dev. Owner approved tagging this dev release before installed Desktop verification (bound to 2c86ac77). No Library Core activation. #2279 provider-observable effect is covered by the owner's Level 5 decision recorded on #2276 on 2026-11-19; #2280 is diff_authorized; #2205 changes only Actions pins."
+  ],
+  "generatedAt": "2026-11-23T23:41:57.072Z",
+  "model": "heuristic",
+  "source": {
+    "channel": "dev",
+    "previousPublishedTag": "v26.11.1700-dev",
+    "previousPublishedDayTag": "v26.11.1700-dev",
+    "compareRef": "HEAD",
+    "productCommitSha": "2c86ac77faedd83a89edb83618f646ad8cfa5967",
+    "promotedDevCommitSha": null,
+    "libraryCoreActivation": {
+      "schemaVersion": 1,
+      "range": {
+        "channel": "dev",
+        "previousPublishedTag": "v26.11.1700-dev",
+        "startMode": "previous_product_commit",
+        "fromExclusiveCommitSha": "cae70b0932e782df964193c00f49ec0bef96d74e",
+        "toInclusiveProductCommitSha": "2c86ac77faedd83a89edb83618f646ad8cfa5967"
+      },
+      "manifest": {
+        "path": "docs/library-core-activation-manifest.json",
+        "previousPresent": true,
+        "previousDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086",
+        "currentDigest": "sha256:a33bb2eeba256d6ad9c3dc0ac5d833187d1460dbd7d1934d4d54246a49cc8086"
+      },
+      "transitions": [],
+      "inspectionDigest": "sha256:8d2f88b356ef58a3b1004a0892598a840f8ffa2bed7b595279907acef1ff611f",
+      "decision": {
+        "state": "no_activation_declared",
+        "ownerApprovalReference": null,
+        "approvedInspectionDigest": null,
+        "approvedReleaseArtifactDigest": null
+      }
+    },
+    "isLatestOfDay": true,
+    "sameDayTagsIncluded": [
+      "v26.11.2300-dev"
+    ],
+    "relatedBuildTags": [
+      "v26.11.2300-dev"
+    ],
+    "prNumbers": [
+      2205,
+      2274,
+      2279,
+      2280,
+      2283,
+      2286,
+      2287
+    ],
+    "commitSubjects": [
+      "fix(ui): brighten Vorton theme focus rings (#2286)",
+      "fix: make nightly FPS frame budgets report-only (#2287)",
+      "fix: bump the github-actions-updates group across 1 directory with 4 updates (#2205)",
+      "fix: scope nested tooling dependencies to reachable ancestors (#2283)",
+      "fix: classify dev sync release-channel inputs as provider-visible (#2280)",
+      "fix: initialize installed release channel from build identity (#2279)",
+      "fix: ignore lockfile classification flags in tooling planner (#2274)"
+    ]
+  },
+  "release": {
+    "deck": "Easier-to-see keyboard focus in three themes, and new dev installs start on the right channel.",
+    "features": [],
+    "fixes": [
+      "Midas, Ember and Neon themes use brighter focus rings that meet contrast targets",
+      "Fresh Freed Desktop dev installs record the dev channel they were built for, so existing dev sync triggers work from the first install"
+    ],
+    "followUps": [
+      "Nightly scroll performance budgets report breaches with measured values instead of failing the run",
+      "Release-channel and release-tooling files are now reviewed as provider-visible changes",
+      "Tooling test selection handles lockfile flags and nested dependencies correctly, and GitHub Actions dependencies are updated"
+    ]
+  },
+  "releaseBody": "(AI Generated).\n\n## Freed v26.11.2300-dev\n\nEasier-to-see keyboard focus in three themes, and new dev installs start on the right channel\n\n### Fixes\n\n- Midas, Ember and Neon themes use brighter focus rings that meet contrast targets\n- Fresh Freed Desktop dev installs record the dev channel they were built for, so existing dev sync triggers work from the first install\n\n### Follow-ups\n\n- Nightly scroll performance budgets report breaches with measured values instead of failing the run\n- Release-channel and release-tooling files are now reviewed as provider-visible changes\n- Tooling test selection handles lockfile flags and nested dependencies correctly, and GitHub Actions dependencies are updated\n\n### Downloads\n\n**macOS:** `.dmg` (Apple Silicon or Intel, signed + notarized)  \n**Windows:** `.exe` (NSIS installer)  \n**Linux:** `.AppImage`  \n\n> macOS downloads are signed and notarized for normal Gatekeeper installation.\n"
+}
