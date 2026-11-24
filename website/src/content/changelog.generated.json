@@ -1,5 +1,52 @@
 [
   {
+    "version": "26.11.2300-dev",
+    "tagName": "v26.11.2300-dev",
+    "channel": "dev",
+    "date": "2026-11-24T01:15:20Z",
+    "deck": "Easier-to-see keyboard focus in three themes, and new dev installs start on the right channel.",
+    "features": [],
+    "fixes": [
+      {
+        "text": "Midas, Ember and Neon themes use brighter focus rings that meet contrast targets"
+      },
+      {
+        "text": "Fresh Freed Desktop dev installs record the dev channel they were built for, so existing dev sync triggers work from the first install"
+      }
+    ],
+    "followUps": [
+      {
+        "text": "Nightly scroll performance budgets report breaches with measured values instead of failing the run"
+      },
+      {
+        "text": "Release-channel and release-tooling files are now reviewed as provider-visible changes"
+      },
+      {
+        "text": "Tooling test selection handles lockfile flags and nested dependencies correctly, and GitHub Actions dependencies are updated"
+      }
+    ],
+    "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.11.2300-dev",
+    "prNumbers": [
+      2205,
+      2274,
+      2279,
+      2280,
+      2283,
+      2286,
+      2287
+    ],
+    "builds": [
+      "26.11.2300-dev"
+    ],
+    "buildLinks": [
+      {
+        "version": "26.11.2300-dev",
+        "htmlUrl": "https://github.com/freed-project/freed/releases/tag/v26.11.2300-dev",
+        "channel": "dev"
+      }
+    ]
+  },
+  {
     "version": "26.11.1700-dev",
     "tagName": "v26.11.1700-dev",
     "channel": "dev",
