@@ -90,7 +90,7 @@
     "@types/d3-force": "^3.0.10",
     "d3-force": "^3.0.0",
     "date-fns": "^4.4.0",
-    "maplibre-gl": "^6.0.0",
+    "maplibre-gl": "^6.13.0",
     "pixi.js": "^8.19.0",
     "three": "^0.185.1",
     "zustand": "^5.0.14"
