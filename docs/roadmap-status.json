@@ -28,13 +28,13 @@
     {
       "id": 5,
       "status": "current",
-      "reviewedAt": "2026-10-08T04:07:02.555085+00:00",
+      "reviewedAt": "2026-10-28T18:22:09.504295+00:00",
       "source": "docs/PHASE-5-DESKTOP.md"
     },
     {
       "id": 6,
       "status": "current",
-      "reviewedAt": "2026-10-06T05:42:21.346149+00:00",
+      "reviewedAt": "2026-10-28T18:22:09.504295+00:00",
       "source": "docs/PHASE-6-PWA.md"
     },
     {
@@ -64,7 +64,7 @@
     {
       "id": 11,
       "status": "current",
-      "reviewedAt": "2026-09-29",
+      "reviewedAt": "2026-10-28T18:22:09.504295+00:00",
       "source": "docs/PHASE-11-OPENCLAW.md",
       "updatedAt": "2026-10-02T17:30:00.538870+00:00"
     },

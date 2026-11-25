@@ -1547,7 +1547,7 @@ custody or physical Safari/iOS acceptance; see the Testing Standard for scope.
 
 ### Isolated transfer acceptance, October 3, 2026
 
-An explicit transfer-acceptance build selects the matching frontend mode for isolated multi-device testing. Ordinary PWA builds retain the transfer and recovery hold. A dedicated test origin and browser profile remain required; this does not establish installed acceptance.
+An explicit transfer-acceptance build selects the matching frontend mode for isolated multi-device testing. Since October 28, 2026, ordinary PWA builds also include transfer and consumer recovery. A dedicated test origin and browser profile remain required; this does not establish installed acceptance.
 
 ### Transfer acceptance preview delivery, October 3, 2026
 
