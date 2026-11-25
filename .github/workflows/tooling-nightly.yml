@@ -10,8 +10,8 @@ name: Nightly exhaustive
 
 on:
   schedule:
-    # 07:00 UTC, comfortably after the usual working day in the owner's timezone.
-    - cron: "0 7 * * *"
+    # 07:23 UTC avoids top-of-hour scheduling load within the existing off-hours window.
+    - cron: "23 7 * * *"
   workflow_dispatch:
     inputs:
       repeat:
