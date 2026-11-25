@@ -63,6 +63,30 @@ def children():
     return [int(pid) for pid in Path(f"/proc/self/task/{os.getpid()}/children").read_text().split()]
 
 
+def orphan_snapshot(pid):
+    """Diagnostic only: retain an adopted generation before waitpid removes it.
+
+    No command arguments, environment, or new signal authority enter this record.
+    The original parent may already be gone; adoption does not reconstruct it.
+    """
+    try:
+        before = process_snapshot(pid)
+        if before is None:
+            return {"pid": pid, "unavailable": "already disappeared"}
+        command = Path(f"/proc/{pid}/comm").read_text()[:64].rstrip("\n")
+        try:
+            executable = Path(os.readlink(f"/proc/{pid}/exe")).name[:128]
+        except FileNotFoundError:
+            executable = None  # An exited child can retain comm but lose exe.
+        after = process_snapshot(pid)
+        if after is None or before["birth"] != after["birth"]:
+            return {"pid": pid, "unavailable": "generation changed during capture"}
+        return dict(after, commandName=command, executableName=executable,
+                    originalParent="not retained", signalAuthority="unchanged")
+    except (OSError, ValueError) as error:
+        return {"pid": pid, "unavailable": type(error).__name__}
+
+
 def kill_owned(expected):
     # The parent is this still-live process, never a persisted numeric parent.
     if expected is None or expected[1] != os.getpid():
@@ -146,6 +170,7 @@ def supervise(command, operation_ms, test_ms, shard_ms):
     started = time.monotonic()
     observed = {}
     last_record = None
+    orphan_evidence = []
     interrupted = []
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda number, frame: interrupted.append(number))
@@ -156,6 +181,11 @@ def supervise(command, operation_ms, test_ms, shard_ms):
     try:
         child = subprocess.Popen(command, env=environment)
         while True:
+            # waitpid destroys /proc evidence for an exited orphan. Capture only
+            # this supervisor's extra children first; ownership enforcement below
+            # still uses adoption/custody, never these diagnostic records.
+            captured = ({pid: orphan_snapshot(pid) for pid in children()
+                         if pid != child.pid} if DARWIN_CUSTODY is None else {})
             adopted = [pid for pid in reap(child) if pid != child.pid]
             if DARWIN_CUSTODY is None:
                 extra = [pid for pid in children() if pid != child.pid]
@@ -165,6 +195,10 @@ def supervise(command, operation_ms, test_ms, shard_ms):
                 extra = [entry["pid"] for entry in members if entry["parentPid"] not in parents]
             if adopted or extra:
                 reason = f"orphaned fixture descendants: {adopted + extra}"
+                orphan_evidence = ([captured.get(pid) or orphan_snapshot(pid)
+                                    for pid in dict.fromkeys(adopted + extra)]
+                                   if DARWIN_CUSTODY is None else
+                                   [entry for entry in members if entry["pid"] in extra])
                 break
             if child.returncode is not None:
                 break
@@ -205,6 +239,9 @@ def supervise(command, operation_ms, test_ms, shard_ms):
             if last_record and "test=" not in reason:
                 reason += f" last test={last_record['name']} operation={last_record['label']}"
             print(f"[nightly supervisor] FAIL {reason}", file=sys.stderr, flush=True)
+            if orphan_evidence:
+                print(f"[nightly supervisor] orphanEvidence={json.dumps(orphan_evidence)}",
+                      file=sys.stderr, flush=True)
         if child is not None:
             receipt = cleanup(child)
         # Delete only the allocated fixture generation, after owned processes
